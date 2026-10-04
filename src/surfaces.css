@@ -111,6 +111,14 @@
   display: none;
 }
 
+/* Keeps the focus ring whole when keyboard focus scrolls the suggestion list or the dialog: the browser then puts the
+   focused box exactly on the scrollport edge and the ring is clipped. The widest ring is the forced-colors outline,
+   2px + 2px offset = 4px; one more pixel absorbs Chrome's integer scroll offsets. A literal, not a token. On the resting
+   state because the scroll happens at the moment of focus; it draws nothing. */
+.city-modal :is(button, input, .weather-form__suggestion) {
+  scroll-margin: 5px;
+}
+
 /* Only while focused: a resting control must have no outline at all, or forced colors would draw a permanent frame
    around every control and the focused one would no longer stand out. */
 .city-modal :is(button, input, .weather-form__suggestion):focus-visible {

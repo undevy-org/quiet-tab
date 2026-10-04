@@ -237,7 +237,7 @@ All heights are **border-box** (`box-sizing: border-box` globally).
 | `.city-modal` | Flex center, padding **16px**, z-index 100 (102 when `.city-modal--stacked`) |
 | `.city-modal__dialog` | Same width/padding/radius/shadow as desktop dialog |
 | `.add-menu` | Popover; `--radius-popover`, `--surface-popover-padding`, `--shadow-popover` |
-| `.weather-form__suggestions` | Popover list; docked variant in-flow, no shadow |
+| `.weather-form__suggestions` | Popover list; docked variant in-flow, no shadow; rows keep `scroll-margin: 5px` so the focus ring is not clipped when focus scrolls the list |
 
 Modal titles: `--font-size-title`, `margin: 0 0 var(--title-margin-bottom)` (**12px**).
 
@@ -482,7 +482,9 @@ E2E or extended unit assertions are expected.
 1. Use existing classes from `controls.css` / `surfaces.css` before adding rules.
 2. New overlay controls must use `--control-height` and `--radius-control`.
 3. New colors or radii need tokens in `design-tokens.css` and a row in this doc.
-4. Overlay focus must follow the soft-ring pattern; grid focus uses `--focus-ring`.
+4. Overlay focus must follow the soft-ring pattern; grid focus uses `--focus-ring`. Controls and rows inside a
+   scrolling overlay (a list with `overflow-y: auto`, a dialog that scrolls in a low window) keep `scroll-margin`
+   at least as large as the ring (outline 2 + offset 2, plus 1 = 5px), or focus scrolling clips the ring.
 5. Run `npm test` and `npm run check`; UI behavior changes need E2E per project
    design-review protocol.
 
