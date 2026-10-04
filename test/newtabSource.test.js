@@ -436,7 +436,10 @@ describe("newtab city modal source", () => {
     const css = await appStyles();
     const ring = /box-shadow: 0 0 0 2px var\(--(?:soft-ring|focus-overlay-ring)\);/;
     assert.match(css, /\.city-modal :is\(button, input, \.weather-form__suggestion\):focus-visible \{\s*outline: 2px solid transparent;/);
-    assert.doesNotMatch(css, /\.city-modal :is\(button, input[^)]*\)\s*\{/); // never on resting controls
+    // Never an outline, ring or fill on resting controls: a resting `.city-modal :is(button, input…)` rule may only carry
+    // non-visual declarations (scroll-margin keeps the ring whole when focus scrolls a list).
+    const resting = [...css.matchAll(/(\.city-modal :is\(button, input[^)]*\))([^{]*)\{([^}]*)\}/g)].filter((m) => !m[2].includes(":focus-visible"));
+    for (const [, selector, , body] of resting) assert.doesNotMatch(body, /outline|box-shadow|background/, selector);
     for (const selector of [".city-modal .favorite-input:focus-visible", ".city-modal .icon-button:focus-visible", ".city-modal .weather-form__suggestion:focus-visible"]) {
       const at = css.indexOf(selector);
       assert.ok(at > -1, selector);

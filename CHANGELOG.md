@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- City dialog: when you move through the city suggestions with the arrow keys or Tab and
+  the list (or the dialog, in a short window) scrolls, the focus ring is no longer cut off
+  on its top or bottom edge. This also covers the field and the clear button, and the
+  stronger outline used in forced-colors mode. E2E: `dg-52-docked-list-focus-ring.mjs`.
 - Link forms: the hint text inside the empty fields (Link, Name, Custom icon, in both
   Add link and Edit link) is darker, so it is readable in light and dark themes,
   including when the field is focused. The city field already looked like this; now
