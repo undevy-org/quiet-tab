@@ -49,7 +49,7 @@ new names where applicable.
 | `--color-bg` | Page background |
 | `--color-surface` | Panels, modals, inputs |
 | `--color-text` | Primary text |
-| `--color-text-muted` | Labels, secondary copy |
+| `--color-text-muted` | Labels, secondary copy, field placeholder |
 | `--color-border` | Decorative separators and surface borders |
 | `--color-border-control` | Boundary of a control (text field, segmented, color field, chrome and hint tile); alias `--border-control` |
 | `--color-primary` | Primary fill, active segmented segment |
@@ -187,6 +187,7 @@ All heights are **border-box** (`box-sizing: border-box` globally).
 - `min-height: var(--control-height)` (**40px**) in all contexts (no taller city field)
 - Padding `0 var(--control-padding-x)`; radius **8px**
 - Border `var(--control-border-width)` solid `var(--color-border-control)`
+- Placeholder: `var(--color-text-muted)`, `opacity: 1`, >= 4.5:1 on the panel and on the focused fill (one rule in `controls.css`)
 
 ### `.icon-button`
 

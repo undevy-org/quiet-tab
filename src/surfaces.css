@@ -111,11 +111,6 @@
   display: none;
 }
 
-.city-modal .favorite-input::placeholder {
-  color: var(--muted);
-  opacity: 1;
-}
-
 /* Only while focused: a resting control must have no outline at all, or forced colors would draw a permanent frame
    around every control and the focused one would no longer stand out. */
 .city-modal :is(button, input, .weather-form__suggestion):focus-visible {
