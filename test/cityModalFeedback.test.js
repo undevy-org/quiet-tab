@@ -49,7 +49,7 @@ describe("city modal error feedback", () => {
   });
 });
 
-// AS-LW-01..04 (docs/city-modal-low-window.md): source-level guards; the behavior itself is covered by e2e dg-48.
+// AS-LW-01..04 (docs/city-modal-low-window.md): source-level guards; the behavior itself is covered by e2e dg-48 (and the step order by dg-49).
 describe("city modal in a very low window", () => {
   const place = async () => {
     const code = await read("newtab.js");
