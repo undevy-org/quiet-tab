@@ -51,7 +51,7 @@ new names where applicable.
 | `--color-text` | Primary text |
 | `--color-text-muted` | Labels, secondary copy, field placeholder |
 | `--color-border` | Decorative separators and surface borders |
-| `--color-border-control` | Boundary of a control (text field, segmented, color field, chrome and hint tile); alias `--border-control` |
+| `--color-border-control` | Boundary of a control (text field, segmented, color field, chrome and hint tile, secondary button); alias `--border-control` |
 | `--color-primary` | Primary fill, active segmented segment |
 | `--color-primary-hover` | Primary hover |
 | `--color-on-primary` | Text on primary |
@@ -68,9 +68,9 @@ values.
 **Two border roles.** `--color-border` is the quiet decorative line: card and
 popover edges, row dividers, the dividers between segmented options. WCAG 1.4.11
 does not require it to reach 3:1. `--color-border-control` marks the boundary of
-a control that has no fill or label of its own to identify it (text fields, the
-color field, the segmented outer edge, chrome tiles and the first-run hint tile),
-and clears 3:1 against the panel and the page in both themes (`#838e9a` light,
+a control whose edge is its main affordance (text fields, the color field, the
+segmented outer edge, chrome tiles, the first-run hint tile and secondary
+buttons such as Cancel and Not now) and clears 3:1 against the panel and the page in both themes (`#838e9a` light,
 `#68727f` dark). A new control boundary uses `--color-border-control`; a
 separator uses `--color-border`.
 
@@ -176,7 +176,7 @@ All heights are **border-box** (`box-sizing: border-box` globally).
 
 - `min-height: var(--control-height)` (**40px**)
 - Padding `0 var(--control-padding-x-button)`; gap `var(--control-gap-icon)`
-- Border `var(--control-border-width)` solid `var(--color-border)`;
+- Border `var(--control-border-width)` solid `var(--color-border-control)` (the default, secondary button; `.button--primary` and `.button--danger` set their own border color);
   `border-radius: var(--radius-control)` (**8px**)
 - Modifiers: `.button--primary`, `.button--danger`
 - Disabled: `opacity: var(--control-disabled-opacity)` (**0.62**), cursor wait when busy

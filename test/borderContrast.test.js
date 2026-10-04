@@ -64,11 +64,11 @@ function rules(css) {
   return out;
 }
 
-describe("AS-CT-05: only the five control-boundary rules use --border-control", () => {
-  const five = [".chrome-tile", ".city-hint-tile", ".favorite-input", ".favorite-color-input", ".segmented"];
+describe("AS-CT-05: only the six control-boundary rules use --border-control", () => {
+  const six = [".chrome-tile", ".city-hint-tile", ".favorite-input", ".favorite-color-input", ".segmented", ".button"];
   const all = Object.entries(sources).flatMap(([file, css]) => rules(css).map((r) => ({ ...r, file })));
   const borderDecl = (r) => r.body.match(/(?:^|[;\s])border(?:-color)?:[^;]*/)?.[0] ?? "";
-  for (const selector of five) {
+  for (const selector of six) {
     it(`${selector} draws its border with var(--border-control)`, () => {
       const rule = all.find((r) => r.selector === selector && /(?:^|[;\s])border:/.test(r.body));
       assert.ok(rule, selector);
@@ -77,7 +77,7 @@ describe("AS-CT-05: only the five control-boundary rules use --border-control", 
   }
   it("no other rule in controls.css, surfaces.css or newtab.css uses it", () => {
     const users = all.filter((r) => /var\(--border-control\)/.test(r.body)).map((r) => r.selector);
-    assert.deepEqual(users.filter((s) => !five.includes(s)), []);
+    assert.deepEqual(users.filter((s) => !six.includes(s)), []);
   });
   it(".segmented__option keeps the decorative divider", () => {
     const option = all.find((r) => r.selector === ".segmented__option");
