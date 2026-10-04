@@ -33,7 +33,7 @@ Candidate `--color-text-muted` (`#5c6672` light, `#a8b0ba` dark; the token the c
 | light | 5.84 | 5.15 | 4.65 |
 | dark | 7.30 | 5.99 | 5.08 |
 
-All six pairs clear 4.5:1. Muted text against the typed-value color: light `#5c6672` vs `#111318` is only 3.18:1, so in light the placeholder is distinguishable from a typed value by a lighter gray, not by a large step. This is accepted (see Accepted exceptions): a placeholder must not read as an entered value, and at 5.84:1 against its background it is already as dark as the design system allows for secondary copy.
+All six pairs clear 4.5:1. Muted text against the typed-value color: light `#5c6672` vs `#111318` is only 3.18:1 and dark `#a8b0ba` vs `#f4f6f8` only 2.02:1, so the placeholder is distinguishable from a typed value by a different gray, not by a large step. This is accepted (see Accepted exceptions): a placeholder must not read as an entered value, and at 5.84:1 against its background it is already as dark as the design system allows for secondary copy.
 
 ## Default decisions (owner can override)
 
@@ -71,10 +71,11 @@ This changes what the user sees, so it follows the full UI-phase cycle: spec, pl
 
 ## Accepted exceptions
 
-- **Placeholder vs typed value in light is 3.18:1** (`#5c6672` vs `#111318`): the placeholder disappears the moment the user types, so the two never share a field; the muted token is kept for consistency with the city modal and labels.
+- **Placeholder vs typed value is 3.18:1 in light** (`#5c6672` vs `#111318`) **and 2.02:1 in dark** (`#a8b0ba` vs `#f4f6f8`): the placeholder disappears the moment the user types, so the two never share a field (dark is the weaker pair: the two grays are close, the difference rests on disappearance when typing); the muted token is kept for consistency with the city modal and labels.
 - **A disabled field** (the city field while a request runs) keeps the placeholder at full muted contrast instead of dimming: WCAG 1.4.3 exempts inactive components, and the stricter state is harmless.
 - **Long placeholders at 320 px** (for example "https://example.com/icon.png" in a narrow field) are clipped by the field, as today. This change is color-only: no metric moves, so truncation is neither introduced nor fixed here.
 - **Forced colors:** the system color is trusted, the author color is not asserted.
+- **No mid-phase checkpoint:** the plan has a single small group of tasks (one CSS rule, tests, docs), so the checkpoint design review is replaced by a "not needed" note in the plan; the spec gate and the final gate still run.
 
 ## Acceptance scenarios
 
@@ -89,7 +90,7 @@ This changes what the user sees, so it follows the full UI-phase cycle: spec, pl
 
 - Given: viewport 1280×800; a city stored (default metrics and chrome tiles); both themes (`page.emulateMedia({ colorScheme })`, wait for the media change to apply as `dg-46` does); the Add link dialog opened from the Add tile, all three fields empty.
 - When: for each of the Link, Name and Custom icon fields, the computed `::placeholder` color is read (alpha composited over the field's own `background-color`) together with the computed `opacity` of the pseudo-element.
-- Then: color equals the resolved `--muted` (as an `rgb()` string); opacity is `1`; contrast against the field's own background is >= 4.5 (unrounded). The Link field is measured as opened (focused, `--color-fill-soft` fill); Name and Custom icon at rest on `--color-surface`. The Custom icon row is measured with Icon set to "Custom" (row visible) and the value is also read with the row hidden (computed style is the same).
+- Then: color equals the resolved `--muted` (as an `rgb()` string); opacity is `1`; contrast against the field's own background is >= 4.5 (unrounded). The Link field is measured as opened (focused, `--color-fill-soft` fill); Name and Custom icon at rest on `--color-surface`. The Custom icon row is measured only with Icon set to "Custom" (the row is `display: none` otherwise, `src/controls.css:59-66`, and the computed style of a hidden element is not reliable).
 - Verified by: new E2E `dg-50-placeholder-contrast.mjs`. Expected before the change: red, color `rgb(117, 117, 117)`, ratios 4.07 / 4.61 (light), 2.85 / 3.47 (dark).
 
 ### AS-PH-03 Edit link placeholders match, including the domain placeholder
@@ -110,7 +111,7 @@ This changes what the user sees, so it follows the full UI-phase cycle: spec, pl
 
 - Given: the first-run city modal (no city stored, field empty) and the change-mode modal (city stored, opened from the weather edit dialog's "Change city" button), both themes.
 - When: the computed `::placeholder` color, its opacity and the contrast against the field's own background are read; the layout metrics of the dialog and field are read as before.
-- Then: color equals the resolved `--muted`, opacity `1`, contrast >= 4.5; the placeholder text is "Search for a city". Field and dialog rects are identical to the base build (only a rule moved; no metric changes). `13-city-modal`, `15-city-modal-layout`, `dg-47`, `dg-48`, `dg-49` pass unchanged.
+- Then: color equals the resolved `--muted`, opacity `1`, contrast >= 4.5; the placeholder text is "Search for a city". Field and dialog rects are identical to the base build (`ctx.base`, the ref passed as `--base`, run with `--base 0523e06`; only a rule moved; no metric changes). `13-city-modal`, `15-city-modal-layout`, `dg-47`, `dg-48`, `dg-49` pass unchanged.
 - Verified by: `dg-50-placeholder-contrast.mjs` (colors) and the existing scenarios as regression. Expected before the change: green (characterization; the point is that moving the rule does not regress it).
 
 ### AS-PH-06 Error and disabled states do not change the placeholder
@@ -130,9 +131,9 @@ This changes what the user sees, so it follows the full UI-phase cycle: spec, pl
 ### AS-PH-08 Forced colors are not worse than today
 
 - Given: `page.emulateMedia({ forcedColors: "active" })`, the Add link dialog and the city modal, empty fields.
-- When: the placeholder color is composited over the field background and the contrast is computed.
-- Then: contrast >= 4.5 (13.98 measured today; the system palette decides). The color is whatever the browser forces; the scenario does not assert it equals `--muted`. The emulation is reset to `none` afterwards.
-- Verified by: `dg-50-placeholder-contrast.mjs`. Expected before the change: green (characterization). If the Playwright build cannot emulate forced colors, the scenario records a skip and this AS falls back to design review only.
+- When: the placeholder color is composited over the field background and the contrast is computed, in both the Add link dialog and the city modal, before and after the change.
+- Then: contrast >= 4.5 in both dialogs (13.98 measured today for Add link; the city modal number is taken from the same run; the system palette decides). Both numbers go to the run record; a before/after difference fails the scenario on purpose. The color is whatever the browser forces; the scenario does not assert it equals `--muted`. The emulation is reset to `none` afterwards.
+- Verified by: `dg-50-placeholder-contrast.mjs`. Expected before the change: green (characterization). The emulation is already used by the harness (`13-city-modal.mjs:689`, `15-city-modal-layout.mjs:344`), so no skip fallback is planned.
 
 ### AS-PH-09 A typed value stays distinct from the placeholder
 
@@ -145,12 +146,23 @@ This changes what the user sees, so it follows the full UI-phase cycle: spec, pl
 
 - Given: the repository after the change.
 - When: `docs/design-system.md`, `CHANGELOG.md` and `src/*.css` are read.
-- Then: the `### .favorite-input` section of `design-system.md` states the placeholder token and the 4.5:1 requirement, and the `--color-text-muted` row mentions the field placeholder; `CHANGELOG.md` has a `Fixed` entry under `[Unreleased]` in plain words (hint text in the link form fields is darker so it is readable in light and dark), ending with "E2E: `dg-50-placeholder-contrast.mjs`"; a repository grep finds no `::placeholder` outside `controls.css`.
+- Then: the `### .favorite-input` section of `design-system.md` states the placeholder token and the 4.5:1 requirement, and the `--color-text-muted` row mentions the field placeholder; `CHANGELOG.md` has a `Fixed` entry under `[Unreleased]` in plain words (hint text in the link form fields is darker so it is readable in light and dark), ending with "E2E: `dg-50-placeholder-contrast.mjs`"; a grep over `src/*.css` finds no `::placeholder` outside `controls.css`.
 - Verified by: source assertions in `test/placeholderContrast.test.js` (docs mention of the rule and of the token; no `::placeholder` in `surfaces.css`/`newtab.css`); design review (copy lens) reads the CHANGELOG line.
 
 ## Review focus
 
 - **Scenarios and states:** the focused URL field is the worst pair (`--color-fill-soft` background; 4.07 / 2.85 today). Check that the planned token holds on exactly the fill a keyboard user sees when the dialog opens, in both themes, and that the Edit dialog's domain placeholder (a long host name in a narrow field) is still readable.
 - **Visual and layout:** the placeholder becomes noticeably darker in dark mode (gray `#757575` to `#a8b0ba`) and a little darker in light. Look at the three fields next to the row labels (also muted, `--font-size-sm`): does the empty field now read as filled? Distinguishing a placeholder from a typed value rests on the lighter gray and on disappearance when typing (Accepted exceptions), judge it by eye in both themes.
-- **Accessibility and texts:** 3.18:1 between muted and text in light is the consciously accepted gap; check nothing else relies on that pair. Confirm forced-colors still shows a visible placeholder, and that `opacity: 1` is not hiding a Chrome UA state (disabled).
+- **Accessibility and texts:** 3.18:1 (light) and 2.02:1 (dark) between muted and text is the consciously accepted gap; check nothing else relies on that pair. Confirm forced-colors still shows a visible placeholder, and that `opacity: 1` is not hiding a Chrome UA state (disabled).
 - **Regression:** `13-city-modal`, `15-city-modal-layout`, `dg-04`, `dg-39`, `dg-40`, `dg-46`, `dg-47`, `dg-48`, `dg-49`; `test/focusTokens.test.js`, `test/designSystem.test.js`, `test/newtabSource.test.js`.
+
+## Changes after review
+
+Review `placeholder-contrast-spec-review.md` (stage 1): no Critical or Important; five Minor, reviewer defaults accepted.
+
+- **M1:** AS-PH-02 measures Custom icon only with Icon = Custom; the "also read with the row hidden" clause is removed.
+- **M2:** AS-PH-08 names both dialogs (Add link, city modal), before and after; both numbers go to the run record; the skip fallback is removed (harness already emulates forced colors).
+- **M3:** the dark pair placeholder vs typed value, 2.02:1, is added to Accepted exceptions and to the paragraph after the candidate table.
+- **M4:** AS-PH-10 grep is limited to `src/*.css`.
+- **M5:** AS-PH-05 compares against `ctx.base` with `--base 0523e06`; the "compare to constants" fallback is removed (also in the plan).
+- Added to Accepted exceptions: no mid-phase checkpoint (replaces nothing in scope).
