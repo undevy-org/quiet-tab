@@ -9,10 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- City modal: in a very low window (or at a large browser zoom) the Save and Cancel /
-  Not now buttons are visible again without scrolling. The room kept for an error
-  message is given up only when the window is too low to hold it. E2E:
-  `dg-48-city-modal-low-window.mjs`.
+- City dialog: in a very short browser window, or at a large zoom, the Save button and
+  the Cancel (or Not now) button no longer fall below the edge, so you see them without
+  scrolling. The space kept free for an error message is given up only when the window
+  is too short to hold it. E2E: `dg-48-city-modal-low-window.mjs`.
 - City modal: the red error message now disappears as soon as you start editing the
   city name (or press the clear button), instead of lingering under the suggestions.
   The window also keeps room for the message, so the buttons no longer jump down
