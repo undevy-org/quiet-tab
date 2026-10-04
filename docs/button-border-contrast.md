@@ -55,7 +55,7 @@ WCAG relative luminance, unrounded, computed from the tokens in `src/design-toke
 5. **Active:** there is no `:active` rule for `.button` today and none is added.
 6. **Focus-visible:** unchanged. In dialogs a focused default button gets the `--soft-fill-strong` fill plus the 2 px `--focus-overlay-ring` (`surfaces.css`). The border on that fill is 2.66 (light) / 2.28 (dark), below 3:1, exactly like a focused field (`docs/border-contrast.md` decision 5): the soft ring carries the focused boundary (4.12 / 6.17 on the panel, 3.85 / 4.87 on the fill) and is guarded by `test/focusTokens.test.js`. This is an accepted exception, not a new gap: the old border was 1.08 / 1.02 on that fill. A focused primary button keeps its `--primary` fill.
 7. **Disabled:** unchanged mechanism, `opacity: var(--control-disabled-opacity)` (0.62). The rendered border is 1.98 / 2.08 (was 1.20 / 1.23): a disabled control is an inactive component and is exempt from 1.4.11; the border color is the same token as enabled so nothing changes when the button becomes enabled except opacity. Disabled states that exist without a network request: city modal Save while the field is empty; edit-weather Save until the size changes. The busy states (`favoritesBusy` / `weatherBusy`) are transient and not driven by the scenario; AS-BB-05 forces the attribute instead.
-8. **Forced colors:** not changed. The browser substitutes system colors for author borders; the scenario only guards that the button keeps a visible 1 px solid border with a non-transparent color and that it equals the "before" value from `d2c3aad` (AS-BB-08).
+8. **Forced colors:** not changed. The browser substitutes system colors for author borders; in forced colors the border color is set by the system palette, not by the author token, so the comparison is characterization only: the scenario guards that the button keeps a visible 1 px solid border with a non-transparent color (alpha > 0, at least 3:1 against the forced background) and that it equals the "before" value from `d2c3aad` (AS-BB-08).
 9. **Theme coverage:** both themes in the same change by the token's own light/dark values; no `@media (prefers-color-scheme)` branch is added.
 10. **Which buttons:** every `.button` (the family listed in the intake log). Not `.icon-button`, `.text-button`, `.tile-remove`, `.add-menu__item`, tiles (unchanged).
 
@@ -67,9 +67,9 @@ WCAG relative luminance, unrounded, computed from the tokens in `src/design-toke
 - Default decision 3: the heading "(the five that draw a control boundary...)" becomes six and the list gains `.button` (default variant; `--primary` and `--danger` keep their own border colors); `.button (has a text label)` is removed from the "Everything else keeps `--border`" sentence; pointer note "(`.button` joined by `docs/button-border-contrast.md`)".
 - Scope item "Five rules switched..." becomes six, `.button` in `src/controls.css` added.
 - AS-CT-05 (unit and E2E): "Given" no longer lists a default button among the quiet surfaces; the `.button` (default) entry leaves the separators list; the source test's list of control-boundary rules becomes six (`.button` added), including the "five rules" wording in its Verified-by line.
-- Review focus, "Which surfaces": the clause "whether `.button` (text-labelled) should follow for consistency" is answered by this spec (a pointer, not a deletion of the history).
+- Review focus, "Which surfaces": the clause "whether `.button` (text-labelled) should follow for consistency" is answered by this spec (a pointer, not a deletion of the history). In the same section (`docs/border-contrast.md:118`) the question "is the five-surface list right?" becomes "six-surface" with the pointer, so no "five" remains for the control-boundary list.
 - `docs/design-system.md:70-71`: the definition "a control that has no fill or label of its own to identify it" is rewritten (suggested: "the boundary of a control whose edge is its main affordance: text fields, the color field, the segmented outer edge, chrome tiles, the first-run hint tile and secondary buttons"). The token table row (`:54`) adds "button"; the `### .button` section says `var(--color-border-control)`; "Two border roles" lists buttons.
-- These edits are the implementer's work (plan Task 3); this spec only fixes what must change. `test/buttonBorderContrast.test.js` source-asserts that neither `docs/border-contrast.md` nor `docs/design-system.md` contains the phrases "(has a text label)" or "no fill or label".
+- These edits are the implementer's work (the docs task of the plan); this spec only fixes what must change. `test/buttonBorderContrast.test.js` source-asserts that neither `docs/border-contrast.md` nor `docs/design-system.md` contains the phrases "(has a text label)" or "no fill or label".
 
 `docs/design-system-followup.md` Non-goals line is not touched again.
 
@@ -118,7 +118,7 @@ N/A, behavior does not change: migration and storage (nothing persisted), empty 
 
 ### AS-BB-02 Every default button in every dialog is visible against its panel
 
-- Given: viewport 1280×800, both themes (`page.emulateMedia({ colorScheme })`, 300 ms wait as in `dg-46`), a city stored with a favorite in the grid; resting state (mouse moved away, no focus on the button).
+- Given: viewport 1280×800, both themes (`page.emulateMedia({ colorScheme })`, 300 ms wait as in `dg-46`); resting state (mouse moved away, no focus on the button). Seeds differ per dialog: Add link, Edit link, Delete confirm, edit-weather dialog and city modal change mode run with a city stored and one favorite in the grid; the city modal first-run runs in a separate profile with NO city stored and `quietTabWeatherPromptDismissed` not set (the first-run rule requires an unset city, see `CLAUDE.md` Weather).
 - When: for each dialog the computed `border-top-color` and `border-top-width` of the default (non-primary, non-danger) `.button`, together with the background of the nearest ancestor that paints one, are read: Add link (Cancel), Edit link (Cancel), Delete confirm (Cancel), edit-weather dialog (Cancel), city modal first-run (Not now) and city modal change mode (Cancel). Path to the change-mode modal: Settings (edit mode) -> a weather tile -> "Change city" in the edit-weather dialog (the modal stacks over that dialog).
 - Then: border color equals the resolved `--border-control`; width `1px`; contrast against that ancestor >= 3.0 (unrounded), in every dialog and both themes. Six dialogs by two themes, each must have been rendered (a missing one fails the check).
 - Verified by: new E2E `dg-51-button-border-contrast.mjs` (helpers from `dg-46`: `read`, `resolve`, `setScheme`). Expected before the change: red, 1.35 (light) and 1.41 (dark) in all six.
@@ -133,7 +133,7 @@ N/A, behavior does not change: migration and storage (nothing persisted), empty 
 ### AS-BB-04 Hover, focus-visible and the focused fill
 
 - Given: the Add link dialog (Cancel and the primary "Add", `.button--primary`) and the city modal (Cancel in change mode, Save), both themes.
-- When: (a) the mouse hovers Cancel (with `page.hover`); (b) focus is moved to Cancel by keyboard: Tab / Shift+Tab in a loop until `document.activeElement === cancel`, at most 12 presses (fail if not reached), then `cancel.matches(":focus-visible")` must hold; the border color, background and `box-shadow` of the button are read, and the border-to-background ratio is computed.
+- When: hover and focus-visible are checked separately, in this order. (a) the mouse hovers Cancel (`page.hover`); the border color is read; then the cursor is moved off the button (`page.mouse.move(1, 1)`) and the check waits until `cancel.matches(":hover")` is false (poll, at most 1 s; fail if it stays true). (b) only after that, focus is moved to Cancel by keyboard: Tab / Shift+Tab in a loop until `document.activeElement === cancel`, at most 12 presses (fail if not reached), then `cancel.matches(":focus-visible")` must hold and `cancel.matches(":hover")` must be false; the border color, background and `box-shadow` of the button are read, and the border-to-background ratio is computed.
 - Then: (a) the border is `--primary` (unchanged), and differs from the rest color; (b) the border stays `--border-control`, the background is `--soft-fill-strong`, `box-shadow` is the `--focus-overlay-ring` ring (2 px) as before; the border-to-focused-fill ratio is recorded in the run record (2.66 / 2.28 expected) and not asserted >= 3 (Accepted exceptions); the primary keeps its `--primary` background while focused. There is no `:active` rule (source assertion in the unit test: no `.button:active`).
 - Verified by: `dg-51-button-border-contrast.mjs`; `test/focusTokens.test.js` and `test/newtabSource.test.js:445` pass untouched. Expected before the change: (a) green, (b) the border color check red.
 
@@ -146,8 +146,8 @@ N/A, behavior does not change: migration and storage (nothing persisted), empty 
 
 ### AS-BB-06 Metrics do not move
 
-- Given: the Add link, Edit link and city modal dialogs open, viewport 1280×800; the desktop-wide footer (`.favorite-form__footer`).
-- When: `getBoundingClientRect()` of every `.button` in the footer, `border-top-width`, `border-top-style` and `border-radius` are read.
+- Given: the Add link, Edit link and city modal dialogs open, viewport 1280×800; the desktop-wide button rows: `.favorite-form__footer .button` (Add link, Edit link) and `.city-modal__actions .button` (city modal, both modes).
+- When: `getBoundingClientRect()` of every `.button` matched by those two selectors, `border-top-width`, `border-top-style` and `border-radius` are read.
 - Then: height 40 ± 0.5, radius 8, border width `1px` solid (the same values `dg-41-control-metrics.mjs` asserts); the existing `dg-41` and `dg-42` pass untouched (no change to those files). Only a color changes.
 - Verified by: `dg-51-button-border-contrast.mjs` (absolute checks, no base build) plus existing `dg-41-control-metrics.mjs`, `dg-42-grid-chrome-metrics.mjs`, `dg-39-dialog-narrow.mjs`, `13-city-modal`, `15-city-modal-layout`, `dg-47`, `dg-48`, `dg-49`.
 
@@ -161,8 +161,8 @@ N/A, behavior does not change: migration and storage (nothing persisted), empty 
 ### AS-BB-08 Forced colors are not worse than today
 
 - Given: `page.emulateMedia({ forcedColors: "active", colorScheme })` for `light` and `dark`; the Add link dialog and the city modal first-run; Cancel / Not now, Save and Delete (Edit link).
-- When: `border-top-color`, `border-top-style`, `border-top-width` of each button are read; "before" values are measured on `d2c3aad` (an unmodified checkout, plan Step 2, before the CSS change) and stored in the scenario as a constant map (`FORCED_BEFORE`, as `dg-50` does).
-- Then: border style is `solid`, width `1px`, color alpha > 0 (visible); the color equals the "before" value for the same scheme, dialog and button (the system palette decides, the author token is not asserted). The emulation is reset to `none` afterwards (in `finally`). The before and after values go to the run record.
+- When: `border-top-color`, `border-top-style`, `border-top-width` of each button are read; "before" values are taken once on commit `d2c3aad` (a clean checkout or `git worktree add <path> d2c3aad`, before the CSS change; run the same reads there with the same emulation) and written into the scenario as a constant map `FORCED_BEFORE`, keyed by scheme, dialog and button, following `dg-50`. The scenario does not rebuild the base at run time.
+- Then: border style is `solid`, width `1px`, color alpha > 0 (visible) and its contrast against the forced background is >= 3.0; the color equals `FORCED_BEFORE` for the same scheme, dialog and button (after == before; the system palette decides, the author token is not asserted, so this is a characterization and cannot catch a wrong author color). The emulation is reset to `none` afterwards (in `finally`). The before and after values go to the run record.
 - Verified by: `dg-51-button-border-contrast.mjs`. Expected before the change: green (characterization).
 
 ### AS-BB-09 Everything that is not a button keeps its look
@@ -176,7 +176,7 @@ N/A, behavior does not change: migration and storage (nothing persisted), empty 
 
 - Given: the repository after the change.
 - When: `docs/design-system.md`, `docs/border-contrast.md`, `CHANGELOG.md` and `test/borderContrast.test.js` are read.
-- Then: the `### .button` section of `docs/design-system.md` says `var(--color-border-control)` and has no bare `--color-border`; the `--color-border-control` row names "button"; the "Two border roles" paragraph lists buttons among control boundaries and no longer says "no fill or label of its own"; `docs/border-contrast.md` no longer lists `.button` among the surfaces that keep `--border`, no longer contains "(has a text label)", has "six" in Default decision 3 / Scope / AS-CT-05, and carries the pointer to this spec; `CHANGELOG.md` has a `Changed` entry under `[Unreleased]` in plain words (the outline of Cancel, Not now and other secondary buttons in dialogs is darker so it meets 3:1 in light and dark), ending with "E2E: `dg-51-button-border-contrast.mjs`".
+- Then: the `### .button` section of `docs/design-system.md` says `var(--color-border-control)` and has no bare `--color-border` (the test matches the whole token `var\(--color-border\)` with no `-control` suffix inside that section, e.g. regex `/var\(--color-border\)/`; `var(--color-border-control)` does not match it); the `--color-border-control` row names "button"; the "Two border roles" paragraph lists buttons among control boundaries and no longer says "no fill or label of its own"; `docs/border-contrast.md` no longer lists `.button` among the surfaces that keep `--border`, no longer contains "(has a text label)", has "six" in Default decision 3 / Scope / AS-CT-05 / Review focus (`six-surface`, no `five-surface`), and carries the pointer to this spec; `CHANGELOG.md` has a `Changed` entry under `[Unreleased]` in plain words (the outline of Cancel, Not now and other secondary buttons in dialogs is darker so it meets 3:1 in light and dark), ending with "E2E: `dg-51-button-border-contrast.mjs`".
 - Verified by: source assertions in `test/buttonBorderContrast.test.js` (including: neither doc contains "(has a text label)" or "no fill or label"); design review (copy lens) reads the CHANGELOG line.
 
 ## Review focus
@@ -192,7 +192,7 @@ N/A, behavior does not change: migration and storage (nothing persisted), empty 
 Review: `.private/pipeline/reports/button-border-contrast-spec-review.md` (stage 1, verdict needs revision). Defaults of the reviewer accepted for all.
 
 - **I1** AS-BB-07: no longer claims a full-width button; asserts inside dialog/viewport, width > 0, 1 px border; full width only for Delete in Edit link at <= 600 px.
-- **I2** AS-BB-03/04: primary is named by `.button--primary`; Add link's primary is labelled "Add", others "Save"; same fix in plan Task 1 Step 1.
+- **I2** AS-BB-03/04: primary is named by `.button--primary`; Add link's primary is labelled "Add", others "Save"; same fix in the plan's `dg-51` step.
 - **I3** "What changes in the earlier decision" now lists every place in `docs/border-contrast.md` and `docs/design-system.md:70-71`; AS-BB-10 and the unit test assert the stale phrases are gone. Docs themselves are edited by the implementer.
 - **M1** line ref `:187` to `:192` in the spec (backlog line 8 fixed in notes).
 - **M2** Intake: constructors distinguished (`newtab.js:435` vs `createDialogCancel`).
@@ -201,4 +201,15 @@ Review: `.private/pipeline/reports/button-border-contrast-spec-review.md` (stage
 - **M5** AS-BB-05 no longer reads `cursor` as an assertion.
 - **M6** "Procedure items that do not apply" added; status set to `draft`.
 - **M7** AS-BB-04(b) keyboard path defined (bounded Tab loop plus `:focus-visible`); AS-BB-02 path to the city change modal given.
-- **M8** Plan: Task 4 duplicates Task Z; accepted deviation recorded in the plan (no checkpoint: one declaration).
+- **M8** Plan: the plan's last summary task duplicates the final-gate task; accepted deviation recorded in the plan (no checkpoint: one declaration).
+
+### Design-review spec round 1
+
+Run: `.private/design-review/runs/2026-10-04-accd1b8-spec-r1/` (verdict: blocked by one Important; L0-06 rejected by the skeptic and not changed).
+
+- **L0-02** (Important) AS-BB-04: hover and focus-visible are checked separately; between them the cursor is moved off (`page.mouse.move(1, 1)`), `:hover` must be false before the keyboard path, and (b) asserts `:hover` false and `:focus-visible` true.
+- **L0-01** AS-BB-02 Given: seeds split per dialog; first-run runs with no city and no dismissal flag, the other five with a stored city and a favorite.
+- **L0-03** AS-BB-06: selectors are `.favorite-form__footer .button` and `.city-modal__actions .button`.
+- **L0-04** "What changes" lists `docs/border-contrast.md:118` ("five-surface" to "six-surface"); AS-BB-10 matches the whole token `var(--color-border)` (regex `/var\(--color-border\)/`, no `-control`) and checks "six-surface".
+- **L0-05** AS-BB-08 and decision 8: the `d2c3aad` "before" procedure is written in the spec (clean checkout or worktree, constant `FORCED_BEFORE` as in `dg-50`); the check is stated as characterization (system palette decides), criteria: contrast >= 3.0 against the forced background and after == before; "plan Step N" references replaced with self-contained text.
+- **L0-06** rejected (Review focus holds judgements, no measurable criterion needed); unchanged.
