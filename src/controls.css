@@ -162,6 +162,11 @@
   font: inherit;
 }
 
+.favorite-input::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+
 .favorite-input:focus-visible,
 .favorite-color-input:focus-visible {
   outline: 3px solid var(--focus);

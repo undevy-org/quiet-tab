@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Link forms: the hint text inside the empty fields (Link, Name, Custom icon, in both
+  Add link and Edit link) is darker, so it is readable in light and dark themes,
+  including when the field is focused. The city field already looked like this; now
+  all fields share one rule. E2E: `dg-50-placeholder-contrast.mjs`.
 - City dialog: in a very short browser window, or at a large zoom, the Save button and
   the Cancel (or Not now) button no longer fall below the edge, so you see them without
   scrolling. The space kept free for an error message is given up only when the window

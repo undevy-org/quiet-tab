@@ -528,7 +528,11 @@ describe("newtab city modal source", () => {
     assert.match(css, /\.city-modal__backdrop \{[^}]*background: var\(--surface-backdrop\);/s);
     assert.match(css, /\.city-modal__dialog \{[^}]*width: min\(var\(--surface-modal-max-width\), calc\(100vw - 2 \* var\(--viewport-margin\)\)\);/s);
     assert.match(css, /\.city-modal__dialog--scroll \{[^}]*max-height: calc\(100vh - 2 \* var\(--viewport-margin\)\);[^}]*overflow-y: auto;/s);
-    assert.match(css, /\.city-modal \.favorite-input::placeholder \{[^}]*color: var\(--muted\);[^}]*opacity: 1;/s);
+    const controls = await readFile(new URL("../src/controls.css", import.meta.url), "utf8");
+    assert.match(controls, /\.favorite-input::placeholder \{[^}]*color: var\(--muted\);[^}]*opacity: 1;/s);
+    for (const name of ["surfaces.css", "newtab.css"]) {
+      assert.doesNotMatch(await readFile(new URL(`../src/${name}`, import.meta.url), "utf8"), /::placeholder/, name);
+    }
     assert.doesNotMatch(css, /\.city-modal[^{]*\{[^}]*transition/s);
   });
 });
