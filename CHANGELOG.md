@@ -38,6 +38,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Borders of text fields, the color field, the segmented control, the Settings and Add
   tiles and the first-run "Set a city" tile are darker so they meet 3:1 contrast
   (WCAG 1.4.11) in light and dark. Card edges and dividers keep their quiet look.
+- The outline of Cancel, Not now and the other secondary buttons in dialogs is darker, so
+  it meets 3:1 contrast (WCAG 1.4.11) in light and dark, like the fields above them.
+  Save, Delete and the hover color look the same; a focused Cancel keeps its focus ring
+  and fill, and its outline is darker too. E2E: `dg-51-button-border-contrast.mjs`.
 - Design system phase 2: grid and page chrome in `newtab.css` use tokens from
   `design-tokens.css` (tile and drop-highlight radii, status chip padding and
   shadow, tooltip shadow, grid spacing `--space-grid-*`, weather cell font sizes,

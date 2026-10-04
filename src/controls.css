@@ -189,7 +189,7 @@
   gap: var(--control-gap-icon);
   min-height: var(--control-height);
   padding: 0 var(--control-padding-x-button);
-  border: var(--control-border-width) solid var(--border);
+  border: var(--control-border-width) solid var(--border-control);
   border-radius: var(--radius-control);
   background: var(--panel);
   color: var(--text);

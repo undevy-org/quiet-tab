@@ -13,7 +13,7 @@
 | 2026-10-03 | (not in the review, found while checking) Dark theme has the same problem. | `confirmed` | `#343b45` against `--color-surface` `#1d2229` is **1.41:1**, against `--color-bg` `#14171c` **1.59:1**. The review measured light only; dark fails the same way. |
 | 2026-10-03 | Root cause shared by all three. | `confirmed` | `--color-border` is one token for two jobs: quiet decorative separators (cards, row dividers, popover and modal edges, which the 1.4.11 text does not require) and the **boundaries of controls** (fields, chrome tiles), which it does. The design system has no token for the second job. The follow-up spec (`docs/design-system-followup.md`, Non-goals: "New design tokens or colors") forbade adding one, so the review could only record the gap. This spec lifts that restriction for exactly one token. |
 
-Reading of the criterion. WCAG 1.4.11 requires 3:1 for "graphical objects and user interface component states needed to identify" a component. An input field whose border is the only edge, and a tile whose edge is the only thing marking it as a button, fall under it. A control that is already identified by a solid fill or by its text label (`.button--primary`, text buttons) is not forced by the criterion, so it is left alone (see Scope).
+Reading of the criterion. WCAG 1.4.11 requires 3:1 for "graphical objects and user interface component states needed to identify" a component. An input field whose border is the only edge, and a tile whose edge is the only thing marking it as a button, fall under it. A control that is already identified by a solid fill (`.button--primary`) or by an underline (`.text-button`) is not forced by the criterion, so it is left alone (see Scope). The default `.button` (Cancel, Not now) has neither, so its edge is its affordance and it follows the fields (`docs/button-border-contrast.md`).
 
 Chrome tiles and the hint tile carry only a glyph (no text) on a background that differs from the page by about 1.1:1, so the edge is what shows them as one actionable surface; the design review flagged exactly this. Weather and favorite tiles carry text or an accent border and are identified by that.
 
@@ -30,14 +30,15 @@ Applied as defaults so the pipeline does not wait. Override any of them before t
    | dark | `#68727f` | 3.28:1 (panel `#1d2229`) | 3.68:1 (page `#14171c`) | was 1.41 / 1.59 |
 
    Both neighbours are checked because a chrome tile has the page outside and the panel inside, while a field has the panel on both sides. The page background is the harder case in light, the panel in dark. The light value is deliberately close to the minimum: in light it is lighter than the muted text color (`#5c6672`), in dark dimmer than it (`#a8b0ba`), so the border still reads as a hairline, not a frame.
-3. **Which surfaces use it** (the five that draw a control boundary with nothing else to identify it):
+3. **Which surfaces use it** (the six that draw a control boundary with nothing else to identify it; `.button` joined by `docs/button-border-contrast.md`):
    - `.chrome-tile` (settings, add);
    - `.city-hint-tile` (dashed, same role: it is a button whose only cue at 1×1 is its edge and a glyph);
    - `.favorite-input` (the city field and all text fields in the Add/Edit link dialog);
    - `.favorite-color-input`;
-   - `.segmented` (outer border only).
+   - `.segmented` (outer border only);
+   - `.button` (the default variant; `.button--primary` and `.button--danger` keep their own border colors).
 
-   Everything else keeps `--border`: card and surface edges (`.favorite-form`, `.city-modal__dialog`, `.desktop-dialog`, `.add-menu`, `.weather-form__suggestions`, `.tooltip`), row dividers (`.favorite-form__row` top rule), the dividers between segmented options, `.weather-tile` (informational at rest; in edit mode it is a button named "Edit <metric>", identified by its value text and by the edit-mode cues, so its faint border is kept; see Accepted exceptions), `.button` (has a text label), `.icon-button` (glyph; the city clear button already uses a transparent border), `.favorite-tile` (accent border plus icon and label).
+   Everything else keeps `--border`: card and surface edges (`.favorite-form`, `.city-modal__dialog`, `.desktop-dialog`, `.add-menu`, `.weather-form__suggestions`, `.tooltip`), row dividers (`.favorite-form__row` top rule), the dividers between segmented options, `.weather-tile` (informational at rest; in edit mode it is a button named "Edit <metric>", identified by its value text and by the edit-mode cues, so its faint border is kept; see Accepted exceptions), `.icon-button` (glyph; the city clear button already uses a transparent border), `.favorite-tile` (accent border plus icon and label).
 4. **Hover, pressed, focus unchanged:** `border-color: var(--primary)` on `.chrome-tile:hover` and `[aria-pressed="true"]` stays; the step from rest to hover is 5.6:1 in light (was 13.7:1) and 4.5:1 in dark (was 10.4:1) between the new rest color and `--primary`, still a clear change. Focus rings (`--focus-ring`, `--soft-ring`, `--focus`) are not touched.
 5. **Focused field:** a focused field gets the `--color-fill-soft` background plus the 2 px soft ring (AS-DS-6), and its border measures 2.94:1 (light) / 2.69:1 (dark) against that fill. The ring carries the focused boundary: it is drawn outside the border, and the soft ring measures 4.1:1 (light) and 6.2:1 (dark) against the panel and 4.0:1 / 5.4:1 against `--color-fill-soft`. `test/focusTokens.test.js` guards only the panel pair, so `test/borderContrast.test.js` adds the ring-on-`--color-fill-soft` check (>= 3:1). The focused state is therefore not measured against the border. If the owner wants the border alone to clear 3:1 on the focused fill, the values become darker (light about `#7d8793`) and the look gets heavier; not recommended.
 6. **Theme coverage:** both themes in the same change. Forced-colors mode keeps system colors for borders and is not changed.
@@ -45,7 +46,7 @@ Applied as defaults so the pipeline does not wait. Override any of them before t
 ## Scope
 
 - New token pair in `src/design-tokens.css` (light and `prefers-color-scheme: dark`), plus the alias.
-- Five rules switched from `var(--border)` to `var(--border-control)`: `.chrome-tile` and `.city-hint-tile` in `src/newtab.css`; `.favorite-input`, `.favorite-color-input` and `.segmented` (the outer border only; `.segmented__option`'s `border-right` stays) in `src/controls.css`.
+- Six rules switched from `var(--border)` to `var(--border-control)`: `.chrome-tile` and `.city-hint-tile` in `src/newtab.css`; `.favorite-input`, `.favorite-color-input`, `.segmented` (the outer border only; `.segmented__option`'s `border-right` stays) and `.button` (added by `docs/button-border-contrast.md`) in `src/controls.css`.
 - `docs/design-system.md`: one row in the color-token table, and one short paragraph naming the two border roles (decorative separator vs control boundary) so the next control picks the right token; the table row for `--color-border` is narrowed to "Decorative separators and surface borders"; the Components lines for `.favorite-input`, `.segmented` and `.favorite-color-input` (e.g. `design-system.md` ~:169) say `--color-border-control`. Amend the existing Non-goals line "New design tokens or colors" in `docs/design-system-followup.md` (:40) in place, appending "(lifted for `--color-border-control` by `docs/border-contrast.md`)", not as a separate paragraph.
 - `CHANGELOG.md` entry under `[Unreleased]` / `Changed`.
 - New source tests and one new E2E scenario (see "Verified by"). No change to any other E2E.
@@ -100,10 +101,10 @@ This changes what the user sees, so it follows the full UI-phase cycle: spec, pl
 
 ### AS-CT-05 Everything else keeps its quiet look
 
-- Given: both themes; the city modal, the Add link dialog, the Add menu, the suggestions list, a tooltip, a weather tile, and a default button are rendered.
-- When: the computed `border-top-color` of `.favorite-form`, `.favorite-form__row` (not first), `.city-modal__dialog`, `.desktop-dialog`, `.add-menu`, `.weather-form__suggestions`, `.tooltip`, `.weather-tile` (no tone), `.button` (default), and the right border of a non-last `.segmented__option` is read.
-- Then: each equals the resolved `--color-border`, exactly as before. Hover on `.chrome-tile` and `.button` still gives `--primary`; focus rings are unchanged (`test/focusTokens.test.js` and `test/designSystem.test.js` pass untouched).
-- Verified by: `dg-46-control-border-contrast.mjs` (separators block) and a source assertion in `test/borderContrast.test.js` that the five rules in Scope use `var(--border-control)` and that no other rule in `controls.css`, `surfaces.css` or `newtab.css` does. Expected before the change: the five-rule assertions are red; the separator checks are green (characterization).
+- Given: both themes; the city modal, the Add link dialog, the Add menu, the suggestions list, a tooltip and a weather tile are rendered.
+- When: the computed `border-top-color` of `.favorite-form`, `.favorite-form__row` (not first), `.city-modal__dialog`, `.desktop-dialog`, `.add-menu`, `.weather-form__suggestions`, `.tooltip`, `.weather-tile` (no tone), and the right border of a non-last `.segmented__option` is read.
+- Then: each equals the resolved `--color-border`, exactly as before. Hover on `.chrome-tile` still gives `--primary`; focus rings are unchanged (`test/focusTokens.test.js` and `test/designSystem.test.js` pass untouched).
+- Verified by: `dg-46-control-border-contrast.mjs` (separators block) and a source assertion in `test/borderContrast.test.js` that the six rules in Scope use `var(--border-control)` and that no other rule in `controls.css`, `surfaces.css` or `newtab.css` does. Expected before the change: the six-rule assertions are red; the separator checks are green (characterization).
 
 ### AS-CT-06 Docs and changelog reflect the token
 
@@ -115,6 +116,6 @@ This changes what the user sees, so it follows the full UI-phase cycle: spec, pl
 ## Review focus
 
 - **Quiet look:** the planned borders sit between the old faint hairline and the muted text color. In both themes, look at the chrome tiles next to weather and favorite tiles (they keep faint or accent borders): does the grid still read calm, or do the two chrome tiles now shout? Screenshot the planned border next to the old one and next to the muted text color before accepting. This is a design judgment; contrast is already a hard number.
-- **Which surfaces:** is the five-surface list right? In particular the dashed hint tile (control, but also a placeholder), `.segmented` outer border with faint inner dividers, and whether `.button` (text-labelled) should follow for consistency.
+- **Which surfaces:** is the six-surface list right? In particular the dashed hint tile (control, but also a placeholder) and `.segmented` outer border with faint inner dividers. Whether `.button` (text-labelled) should follow for consistency is answered by `docs/button-border-contrast.md`.
 - **Neighbour colors:** the numbers assume resting surfaces. Check any surface that paints a different background behind a field (focused fill, hover rows) and confirm the focus ring covers it, as Default decision 5 says.
 - **Regression:** `test/focusTokens.test.js`, `test/designSystem.test.js`, E2E `dg-21`, `dg-41`, `dg-42`, `13-city-modal` and `15-city-modal-layout` (metrics must not move: only a color changes, border width stays 1 px).
