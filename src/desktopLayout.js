@@ -1,7 +1,7 @@
 
 // src/desktopLayout.js — pure grid engine: no DOM, no storage. Spec: § Grid metrics, § Display layout, § Placement rules.
 export const MIN_COLUMNS = 2;
-export const MAX_COLUMNS = 12;
+export const V1_MAX_COLUMNS = 12; // v1 stored `columns` 1..12 and never more; only migrateV1ToV2 clamps to it
 export const REFERENCE_COLUMNS = 12;
 export const CHROME_IDS = { settings: "chrome:settings", add: "chrome:add" };
 
@@ -15,11 +15,17 @@ export function gridMetrics(width) {
   return METRICS.find((m) => width <= m.maxWidth);
 }
 
-// `width` is document.documentElement.clientWidth (excludes a classic scrollbar).
+// `width` is document.documentElement.clientWidth (excludes a classic scrollbar). The columns fill the window: no upper bound.
 export function effectiveColumns(width) {
   const { cell, gap, pad } = gridMetrics(width);
   const fit = Math.floor((width - 2 * pad + gap) / (cell + gap));
-  return Math.min(MAX_COLUMNS, Math.max(MIN_COLUMNS, fit));
+  return Math.max(MIN_COLUMNS, fit);
+}
+
+// Rows that fit the first screen: `height` is document.documentElement.clientHeight, `width` picks the metrics.
+export function viewportRows(height, width) {
+  const { cell, gap, pad } = gridMetrics(width);
+  return Math.max(1, Math.floor((height - 2 * pad + gap) / (cell + gap)));
 }
 
 export function isValidGrid(grid) {
@@ -102,11 +108,19 @@ function occupancyOf(layout, exceptId) {
   return occupied;
 }
 
-// Drop/resize validity against a displayed layout. A block may sit at most one row below the lowest occupied row.
-export function canPlace(layout, id, { x, y, w, h }, columns) {
+// Highest top row a block of height `h` may take when `id` is dropped. Every row of the first screen (`viewportRows`) is a
+// target; below it a block starts at most one row below the lowest other tile; a tile may always stay in its own row (`y0`)
+// or move up. A `viewportRows` that is not an integer above 0 only narrows the area (the old rule plus `y0`).
+export function maxDropRow(layout, id, h, viewportRows = 0) {
   let lowest = -1;
   for (const [otherId, g] of layout) if (otherId !== id) lowest = Math.max(lowest, g.y + g.h - 1);
-  return y <= lowest + 1 && blockFree(occupancyOf(layout, id), x, y, w, h, columns);
+  const screen = Number.isInteger(viewportRows) && viewportRows > 0 ? viewportRows - h : 0;
+  return Math.max(lowest + 1, screen, layout.get(id)?.y ?? 0);
+}
+
+// Drop/resize validity against a displayed layout: inside the columns, no overlap, not below `maxDropRow`.
+export function canPlace(layout, id, { x, y, w, h }, columns, viewportRows = 0) {
+  return y <= maxDropRow(layout, id, h, viewportRows) && blockFree(occupancyOf(layout, id), x, y, w, h, columns);
 }
 
 // Resize: own old block counts as free; keep (x,y) if the new block fits, else first free from the own row.
@@ -129,6 +143,11 @@ export function cellFromPoint({ x, y }, origin, { cell, gap }, grab = { x: 0, y:
     x: Math.max(0, Math.floor((x - origin.left) / step) - grab.x),
     y: Math.max(0, Math.floor((y - origin.top) / step) - grab.y)
   };
+}
+
+// The nearest allowed cell for a block of `size`: x within 0..columns - w, y within 0..maxY (maxDropRow).
+export function clampDropCell({ x, y }, { w }, columns, maxY) {
+  return { x: Math.min(Math.max(0, columns - w), Math.max(0, x)), y: Math.min(maxY, Math.max(0, y)) };
 }
 
 const DEFAULT_METRIC_SIZES = {
@@ -164,7 +183,7 @@ export function placeMissing(missingIds, existing) {
 // v1 → v2 packing. `items` are v1 items in v1 order (favorites then metrics) and may already carry a valid grid
 // (resume). `columns` = v1 meta.columns. Returns Map id -> grid for every item plus both chrome tiles.
 export function migrateV1ToV2(items, columns) {
-  const C = Math.min(MAX_COLUMNS, Math.max(1, columns));
+  const C = Math.min(V1_MAX_COLUMNS, Math.max(1, columns));
   const hidden = (item) => item.type === "weather-metric" && item.enabled === false;
   const occupied = new Set();
   const out = new Map();

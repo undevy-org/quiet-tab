@@ -6,7 +6,9 @@ import {
 } from "./favoriteColor.js";
 import { getFavoriteIconModel, getFavoriteLetter } from "./favoriteIcon.js";
 import { createIconNode } from "./icons.js";
-import { canPlace, cellFromPoint, displayLayout, effectiveColumns, gridMetrics } from "./desktopLayout.js";
+import {
+  canPlace, cellFromPoint, clampDropCell, displayLayout, effectiveColumns, gridMetrics, maxDropRow, viewportRows
+} from "./desktopLayout.js";
 import {
   closeDialog,
   createDesktopUiState,
@@ -1797,7 +1799,7 @@ const AUTOSCROLL_EDGE_PX = 48;
 const AUTOSCROLL_STEP_PX = 12;
 const DROP_RETURN_MS = 180;
 // { id (widget to move: the metric id for the hint tile), domId (rendered tile), tile, cell, layout, columns, metrics,
-//   pointerId, startX, startY, lastX, lastY, baseLeft, baseTop, grab, started, frame, rows }
+//   pointerId, startX, startY, lastX, lastY, baseLeft, baseTop, grab, started, frame, viewportRows, maxY, rows }
 let dragSession = null;
 let dropReturnTimer = 0;
 // One-shot: the click that trails a started drag (same press) is swallowed, so Settings never toggles after a drag.
@@ -1822,13 +1824,19 @@ function beginPointerDrag(event, tile) {
   const step = metrics.cell + metrics.gap;
   const grabCell = cellFromPoint({ x: event.clientX, y: event.clientY }, origin, metrics);
   const clamp = (v, max) => Math.min(max, Math.max(0, v));
+  // The whole first screen is the drop area: `maxY` is the highest top row of the dragged block (maxDropRow), and the
+  // drag grid is exactly as high as that area needs (at least the grid at rest), so a drop inside the window never scrolls.
+  const screenRows = viewportRows(document.documentElement.clientHeight, viewportWidth());
+  const maxY = maxDropRow(layout, id, cell.h, screenRows);
+  const occupiedRows = Math.max(0, ...[...layout.values()].map((g) => g.y + g.h));
   dragSession = {
     id, domId: tile.dataset.widgetId, tile, cell, layout, columns, metrics,
     pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, lastX: event.clientX, lastY: event.clientY,
     baseLeft: origin.left + cell.x * step, baseTop: origin.top + cell.y * step,
     grab: { x: clamp(grabCell.x - cell.x, cell.w - 1), y: clamp(grabCell.y - cell.y, cell.h - 1) },
     started: false, frame: 0,
-    rows: Math.max(0, ...[...layout.values()].map((g) => g.y + g.h)) + 2 // room for the "one row below" drop and its error row
+    viewportRows: screenRows, maxY,
+    rows: Math.max(occupiedRows, maxY + cell.h)
   };
 }
 
@@ -1877,7 +1885,7 @@ function autoscrollFrame() {
 }
 
 // The dragged tile is position:fixed under the pointer (it never adds scrollable overflow, so autoscroll ends at
-// the page bottom); the grid keeps two spare rows while dragging; the highlight is drawn only for a block fully inside it.
+// the page bottom); the grid is as high as the allowed drop area while dragging; the highlight is always inside it.
 function applyDragVisuals(s) {
   const grid = dragGridOf();
   if (!grid) return;
@@ -1896,26 +1904,17 @@ function updateDragTarget(s) {
   const grid = dragGridOf();
   if (!grid) return;
   const box = grid.getBoundingClientRect();
-  const target = cellFromPoint({ x: s.lastX, y: s.lastY }, box, s.metrics, s.grab);
-  // cellFromPoint clamps negative cells to 0: a pointer in the page margin left/right of the grid or above its top is
-  // outside every cell, so the drop there is invalid (the tile returns, nothing is written).
-  const outside = s.lastX < box.left || s.lastX > box.right || s.lastY < box.top;
-  const valid = !outside && canPlace(s.layout, s.id, { ...target, w: s.cell.w, h: s.cell.h }, s.columns);
+  // The pointer anywhere in the window (margins, above the grid, below the allowed rows) targets the nearest allowed
+  // cell; only an occupied cell is invalid. The clamp is part of the target, so the outline is drawn where it is judged.
+  const target = clampDropCell(cellFromPoint({ x: s.lastX, y: s.lastY }, box, s.metrics, s.grab), s.cell, s.columns, s.maxY);
+  const valid = canPlace(s.layout, s.id, { ...target, w: s.cell.w, h: s.cell.h }, s.columns, s.viewportRows);
   desktopUi = updateDrag(desktopUi, target, valid);
   drawDropHighlight(grid, target, s, valid);
 }
 
-// The outline is drawn at the judged cell only, never clamped to another one. A block that overhangs the grid or lies
-// beyond the one allowed row below the lowest tile gets none (it would widen the page or add scroll height).
+// The outline is drawn at the judged cell, always (the target is already inside the grid), never moved to another one.
 function drawDropHighlight(grid, target, s, valid) {
-  let lowest = -1;
-  for (const [id, g] of s.layout) if (id !== s.id) lowest = Math.max(lowest, g.y + g.h - 1);
-  const visible = target.x + s.cell.w <= s.columns && target.y <= lowest + 1;
   let highlight = grid.querySelector(":scope > .drop-highlight");
-  if (!visible) {
-    highlight?.remove();
-    return;
-  }
   if (!highlight) {
     highlight = createNode("div", "drop-highlight");
     highlight.setAttribute("aria-hidden", "true");
@@ -1992,7 +1991,7 @@ async function commitDrop(s, target) {
   pendingDrop = { domId: s.domId, id: s.id, cell };
   settleTileAt(s.tile, s.id, cell);
   const ok = await runDesktopMutation(
-    (columns) => widgetsService.moveWidget(s.id, { x: target.x, y: target.y }, { columns }),
+    (columns) => widgetsService.moveWidget(s.id, { x: target.x, y: target.y }, { columns, viewportRows: s.viewportRows }),
     {
       renderPending: false,
       onFailure: (message) => {
