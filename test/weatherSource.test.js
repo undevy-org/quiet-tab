@@ -388,7 +388,7 @@ describe("newtab weather retry source (AS-WR-13)", () => {
 
   it("a successful city change resets the retry state after weatherLocationError, not between generation and result", async () => {
     const code = await source();
-    assert.match(code, /weatherLocationError = "";[^\n]*\n\s*weatherRetryToken \+= 1;\s*weatherUi = resetWeatherRetry\(weatherUi\);/);
+    assert.match(code, /weatherLocationError = "";[^\n]*\n\s*weatherRetryToken \+= 1;[^\n]*\n\s*weatherUi = resetWeatherRetry\(weatherUi\);/);
     assert.match(code, /weatherGeneration \+= 1;\s*weatherResult = result;/);
     assert.match(code, /const CITY_REQUEST_TIMEOUT_MS = 15000;/);
   });

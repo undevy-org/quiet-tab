@@ -16,6 +16,7 @@ const LABELS = {
   uv: "UV index"
 };
 const STALE_PREFIX = "Couldn't refresh - showing saved data. ";
+const TRYING_AGAIN = "Trying again…";
 
 function readyModel(metricKey, data, size) {
   const wide = size === "wide";
@@ -55,10 +56,12 @@ function readyModel(metricKey, data, size) {
 }
 
 // `result` is null while loading, else a weatherService result. Returns null when no tile
-// should exist (no city).
-export function describeWeatherMetric({ metricKey, result, size }) {
+// should exist (no city). `retry` ("ready" | "retrying" | "cooldown", default "ready") only matters for
+// error and stale results: the model's `retry` is the phase for those and null for every other state;
+// while retrying it is `busy`, an error tile shows "…" and the description says it is trying again.
+export function describeWeatherMetric({ metricKey, result, size, retry = "ready" }) {
   const label = LABELS[metricKey];
-  const base = { label, secondary: null, tone: null, stale: false, busy: false };
+  const base = { label, secondary: null, tone: null, stale: false, busy: false, retry: null };
 
   if (result === null || result === undefined) {
     return { ...base, primary: "…", busy: true, description: "Loading weather…" };
@@ -66,16 +69,26 @@ export function describeWeatherMetric({ metricKey, result, size }) {
   if (result.status === "no-location") {
     return null;
   }
+  const retrying = retry === "retrying";
   if (result.status === "error") {
-    return { ...base, primary: "—", description: `Weather unavailable: ${result.error}` };
+    return {
+      ...base,
+      primary: retrying ? "…" : "—",
+      busy: retrying,
+      retry,
+      description: retrying ? TRYING_AGAIN : `Weather unavailable: ${result.error}`
+    };
   }
 
   const model = readyModel(metricKey, result.data, size);
   const isStale = result.status === "stale";
+  if (!isStale) return { ...base, ...model, stale: false, description: model.description };
   return {
     ...base,
     ...model,
-    stale: isStale,
-    description: isStale ? `${STALE_PREFIX}${model.description}` : model.description
+    stale: true,
+    busy: retrying,
+    retry,
+    description: retrying ? `${TRYING_AGAIN} ${model.description}` : `${STALE_PREFIX}${model.description}`
   };
 }

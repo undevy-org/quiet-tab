@@ -41,11 +41,16 @@ import {
   citySuggestions,
   closeCityModal as closeCityModalState,
   createInitialWeatherUiState,
+  finishWeatherRetry,
   hideSuggestions,
   isCityModalOpen,
   isSuggestionsOpen,
   openCityModal as openCityModalState,
-  showSuggestions
+  resetWeatherRetry,
+  showSuggestions,
+  startWeatherRetry,
+  weatherRetryOutcome,
+  weatherRetryPhase
 } from "./weatherUiState.js";
 const favoritesRoot = document.querySelector("#favorites");
 const desktopStatus = document.querySelector("#desktop-status");
@@ -56,6 +61,7 @@ const ENSURE_FAILED_MESSAGE =
 const desktopLive = document.querySelector("#desktop-live");
 const DESKTOP_STATUS_MS = 8000;
 let desktopStatusTimer = 0;
+let desktopStatusPersistent = false; // the shown message is a `persist` one (the ensure failure): a retry failure must not displace it
 
 // Page-level status line (role="alert"), text only. It clears after 8 s or at the next action. `persist` skips the
 // 8 s clear (the ensure failure: a Settings/Add tile may be missing, so its explanation stays until the next action).
@@ -64,6 +70,7 @@ function showDesktopStatus(text, { persist = false } = {}) {
   clearTimeout(desktopStatusTimer);
   desktopStatus.textContent = text;
   desktopStatus.hidden = text === "";
+  desktopStatusPersistent = persist && text !== "";
   if (text !== "" && !persist) desktopStatusTimer = setTimeout(() => showDesktopStatus(""), DESKTOP_STATUS_MS);
 }
 
@@ -232,6 +239,8 @@ let weatherLocationError = "";
 let weatherLocationKnown = false;
 let weatherChanging = false;
 let weatherGeneration = 0;
+let weatherRetryToken = 0; // a retry result applies only while this and weatherGeneration are the values it started with
+let weatherRetryTimer = 0; // the end of the cooldown (updates the existing retry nodes in place)
 let widgetsEnsureFailed = false;
 let widgetsNewer = false;
 let activeCityForm = null; // { cancelPending, renderSuggestions, refresh, place, focusField, dispose, choose, chosen, recentlyChosen } of the mounted city form
@@ -1095,16 +1104,25 @@ function maybeAutoShowCityPrompt({ flagRead, dismissed }) {
 // R6: a 2-wide tile uses the `wide` model; a 2-high tile gets larger type (CSS keys off data-h="2") and the city name.
 function createWeatherMetricTile(item, cell, view) {
   const size = cell.w === 2 ? "wide" : "square";
-  const model = describeWeatherMetric({ metricKey: weatherMetricKey(item.id), result: view, size });
+  const model = describeWeatherMetric({ metricKey: weatherMetricKey(item.id), result: view, size, retry: weatherRetryPhase(weatherUi, Date.now()) });
   if (!model) return null;
 
   // Edit mode: the tile becomes a button named "Edit <metric name>"; a tap opens the weather edit dialog.
+  // An error or stale tile in normal mode is one native button "Retry <metric name>" (one shared attempt, see retryWeather).
   const editing = desktopUi.editMode;
-  const tile = createNode(editing ? "button" : "div", "weather-tile");
+  const retryable = !editing && model.retry !== null;
+  const tile = createNode(editing || retryable ? "button" : "div", "weather-tile");
   tile.dataset.widgetId = item.id;
   if (editing) {
     tile.type = "button";
     tile.setAttribute("aria-label", `Edit ${METRIC_LABELS[weatherMetricKey(item.id)]}`);
+  } else if (retryable) {
+    tile.type = "button";
+    tile.classList.add("weather-tile--retry");
+    tile.dataset.favoriteAction = "retry-weather";
+    tile.dataset.retry = model.retry;
+    tile.setAttribute("aria-label", `Retry ${model.label}`);
+    if (model.retry !== "ready") tile.setAttribute("aria-disabled", "true"); // not `disabled`: focus must stay on the tile
   } else {
     tile.tabIndex = 0;
     tile.setAttribute("role", "group");
@@ -1132,6 +1150,13 @@ function createWeatherMetricTile(item, cell, view) {
   tile.setAttribute("aria-describedby", description.id);
   tile.dataset.tooltipTrigger = "";
   tile.appendChild(description);
+  if (retryable) {
+    // A direct child of the tile (never of .weather-tile__values, which clips): the corner glyph that says "press to try again".
+    const retryGlyph = createNode("span", "weather-tile__retry");
+    retryGlyph.setAttribute("aria-hidden", "true");
+    retryGlyph.appendChild(createIconNode("refresh", { size: cell.h === 2 ? 14 : 12 }));
+    tile.appendChild(retryGlyph);
+  }
   return tile;
 }
 
@@ -2222,6 +2247,8 @@ if (favoritesRoot) {
 
     if (action === "set-city") {
       if (!weatherBusy) showCityModal("change", HINT_TILE_SELECTOR);
+    } else if (action === "retry-weather") {
+      void retryWeather();
     } else if (action === "open") {
       const favorite = widgetsState?.items.find(
         (item) => item.id === target.dataset.favoriteId
@@ -2391,6 +2418,86 @@ async function startWeather() {
   renderFavorites();
 }
 
+// Retry from an error or stale tile (normal mode): ONE attempt for every tile, through the unchanged service
+// (`initialize()` re-reads the city, serves a cache another tab refreshed, or fetches). Presses are ignored while it runs
+// and for 3 s after it failed (weatherUiState). The same 15 s guard as a city change; the late answer of a timed-out
+// attempt is dropped by the token. A thrown or timed-out attempt never replaces the tiles' result.
+async function retryWeather() {
+  if (!weatherService) return;
+  const shown = effectiveWeatherResult();
+  if (shown?.status !== "error" && shown?.status !== "stale") return;
+  const started = startWeatherRetry(weatherUi, Date.now());
+  if (started === weatherUi) return;
+  weatherUi = started;
+  clearTimeout(weatherRetryTimer);
+  const token = ++weatherRetryToken;
+  weatherGeneration += 1; // supersedes a boot load that is still in flight (a failed city read leaves one running)
+  const generation = weatherGeneration;
+  renderFavorites();
+
+  let result = null;
+  let outcome;
+  try {
+    result = await withTimeout(weatherService.initialize());
+    outcome = weatherRetryOutcome(result);
+  } catch (error) {
+    outcome = { failed: weatherErrorMessage(error) };
+  }
+  if (token !== weatherRetryToken || generation !== weatherGeneration) return;
+
+  if (outcome === "gone") {
+    // The city was removed elsewhere: the hint tile takes the metric cells; nothing is announced.
+    weatherUi = resetWeatherRetry(weatherUi);
+    weatherRetryToken += 1;
+    weatherResult = result;
+    weatherLocation = null;
+    weatherLocationError = "";
+    renderFavorites();
+    const active = document.activeElement;
+    if (!active || active === document.body) favoritesRoot?.querySelector(HINT_TILE_SELECTOR)?.focus();
+    return;
+  }
+
+  const failed = typeof outcome === "object";
+  weatherUi = finishWeatherRetry(weatherUi, Date.now(), !failed);
+  // The service's own answer replaces the result, except that a failed read never downgrades a tile that still has data.
+  const downgrade = failed && result?.status === "error" && weatherResult?.status === "stale";
+  if (result && !downgrade) {
+    weatherResult = result;
+    if (result.location) {
+      weatherLocation = result.location;
+      weatherLocationError = "";
+    }
+  }
+  if (!failed) weatherLocationError = "";
+  renderFavorites();
+
+  if (failed) {
+    if (desktopStatusPersistent) {
+      announce(outcome.failed); // the ensure message keeps the status line; the failure is spoken once
+    } else {
+      showDesktopStatus(""); // clear first so an identical text is announced again
+      showDesktopStatus(outcome.failed);
+    }
+    clearTimeout(weatherRetryTimer);
+    weatherRetryTimer = setTimeout(endWeatherRetryCooldown, Math.max(0, weatherUi.retry.availableAt - Date.now()) + 10);
+  } else {
+    if (!desktopStatusPersistent) showDesktopStatus(""); // an earlier failure text would now contradict the tiles
+    if (desktopLive) desktopLive.textContent = ""; // cleared first so a repeated "Weather updated" is announced
+    announce("Weather updated");
+  }
+}
+
+// The end of the pause is silent: the existing retry nodes are updated in place (no re-render, so the focused node
+// is not recreated and a screen reader does not announce the control again). Edit buttons are never touched.
+function endWeatherRetryCooldown() {
+  if (weatherRetryPhase(weatherUi, Date.now()) === "retrying") return;
+  for (const tile of favoritesRoot?.querySelectorAll('.weather-tile--retry[data-retry="cooldown"]') ?? []) {
+    tile.dataset.retry = "ready";
+    tile.removeAttribute("aria-disabled");
+  }
+}
+
 // D15: a city request that has not finished after CITY_REQUEST_TIMEOUT_MS is treated as failed; a later result is ignored.
 function withTimeout(promise) {
   return new Promise((resolve, reject) => {
@@ -2430,6 +2537,9 @@ function changeCity(run) {
       weatherResult = result;
       weatherLocation = weatherResult.location ?? weatherLocation;
       weatherLocationError = ""; // a successful selection clears an earlier read error
+      weatherRetryToken += 1; // a late retry result belongs to the old city
+      weatherUi = resetWeatherRetry(weatherUi);
+      clearTimeout(weatherRetryTimer);
       ok = true;
     } catch (error) {
       cityModalError = weatherErrorMessage(error);
