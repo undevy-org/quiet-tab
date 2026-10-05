@@ -399,5 +399,12 @@ describe("newtab weather retry source (AS-WR-13)", () => {
     assert.match(code, /weatherGeneration \+= 1;\s*weatherResult = result;/);
     assert.match(code, /const CITY_REQUEST_TIMEOUT_MS = 15000;/);
   });
-});
 
+  it("CHANGELOG [Unreleased] has the Added entry for the weather retry (AS-WR-14)", async () => {
+    const log = await readFile(new URL("../CHANGELOG.md", import.meta.url), "utf8");
+    const unreleased = log.slice(log.indexOf("## [Unreleased]"), log.indexOf("\n## [", log.indexOf("## [Unreleased]") + 5));
+    assert.match(unreleased, /### Added[\s\S]*can now be pressed\s+to try again/);
+    assert.match(unreleased, /dg-54-weather-tile-retry\.mjs/);
+    assert.doesNotMatch(unreleased, /fresh tile can be refreshed/i);
+  });
+});

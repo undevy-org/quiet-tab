@@ -155,6 +155,20 @@ Docked suggestion lists use no shadow (in-flow scroll).
   `--focus-tile-width` **3px** solid `var(--focus-ring)`;
   `--focus-tile-offset` **2px** (weather/city-hint pair may use **2px** outline).
 
+### Weather retry tile (`.weather-tile--retry`)
+
+- An error or stale weather tile in normal mode is a native `<button>` with the class
+  `weather-tile--retry` and `data-retry="ready|retrying|cooldown"`; the box, border, background
+  and focus rule are the ordinary `.weather-tile` ones (the focus rule is not edited).
+- The refresh glyph is `span.weather-tile__retry`, a direct child of the tile (never inside the
+  clipping `.weather-tile__values`), absolutely placed in the top-right corner: **12px** icon at
+  4px offset in a 1-high tile, **14px** at 6px in a 2-high tile, whatever the cell size. Colour
+  `var(--text)`.
+- Ready: pointer cursor and a hover border `var(--border-control)` (specific enough to beat the
+  tone rule). Retrying: the glyph spins (1s linear infinite; none with reduced motion, where a
+  stale tile dims its values instead). Cooldown: glyph at half opacity, no hover change.
+- No new token, colour or radius.
+
 ### Overlays (desktop dialog, city modal)
 
 - Resting controls: no visible outline (forced-colors uses transparent outline

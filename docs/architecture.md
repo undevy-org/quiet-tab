@@ -30,8 +30,8 @@ forecast cache and a per-device "city prompt dismissed" flag persist to
 | `src/cityPrompt.js` | Pure rule for whether the first-run city modal opens by itself on this page load. |
 | `src/weatherService.js` | Serves a fresh cached forecast or fetches and caches a new one; resolves a typed city name to a location. |
 | `src/weatherPresentation.js` | Formats readings and picks each tile's color tone. |
-| `src/weatherTiles.js` | Pure presentation of one weather tile (label, primary and secondary text, tone, description) for the loading, ready, stale and error states. |
-| `src/weatherUiState.js` | Pure state for the city modal (closed, or open in first-run or change mode) and its live suggestion list. |
+| `src/weatherTiles.js` | Pure presentation of one weather tile (label, primary and secondary text, tone, description) for the loading, ready, stale and error states; for error and stale it also carries the retry phase (`ready`, `retrying`, `cooldown`) and the busy text. |
+| `src/weatherUiState.js` | Pure state for the city modal (closed, or open in first-run or change mode), its live suggestion list, and the weather retry sub-state (attempt in flight, earliest next attempt, outcome of a result). |
 | `src/icons.js` | Vendored, static SVG icon set. |
 | `src/mutationLock.js` | Serializes mutations with the Web Locks API, with a promise-chain fallback. |
 | `src/storeUtils.js` | Shared validation and cloning helpers. |
@@ -173,6 +173,24 @@ the forecast arrives. A 2-wide tile shows the primary and secondary values, a
    failure the modal stays open, keeps the typed text and shows the error. Save is
    always visible and is disabled while the field is empty; Enter in an empty field
    shows "Enter a city name" without a request.
+
+### Retry from a tile
+
+An error or stale tile in normal mode is one native button, `Retry <Metric>`. Pressing it runs
+ONE attempt for every tile, through the unchanged `weatherService.initialize()`: it re-reads the
+city, serves a cache that another tab refreshed in the meantime (no request, the only cross-tab
+effect; there is no `onChanged` listener) or fetches again. There is no way to refresh a fresh
+tile. `retryWeather()` in `newtab.js` wraps the call in the same 15 s `withTimeout` as a city
+change; a thrown or timed-out attempt never replaces the tiles' result and its late answer is
+dropped by a token. The generation rule is the one of boot and city change: a successful city
+change bumps the token and the generation and resets the retry state, so a late result cannot
+overwrite the new city. While an attempt runs, and for 3 s after it failed, further presses are
+ignored (`aria-disabled`, never `disabled`, so focus stays); the end of the pause updates the
+existing nodes in place, without a re-render. A failure shows the result's user-safe text in
+`#desktop-status` (it never displaces the persistent ensure message, and is then spoken through
+`#desktop-live`), a success announces `Weather updated`. If the city was removed elsewhere
+(`no-location`) the hint tile replaces the metric tiles and takes focus. Nothing is stored for
+retry; a retry only writes the cache that `initialize()` already writes.
 
 ### City modal
 
