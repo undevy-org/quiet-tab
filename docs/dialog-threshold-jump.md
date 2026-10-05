@@ -2,7 +2,7 @@
 
 ## Status
 
-`draft` (stage 0, not yet through the spec gate)
+`implemented` (spec gate and final design review passed; merged in `c5dc890`)
 
 Decision: **do it**, with a small change that makes the room kept for an error message shrink continuously with the window height instead of switching off at one pixel. Backlog item 6 ("dialog jumps by 39 px at the threshold; large; rewrites the logic of the low-window run, dg-47/dg-48") was reproduced and measured. The jump is real and has exactly one source. It is **not** a large rewrite: the same `placePopover` pass, the same thresholds for the `compact` class, one custom property instead of one `min-height: 0` rule (see "Default decisions"). One part of the intake is **not** removed and is recorded as an accepted exception: the list flips between overlay and docked at one height, which moves the buttons by the list's own height (see "Accepted exceptions").
 

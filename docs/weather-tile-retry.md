@@ -2,7 +2,7 @@
 
 ## Status
 
-`draft` (stage 0, not yet through the spec gate)
+`implemented` (spec gate and final design review passed; merged in `b0da6ef`)
 
 Decision: **do it, differently from the backlog wording**. Backlog item 7 ("retry on the weather tile; large; new state in `weatherUiState.js` and `weatherTiles.js`") was checked against the code and measured. It is feasible without a new architecture: the retry action already exists in the service (`weatherService.initialize()` reads the location, serves a fresh cache or fetches in parallel, falls back to a stale cache) and the page already re-renders from one `weatherResult`. What is missing is only a control, a state for it and a guard. "Large" is therefore wrong for the code and right for the surface (a tile that is read-only today becomes a control in two states, and every state needs names, focus, motion and contrast). The part of the intake that is **not** done is listed under Non-goals (timers, backoff, `online` events, notifications, refreshing a *fresh* tile).
 

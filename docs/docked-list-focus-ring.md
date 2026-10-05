@@ -2,7 +2,7 @@
 
 ## Status
 
-`draft` (stage 0, not yet through the spec gate)
+`implemented` (spec gate and final design review passed; merged in `29f8758`)
 
 Decision: **do it**, with a narrower and different fix than the backlog item implied. Backlog item 5 ("focus ring of the docked list cut by about 2.4 px; layout of `placePopover`; risk for the dg-48 thresholds") was reproduced and measured. The cut is real, but it is not a layout problem and it is not limited to the docked list: it happens whenever keyboard focus scrolls the suggestion list or the dialog by just enough to bring the focused row into view. The fix is one `scroll-margin` declaration; `placePopover`, its thresholds and every metric of the dialog stay exactly as they are (see "Default decisions").
 

@@ -2,7 +2,7 @@
 
 ## Status
 
-`draft` (revised after the stage 1 review, see "Changes after review"; not yet through the spec gate)
+`implemented` (spec gate and final design review passed; merged in `9fa8690`)
 
 Decision: **do it** (the `.button` border moves to `--color-border-control`). Backlog item 4. This spec supersedes one line of `docs/border-contrast.md` (the `.button` exclusion); see "What changes in the earlier decision".
 
