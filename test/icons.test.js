@@ -13,7 +13,8 @@ const ICON_NAMES = [
   "plus",
   "check",
   "x",
-  "trash2"
+  "trash2",
+  "refresh"
 ];
 
 describe("icons", () => {

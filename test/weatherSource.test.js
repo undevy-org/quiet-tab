@@ -328,3 +328,69 @@ describe("newtab weather source", () => {
     assert.match(styles, /\.weather-form__suggestion\s*\{/);
   });
 });
+
+describe("newtab weather retry source (AS-WR-13)", () => {
+  const fn = (code, name) => {
+    const start = code.indexOf(`function ${name}(`);
+    assert.ok(start > -1, name);
+    return code.slice(start, code.indexOf("\n}\n", start));
+  };
+
+  it("the tile is a native button with the retry action, built without innerHTML", async () => {
+    const code = await source();
+    const tile = fn(code, "createWeatherMetricTile");
+    assert.match(tile, /tile\.dataset\.favoriteAction = "retry-weather";/);
+    assert.match(tile, /tile\.dataset\.retry = model\.retry;/);
+    assert.match(tile, /createIconNode\("refresh"/);
+    assert.match(tile, /aria-label", `Retry \$\{model\.label\}`/);
+    assert.doesNotMatch(tile, /innerHTML/);
+    assert.doesNotMatch(tile, /\.disabled = /);
+  });
+
+  it("the click branch calls retryWeather()", async () => {
+    const code = await source();
+    assert.match(code, /action === "retry-weather"\) \{\s*void retryWeather\(\);/);
+  });
+
+  it("retryWeather guards before the call, uses withTimeout and a token, and never echoes error.message", async () => {
+    const code = await source();
+    const retry = fn(code, "retryWeather");
+    const start = retry.indexOf("startWeatherRetry(");
+    const call = retry.indexOf("weatherService.initialize()");
+    assert.ok(start > -1 && call > start, "startWeatherRetry before the service call");
+    assert.match(retry, /await withTimeout\(weatherService\.initialize\(\)\)/);
+    assert.match(retry, /const token = \+\+weatherRetryToken;/);
+    assert.match(retry, /token !== weatherRetryToken/);
+    assert.match(retry, /generation !== weatherGeneration/);
+    assert.doesNotMatch(retry, /error\.message|String\(error\)|innerHTML/);
+    assert.match(retry, /weatherLocationError = "";/);
+    assert.match(retry, /desktopLive\.textContent = "";/);
+    assert.match(retry, /announce\("Weather updated"\)/);
+  });
+
+  it("a thrown or timed-out attempt never assigns weatherResult", async () => {
+    const code = await source();
+    const retry = fn(code, "retryWeather");
+    const handler = retry.slice(retry.indexOf("catch (error)"), retry.indexOf("catch (error)") + 400);
+    assert.ok(retry.includes("catch (error)"));
+    assert.doesNotMatch(handler.split("}")[0], /weatherResult =/);
+    assert.match(retry, /weatherResult\?\.status === "stale"/);
+  });
+
+  it("the cooldown end updates nodes in place and never re-renders", async () => {
+    const code = await source();
+    const end = fn(code, "endWeatherRetryCooldown");
+    assert.doesNotMatch(end, /renderFavorites|renderDesktop/);
+    assert.match(end, /weather-tile--retry/);
+    assert.match(end, /removeAttribute\("aria-disabled"\)/);
+    assert.match(code, /clearTimeout\(weatherRetryTimer\)/);
+  });
+
+  it("a successful city change resets the retry state after weatherLocationError, not between generation and result", async () => {
+    const code = await source();
+    assert.match(code, /weatherLocationError = "";[^\n]*\n\s*weatherRetryToken \+= 1;\s*weatherUi = resetWeatherRetry\(weatherUi\);/);
+    assert.match(code, /weatherGeneration \+= 1;\s*weatherResult = result;/);
+    assert.match(code, /const CITY_REQUEST_TIMEOUT_MS = 15000;/);
+  });
+});
+

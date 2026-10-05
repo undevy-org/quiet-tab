@@ -308,4 +308,106 @@ describe("createWeatherService", () => {
     assert.equal(typeof result.error, "string");
     assert.notEqual(result.error, null);
   });
+
+  describe("retry characterization (AS-WR-13: initialize() needs no change)", () => {
+    const FRESH_MS = 30 * 60 * 1000;
+
+    it("a failed initialize followed by a successful one returns ready and writes the cache once", async () => {
+      let fail = true;
+      let writes = 0;
+      const harness = createHarness({
+        fetchWeather: async () => {
+          if (fail) throw new WeatherApiError("offline", { kind: "network" });
+          return WEATHER_READING;
+        }
+      });
+      const originalSet = harness.cacheStore.setCache;
+      harness.cacheStore.setCache = async (...args) => {
+        writes += 1;
+        return originalSet(...args);
+      };
+      await harness.locationStore.setLocation(TBILISI);
+
+      const first = await harness.service.initialize();
+      assert.equal(first.status, "error");
+      assert.equal(writes, 0);
+
+      fail = false;
+      const second = await harness.service.initialize();
+      assert.equal(second.status, "ready");
+      assert.equal(second.data.temperature, 24);
+      assert.equal(writes, 1);
+    });
+
+    it("a cache written meanwhile by another tab is served as ready with no fetch", async () => {
+      let clock = 1_000_000;
+      let fetchCalls = 0;
+      const harness = createHarness({
+        now: () => clock,
+        fetchWeather: async () => {
+          fetchCalls += 1;
+          throw new WeatherApiError("offline", { kind: "network" });
+        }
+      });
+      await harness.locationStore.setLocation(TBILISI);
+      assert.equal((await harness.service.initialize()).status, "error");
+      fetchCalls = 0;
+
+      await harness.cacheStore.setCache({ ...WEATHER_READING, ...AIR_READING, locationName: TBILISI.name, fetchedAt: clock - 1000 });
+      const result = await harness.service.initialize();
+
+      assert.equal(result.status, "ready");
+      assert.equal(fetchCalls, 0);
+      assert.ok(FRESH_MS > 1000);
+    });
+
+    it("a stale cache stays stale on failure and is not rewritten", async () => {
+      let clock = 1_000_000;
+      let fail = false;
+      const harness = createHarness({
+        now: () => clock,
+        fetchWeather: async () => {
+          if (fail) throw new WeatherApiError("offline", { kind: "network" });
+          return WEATHER_READING;
+        }
+      });
+      await harness.service.setCity("Springfield");
+      const before = await harness.cacheStore.getCache();
+      clock += FRESH_MS + 1;
+      fail = true;
+
+      const first = await harness.service.initialize();
+      const second = await harness.service.initialize();
+
+      assert.equal(first.status, "stale");
+      assert.equal(second.status, "stale");
+      assert.deepEqual(await harness.cacheStore.getCache(), before);
+    });
+
+    it("a rejecting location store gives error, then a working one gives ready", async () => {
+      let broken = true;
+      const locationStore = createWeatherLocationStore(createMemoryStorageArea());
+      await locationStore.setLocation(TBILISI);
+      const service = createWeatherService({
+        locationStore: {
+          getLocation: async () => {
+            if (broken) throw new Error("extension context invalidated");
+            return locationStore.getLocation();
+          },
+          setLocation: (value) => locationStore.setLocation(value)
+        },
+        cacheStore: createWeatherCacheStore(createMemoryStorageArea()),
+        fetchWeather: async () => WEATHER_READING,
+        fetchAirQuality: async () => AIR_READING,
+        geocodeCity: async () => TBILISI,
+        now: () => 1_000_000
+      });
+
+      assert.equal((await service.initialize()).status, "error");
+      broken = false;
+      const result = await service.initialize();
+      assert.equal(result.status, "ready");
+      assert.equal(result.location.name, TBILISI.name);
+    });
+  });
 });
