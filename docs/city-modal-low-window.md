@@ -2,7 +2,7 @@
 
 ## Status
 
-`ready for spec gate` (independent review 1 applied, re-review passed; see `low-window-spec-review.md`). Amended by `docs/dialog-threshold-jump.md`: the reserve is given up continuously, not all at once (Default decisions 1 to 3, AS-LW-03 numbers, the accepted exception and the "fit threshold" Review focus item below).
+`implemented` (merged in `55bbc07`; independent review 1 applied, re-review passed; see `low-window-spec-review.md`). Amended by `docs/dialog-threshold-jump.md`: the reserve is given up continuously, not all at once (Default decisions 1 to 3, AS-LW-03 numbers, the accepted exception and the "fit threshold" Review focus item below).
 
 ## Intake log
 

@@ -2,7 +2,7 @@
 
 ## Status
 
-`ready for spec gate`
+`implemented` (merged in `52306e4`)
 
 ## Intake log
 

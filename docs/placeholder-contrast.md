@@ -2,7 +2,7 @@
 
 ## Status
 
-`ready for spec gate`
+`implemented` (spec gate and final design review passed; merged in `d2c3aad`)
 
 ## Intake log
 
