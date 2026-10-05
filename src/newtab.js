@@ -33,7 +33,7 @@ import { placeTooltip } from "./widgetsLayout.js";
 import { NEWER_WIDGETS_MESSAGE, weatherMetricKey } from "./widgetsShared.js";
 import { searchCities, WeatherApiError, weatherErrorMessage } from "./weatherApi.js";
 import { createWeatherService } from "./weatherService.js";
-import { shouldAutoShowCityPrompt } from "./cityPrompt.js";
+import { feedbackReserve, shouldAutoShowCityPrompt } from "./cityPrompt.js";
 import { createWeatherCacheStore, createWeatherLocationStore, createWeatherPromptStore } from "./weatherStore.js";
 import { describeWeatherMetric } from "./weatherTiles.js";
 import {
@@ -648,19 +648,28 @@ function createCityForm(mode) {
   // dialog's scroll position and the mode cannot flip back and forth. It is measured from the INPUT's bottom edge, not from
   // the field wrapper, because the wrapper contains the list while it is docked. A dialog that does not fit the viewport on
   // its own (a very low window, large zoom) scrolls in every mode, also before the first suggestion appears.
-  // The room kept for an error (the feedback block's min-height) is given up when the dialog does not fit with it: a dialog
-  // clamped to the viewport has no slack to move in, and the reserve would push the buttons out of view. That choice is made on
-  // the height the dialog has with the reserve and no error text, so showing or clearing an error never flips it. The order
-  // matters: the dialog is centered, so dropping the reserve moves the input, and `free` / `tooTall` must see that layout.
+  // The room kept for an error (the feedback block's min-height) is given up only as far as the window needs: a dialog clamped to the
+  // viewport has no slack to move in, and a full reserve would push the buttons out of view. The kept room shrinks with the window
+  // (`feedbackReserve`: full where the dialog fits with it, 0 where it fits only without it), so the dialog never jumps at one
+  // height; the custom property carries the value and `compact` marks "below the full reserve". It is decided on the height the dialog
+  // has without error text (the current feedback height out), so showing or clearing an error never changes it. The order matters:
+  // the property must be removed before the reserve (the computed min-height, now the fallback) and the base are read, so the result
+  // depends on the window and not on the history, and the dialog is centered, so the reserve moves the input: `free` / `tooTall` must
+  // see that layout.
   function placePopover() {
     const dialog = field.closest(".city-modal__dialog");
     if (!dialog) return;
     const scrollTop = dialog.scrollTop;
     suggestionsList.classList.remove("weather-form__suggestions--docked");
     dialog.classList.remove("city-modal__dialog--scroll", "city-modal__dialog--compact");
+    dialog.style.removeProperty("--city-feedback-reserve");
     const reserve = Number.parseFloat(getComputedStyle(feedback).minHeight) || 0;
-    const withReserve = dialog.getBoundingClientRect().height - feedback.getBoundingClientRect().height + reserve;
-    dialog.classList.toggle("city-modal__dialog--compact", withReserve > window.innerHeight - 2 * VIEWPORT_MARGIN);
+    const base = dialog.getBoundingClientRect().height - feedback.getBoundingClientRect().height;
+    const kept = feedbackReserve({ viewportHeight: window.innerHeight, baseHeight: base, fullReserve: reserve, margin: VIEWPORT_MARGIN });
+    if (kept < reserve) {
+      dialog.style.setProperty("--city-feedback-reserve", `${kept}px`);
+      dialog.classList.add("city-modal__dialog--compact");
+    }
     const free = window.innerHeight - input.getBoundingClientRect().bottom - POPOVER_GAP - VIEWPORT_MARGIN;
     const tooTall = dialog.getBoundingClientRect().height > window.innerHeight - 2 * VIEWPORT_MARGIN;
     const docked = free < POPOVER_MIN_FREE;

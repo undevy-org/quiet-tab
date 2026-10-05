@@ -77,7 +77,7 @@ describe("city modal in a very low window", () => {
     ].map(at);
     assert.ok(order.every((i) => i >= 0), `all steps present: ${order}`);
     assert.deepEqual(order, [...order].sort((a, b) => a - b), "steps are in the mandatory order");
-    assert.match(body, /if \(kept < reserve\) \{[^}]*setProperty[^}]*classList\.add\("city-modal__dialog--compact"\)/);
+    assert.match(body, /if \(kept < reserve\) \{[\s\S]*?setProperty[\s\S]*?classList\.add\("city-modal__dialog--compact"\)/);
   });
 
   it("the base is error-independent (current feedback height out); the helper gets the window, the base, the full reserve and the margin; no new listener or observer", async () => {

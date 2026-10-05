@@ -569,7 +569,7 @@ describe("newtab first-run city prompt source", () => {
 
   it("builds the prompt store only with local storage and writes the flag silently", async () => {
     const code = await source();
-    assert.match(code, /import \{ shouldAutoShowCityPrompt \} from "\.\/cityPrompt\.js";/);
+    assert.match(code, /import \{ feedbackReserve, shouldAutoShowCityPrompt \} from "\.\/cityPrompt\.js";/);
     assert.match(code, /const weatherPromptStore = hasStorageArea\(localStorageArea\) \? createWeatherPromptStore\(localStorageArea\) : null;/);
     assert.match(code, /weatherPromptStore\.dismiss\(\)\.catch\(/);
     assert.doesNotMatch(code, /onFirstRunDismissed\(\) \{\}/);
