@@ -77,7 +77,9 @@ describe("AS-CT-05: only the six control-boundary rules use --border-control", (
   }
   it("no other rule in controls.css, surfaces.css or newtab.css uses it", () => {
     const users = all.filter((r) => /var\(--border-control\)/.test(r.body)).map((r) => r.selector);
-    assert.deepEqual(users.filter((s) => !six.includes(s)), []);
+    // A hover STATE of the weather retry tile (docs/weather-tile-retry.md decision 2) is not a control boundary rule.
+    const hoverStates = ['.weather-tile--retry[data-retry="ready"]:hover'];
+    assert.deepEqual(users.filter((s) => !six.includes(s) && !hoverStates.includes(s)), []);
   });
   it(".segmented__option keeps the decorative divider", () => {
     const option = all.find((r) => r.selector === ".segmented__option");

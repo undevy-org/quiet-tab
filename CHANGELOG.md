@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Weather tiles: a tile that could not load, or that shows saved (stale) data, can now be pressed
+  to try again, from the tile itself with the mouse, Enter or Space. It repeats once for all
+  tiles, shows a small refresh sign in its corner and a spinner while it works, waits a few
+  seconds after a failure before the next try, and says why it failed in the status line
+  ("Can't reach the weather service..."). When it works, the tiles update and "Weather updated"
+  is announced. Fresh tiles have no refresh control. E2E: `dg-54-weather-tile-retry.mjs`.
+
 ### Fixed
 
 - City dialog: resizing the window (or zooming) no longer makes the dialog jump by about

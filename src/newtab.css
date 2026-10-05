@@ -484,6 +484,71 @@ button.weather-tile {
   border-color: rgba(var(--weather-tone-rgb), 1);
 }
 
+/* Retry: an error or stale tile in normal mode is one native button; the corner glyph says "press to try again".
+   The glyph is a direct child of the tile (never of .weather-tile__values, which clips) and takes no space from the content. */
+.weather-tile--retry {
+  cursor: pointer;
+}
+
+.weather-tile--retry[data-retry="ready"]:hover {
+  border-color: var(--border-control);
+}
+
+.weather-tile--retry[data-retry="retrying"],
+.weather-tile--retry[data-retry="cooldown"] {
+  cursor: default;
+}
+
+.weather-tile__retry {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: inline-flex;
+  color: var(--text);
+  line-height: 0;
+  pointer-events: none;
+}
+
+.weather-tile__retry svg {
+  width: 12px;
+  height: 12px;
+}
+
+.weather-tile[data-h="2"] .weather-tile__retry {
+  top: 6px;
+  right: 6px;
+}
+
+.weather-tile[data-h="2"] .weather-tile__retry svg {
+  width: 14px;
+  height: 14px;
+}
+
+.weather-tile--retry[data-retry="retrying"] .weather-tile__retry .icon {
+  animation: weather-retry-spin 1s linear infinite;
+}
+
+.weather-tile--retry[data-retry="cooldown"] .weather-tile__retry {
+  opacity: 0.5;
+}
+
+@keyframes weather-retry-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Reduced motion: no spin; a stale tile (it keeps its values) shows the busy state by dimming them instead. */
+@media (prefers-reduced-motion: reduce) {
+  .weather-tile--retry[data-retry="retrying"] .weather-tile__retry .icon {
+    animation: none;
+  }
+
+  .weather-tile--retry[data-retry="retrying"][data-stale="true"] .weather-tile__values {
+    opacity: 0.7;
+  }
+}
+
 .city-hint-tile {
   display: inline-flex;
   align-items: center;

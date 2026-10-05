@@ -117,4 +117,67 @@ describe("describeWeatherMetric", () => {
       assert.equal(s.description, `Couldn't refresh - showing saved data. ${r.description}`);
     }
   });
+
+  describe("retry fields (AS-WR-13)", () => {
+    it("loading, ready and no-location carry retry: null", () => {
+      for (const k of keys) {
+        assert.equal(describeWeatherMetric({ metricKey: k, result: null, size: "square" }).retry, null);
+        assert.equal(describeWeatherMetric({ metricKey: k, result: ready, size: "square" }).retry, null);
+        assert.equal(describeWeatherMetric({ metricKey: k, result: ready, size: "square", retry: "retrying" }).retry, null);
+      }
+    });
+
+    it("error and stale are 'ready' by default and carry the given phase", () => {
+      for (const k of keys) {
+        for (const result of [failed, stale]) {
+          assert.equal(describeWeatherMetric({ metricKey: k, result, size: "square" }).retry, "ready");
+          for (const phase of ["ready", "retrying", "cooldown"]) {
+            assert.equal(describeWeatherMetric({ metricKey: k, result, size: "square", retry: phase }).retry, phase);
+          }
+        }
+      }
+    });
+
+    it("an error tile retrying shows '…', is busy and says it is trying again", () => {
+      for (const k of keys) {
+        const m = describeWeatherMetric({ metricKey: k, result: failed, size: "square", retry: "retrying" });
+        assert.deepEqual([m.primary, m.busy, m.description, m.stale], ["…", true, "Trying again…", false]);
+      }
+    });
+
+    it("a stale tile retrying keeps its values and prefixes the description", () => {
+      for (const k of keys) {
+        const plain = describeWeatherMetric({ metricKey: k, result: stale, size: "wide" });
+        const m = describeWeatherMetric({ metricKey: k, result: stale, size: "wide", retry: "retrying" });
+        assert.equal(m.busy, true);
+        assert.equal(m.primary, plain.primary);
+        assert.equal(m.secondary, plain.secondary);
+        assert.equal(m.tone, plain.tone);
+        assert.equal(m.stale, true);
+        assert.ok(m.description.startsWith("Trying again… "), m.description);
+        assert.ok(!m.description.includes("Couldn't refresh"), m.description);
+        assert.equal(m.description, `Trying again… ${plain.description.replace("Couldn't refresh - showing saved data. ", "")}`);
+      }
+    });
+
+    it("the cooldown phase does not change content or busy", () => {
+      for (const k of keys) {
+        for (const result of [failed, stale]) {
+          const plain = describeWeatherMetric({ metricKey: k, result, size: "square" });
+          const m = describeWeatherMetric({ metricKey: k, result, size: "square", retry: "cooldown" });
+          assert.deepEqual({ ...m, retry: null }, { ...plain, retry: null });
+          assert.equal(m.busy, false);
+        }
+      }
+    });
+
+    it("with retry omitted the models equal today's (plus the new retry field)", () => {
+      const expectedError = { label: "UV index", secondary: null, tone: null, stale: false, busy: false, primary: "—", description: "Weather unavailable: boom", retry: "ready" };
+      assert.deepEqual(describeWeatherMetric({ metricKey: "uv", result: failed, size: "square" }), expectedError);
+      const t = describeWeatherMetric({ metricKey: "temperature", result: ready, size: "square" });
+      assert.deepEqual(t, { label: "Temperature", primary: "21", secondary: null, tone: t.tone, stale: false, busy: false, description: t.description, retry: null });
+      const l = describeWeatherMetric({ metricKey: "uv", result: null, size: "square" });
+      assert.deepEqual(l, { label: "UV index", primary: "…", secondary: null, tone: null, stale: false, busy: true, description: "Loading weather…", retry: null });
+    });
+  });
 });
