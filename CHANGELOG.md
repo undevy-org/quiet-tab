@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- City dialog: resizing the window (or zooming) no longer makes the dialog jump by about
+  40 px at one particular height; the free space under the city field now shrinks smoothly
+  as the window gets lower. E2E: `dg-53-dialog-threshold-jump.mjs`.
 - City dialog: when you move through the city suggestions with the arrow keys or Tab and
   the list (or the dialog, in a short window) scrolls, the focus ring is no longer cut off
   on its top or bottom edge. This also covers the field and the clear button, and the

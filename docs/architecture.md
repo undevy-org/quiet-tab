@@ -198,8 +198,10 @@ the forecast arrives. A 2-wide tile shows the primary and secondary values, a
 - **Error line.** The error text lives in one `role="alert"` node inside a feedback
   block that always keeps room for two lines, so Save does not move when an error
   appears or goes (a third line, only in very narrow windows, grows the block). In a
-  window too low to hold that room, `placePopover` releases it
-  (`city-modal__dialog--compact`), so the buttons stay in view. Editing
+  window too low to hold that room, `placePopover` shrinks it with the window
+  (`feedbackReserve`, `--city-feedback-reserve`, down to 0 below the dialog's own height;
+  `city-modal__dialog--compact` marks a below-full room), so the buttons stay in view and
+  the dialog never jumps at one height. Editing
   the field (typing, pasting, deleting) or pressing the clear button empties and hides
   that node; nothing else clears it besides opening the modal and starting a request.
 - **Keyboard.** ArrowDown in the field moves into the list; ArrowDown/ArrowUp move
