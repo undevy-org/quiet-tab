@@ -2,7 +2,7 @@
 
 ## Status
 
-`ready for spec gate` (independent review 1 applied; re-review round 2 found no Critical or Important issues)
+`implemented` (merged in `ac192fb`; independent review 1 applied; re-review round 2 found no Critical or Important issues)
 
 ## Intake log
 

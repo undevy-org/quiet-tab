@@ -2,7 +2,7 @@
 
 ## Status
 
-`ready for spec gate` (independent review 1 applied and re-review passed; see `city-error-ux-spec-review.md`). Amended by `docs/dialog-threshold-jump.md`: the reserve is full wherever the dialog fits with it, partial down to the dialog's height without it, and zero below; 400×300 first-run is now an overlay list (flip 298 on the reference machine).
+`implemented` (merged in `20970a4`; independent review 1 applied and re-review passed; see `city-error-ux-spec-review.md`). Amended by `docs/dialog-threshold-jump.md`: the reserve is full wherever the dialog fits with it, partial down to the dialog's height without it, and zero below; 400×300 first-run is now an overlay list (flip 298 on the reference machine).
 
 ## Intake log
 
