@@ -41,7 +41,10 @@ describe("newtab favorites source", () => {
 
   it("wires the pointer drag controller (Task 9): threshold, cancels, Escape layer, one-shot click suppression", async () => {
     const code = await source();
-    assert.match(code, /import \{ canPlace, cellFromPoint, displayLayout, effectiveColumns, gridMetrics \} from "\.\/desktopLayout\.js";/);
+    assert.match(
+      code,
+      /import \{\s*canPlace, cellFromPoint, clampDropCell, displayLayout, effectiveColumns, gridMetrics, maxDropRow, viewportRows\s*\} from "\.\/desktopLayout\.js";/
+    );
     assert.match(code, /const DRAG_THRESHOLD_PX = 6;/);
     assert.match(code, /const AUTOSCROLL_EDGE_PX = 48;/);
     assert.match(code, /const AUTOSCROLL_STEP_PX = 12;/);
@@ -51,9 +54,9 @@ describe("newtab favorites source", () => {
     assert.match(code, /< DRAG_THRESHOLD_PX\) return; \/\/ still a tap/);
     // Drop: moveWidget with the metric id behind the hint tile, through the atomic mutation runner; focus re-queried.
     assert.match(code, /tile\.dataset\.metricId \?\? tile\.dataset\.widgetId/);
-    assert.match(code, /runDesktopMutation\(\s*\(columns\) => widgetsService\.moveWidget\(s\.id, \{ x: target\.x, y: target\.y \}, \{ columns \}\),/);
+    assert.match(code, /runDesktopMutation\(\s*\(columns\) => widgetsService\.moveWidget\(s\.id, \{ x: target\.x, y: target\.y \}, \{ columns, viewportRows: s\.viewportRows \}\),/);
     assert.match(code, /focusDragTile\(s\.domId\)/);
-    assert.match(code, /canPlace\(s\.layout, s\.id,/);
+    assert.match(code, /canPlace\(s\.layout, s\.id, \{ \.\.\.target, w: s\.cell\.w, h: s\.cell\.h \}, s\.columns, s\.viewportRows\)/);
     // Cancels: Escape layer, pointercancel, window blur, leaving the window, resize, leaving edit mode.
     assert.match(code, /if \(layer === "drag"\) \{\s*event\.preventDefault\(\);\s*cancelDrag\(\);/);
     assert.match(code, /addEventListener\("pointercancel", \(event\) => \{\s*if \(dragSession && event\.pointerId === dragSession\.pointerId\) cancelDrag\(\);/);
@@ -677,11 +680,22 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     assert.doesNotMatch(hint, /createIconNode\("plus"\)/, "the plus glyph belongs to the Add tile");
   });
 
-  it("draws the drop highlight only at the judged cell, never clamped into the grid (AS-FU-03)", async () => {
+  it("draws the drop highlight always, exactly at the judged cell (AS-FU-03 invariant, AS-DL decision 3)", async () => {
     const draw = fn(await source(), "drawDropHighlight");
-    assert.doesNotMatch(draw, /Math\.min\(target\./);
-    assert.match(draw, /target\.x \+ s\.cell\.w <= s\.columns && target\.y <= lowest \+ 1/);
-    assert.match(draw, /highlight\?\.remove\(\);/);
+    assert.doesNotMatch(draw, /Math\.(min|max)\(target\./, "the clamp happens in the target, not in the drawing");
+    assert.doesNotMatch(draw, /lowest|visible|\.remove\(\)|return;/, "no case without a highlight any more");
+    assert.match(draw, /highlight\.style\.setProperty\("--x", String\(target\.x\)\);/);
+    assert.match(draw, /highlight\.style\.setProperty\("--y", String\(target\.y\)\);/);
+    assert.match(draw, /highlight\.dataset\.valid = String\(valid\);/);
+  });
+
+  it("the drag session knows the first screen: viewportRows, the highest row, a grid exactly as high as needed (AS-DL-04)", async () => {
+    const begin = fn(await source(), "beginPointerDrag");
+    assert.match(begin, /viewportRows\(document\.documentElement\.clientHeight, viewportWidth\(\)\)/);
+    assert.match(begin, /maxDropRow\(layout, id, cell\.h, screenRows\)/);
+    assert.match(begin, /viewportRows: screenRows,/);
+    assert.match(begin, /rows: Math\.max\(occupiedRows, maxY \+ cell\.h\)/);
+    assert.doesNotMatch(begin, /\+ 2\b/, "no spare rows beyond the allowed area");
   });
 
   it("uses the wide weather model for 2-wide tiles and adds the city line only at 2 high (R6)", async () => {
@@ -892,11 +906,13 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     assert.doesNotMatch(css, /z-index 40/);
   });
 
-  it("final review: a drag target outside the grid box (left/right margin, above the top) is invalid", async () => {
+  it("a drag target in the margins, above the grid or below the allowed rows snaps to the nearest allowed cell; only an occupied cell is invalid (AS-DL-03, 05, 07)", async () => {
     const code = await source();
     const update = fn(code, "updateDragTarget");
-    assert.match(update, /const outside = s\.lastX < box\.left \|\| s\.lastX > box\.right \|\| s\.lastY < box\.top;/);
-    assert.match(update, /const valid = !outside && canPlace\(/);
+    assert.doesNotMatch(update, /outside/);
+    assert.match(update, /const target = clampDropCell\(cellFromPoint\(\{ x: s\.lastX, y: s\.lastY \}, box, s\.metrics, s\.grab\), s\.cell, s\.columns, s\.maxY\);/);
+    assert.match(update, /const valid = canPlace\(s\.layout, s\.id, \{ \.\.\.target, w: s\.cell\.w, h: s\.cell\.h \}, s\.columns, s\.viewportRows\);/);
+    assert.match(update, /drawDropHighlight\(grid, target, s, valid\);/);
   });
 
   it("fix wave 2: the link dialog's color input has its own accessible name; narrow Edit link footer wraps; a hidden badge is not displayed", async () => {

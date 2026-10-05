@@ -407,6 +407,110 @@ describe("widgetsService", () => {
   });
 });
 
+describe("widgetsService: whole-window drag (AS-DL-11)", () => {
+  // Layout A (0,0), B (0,1); every call starts from a fresh store.
+  async function twoTiles() {
+    const h = await createHarness();
+    await seed(h.store, [favorite({ id: "A", grid: g(0, 0) }), favorite({ id: "B", grid: g(0, 1) })]);
+    return h;
+  }
+
+  it("moveWidget with viewportRows 9 accepts a row of the first screen and stores it", async () => {
+    const { service, store } = await twoTiles();
+    const state = await service.moveWidget("A", { x: 4, y: 7 }, { columns: 15, viewportRows: 9 });
+    assert.deepEqual(gridsOf(state), { A: g(4, 7), B: g(0, 1) });
+    assert.deepEqual(gridsOf(await store.getState()), { A: g(4, 7), B: g(0, 1) });
+  });
+
+  it("without viewportRows the old rule holds (lowest row 1: row 2 at most)", async () => {
+    const { service, store } = await twoTiles();
+    await assert.rejects(() => service.moveWidget("A", { x: 4, y: 7 }, { columns: 15 }), PlacementError);
+    assert.deepEqual(gridsOf(await store.getState()), { A: g(0, 0), B: g(0, 1) });
+    const state = await service.moveWidget("A", { x: 4, y: 2 }, { columns: 15 });
+    assert.deepEqual(gridsOf(state), { A: g(4, 2), B: g(0, 1) });
+  });
+
+  it("a viewportRows that is not an integer in 0..4096 is treated as 0: it only narrows the area", async () => {
+    for (const bad of [Number.NaN, 1.5, -1, "9", null, Number.POSITIVE_INFINITY, 4097, 1e9]) {
+      const { service, store } = await twoTiles();
+      await assert.rejects(
+        () => service.moveWidget("A", { x: 4, y: 7 }, { columns: 15, viewportRows: bad }),
+        PlacementError,
+        String(bad)
+      );
+      assert.deepEqual(gridsOf(await store.getState()), { A: g(0, 0), B: g(0, 1) }, String(bad));
+    }
+  });
+
+  it("the upper bound 4096 itself is a valid viewportRows", async () => {
+    const { service } = await twoTiles();
+    const state = await service.moveWidget("A", { x: 4, y: 7 }, { columns: 15, viewportRows: 4096 });
+    assert.deepEqual(state.items.find((item) => item.id === "A").grid, g(4, 7));
+  });
+
+  it("the last column is a target; one past it is not", async () => {
+    const { service } = await twoTiles();
+    const state = await service.moveWidget("A", { x: 14, y: 0 }, { columns: 15 });
+    assert.deepEqual(state.items.find((item) => item.id === "A").grid, g(14, 0));
+    const fresh = await twoTiles();
+    await assert.rejects(() => fresh.service.moveWidget("A", { x: 15, y: 0 }, { columns: 15 }), PlacementError);
+  });
+
+  it("a 2-wide block ends at the last column: x 21 of 23 fits, x 22 does not", async () => {
+    const h = await createHarness();
+    await seed(h.store, [favorite({ id: "A", grid: g(0, 0, 2, 1) })]);
+    const state = await h.service.moveWidget("A", { x: 21, y: 0 }, { columns: 23 });
+    assert.deepEqual(state.items[0].grid, g(21, 0, 2, 1));
+    const fresh = await createHarness();
+    await seed(fresh.store, [favorite({ id: "A", grid: g(0, 0, 2, 1) })]);
+    await assert.rejects(() => fresh.service.moveWidget("A", { x: 22, y: 0 }, { columns: 23 }), PlacementError);
+  });
+
+  it("a column count above 12 is accepted for every mutation", async () => {
+    for (const columns of [13, 15, 62]) {
+      const { service } = await twoTiles();
+      const added = await service.addFavorite({ url: "example.com" }, { columns });
+      assert.equal(added.items.length, 3, `add at ${columns}`);
+      const moved = await service.moveWidget("A", { x: columns - 1, y: 0 }, { columns });
+      assert.deepEqual(moved.items.find((item) => item.id === "A").grid, g(columns - 1, 0), `move at ${columns}`);
+      const resized = await service.updateFavorite("A", { w: 2 }, { columns });
+      assert.equal(resized.items.find((item) => item.id === "A").grid.w, 2, `resize at ${columns}`);
+    }
+  });
+
+  it("an invalid column count still throws the same error", async () => {
+    for (const columns of [1, 1.5, Number.NaN, "15", undefined, null, 0, -4]) {
+      const { service } = await twoTiles();
+      const message = /The current column count is required/;
+      await assert.rejects(() => service.moveWidget("A", { x: 1, y: 0 }, { columns }), message, String(columns));
+      await assert.rejects(() => service.addFavorite({ url: "example.com" }, { columns }), message, String(columns));
+      await assert.rejects(() => service.deleteFavorite("A", { columns }), message, String(columns));
+    }
+  });
+
+  it("own row (N1): a tile that sits below the allowed area may stay in its row without viewportRows", async () => {
+    const { service, store } = await createHarness();
+    await seed(store, [favorite({ id: "A", grid: g(0, 5) }), favorite({ id: "B", grid: g(1, 0) }), favorite({ id: "C", grid: g(2, 0) })]);
+    const state = await service.moveWidget("A", { x: 3, y: 5 }, { columns: 15 });
+    assert.deepEqual(state.items.find((item) => item.id === "A").grid, g(3, 5));
+    await assert.rejects(() => service.moveWidget("A", { x: 3, y: 6 }, { columns: 15 }), PlacementError);
+    // and with viewportRows (the first screen is shorter than the own row)
+    const up = await service.moveWidget("A", { x: 4, y: 8 }, { columns: 15, viewportRows: 9 });
+    assert.deepEqual(up.items.find((item) => item.id === "A").grid, g(4, 8));
+  });
+
+  it("every drop the page's rule accepts, the service accepts (same helper, same numbers)", async () => {
+    // lowest row 12, 9 viewport rows: row 13 is the last target, 14 is not.
+    const h = await createHarness();
+    await seed(h.store, [favorite({ id: "A", grid: g(0, 0) }), favorite({ id: "L", grid: g(10, 12) })]);
+    const state = await h.service.moveWidget("A", { x: 3, y: 13 }, { columns: 15, viewportRows: 9 });
+    assert.deepEqual(state.items.find((item) => item.id === "A").grid, g(3, 13));
+    const fresh = await createHarness();
+    await seed(fresh.store, [favorite({ id: "A", grid: g(0, 0) }), favorite({ id: "L", grid: g(10, 12) })]);
+    await assert.rejects(() => fresh.service.moveWidget("A", { x: 3, y: 14 }, { columns: 15, viewportRows: 9 }), PlacementError);
+  });
+});
+
 describe("stored backgroundColorSource enum survives the label rename", () => {
   it("accepts items whose backgroundColorSource is auto or manual", () => {
     const base = createInitialWidgetsState("2026-07-11T00:00:00.000Z");
