@@ -65,7 +65,7 @@ the bad grid, never the item or its key. Items with invalid other fields are lef
 out of the read state as before. Writing an invalid grid is rejected.
 
 **Displayed layout.** The grid shows `displayLayout(stored widgets, C)`, where
-`C` is the column count that fits the viewport (2–12, from
+`C` is the column count that fits the viewport (2 or more, no upper limit, from
 `document.documentElement.clientWidth`; the cell size, gap and padding come from
 the same width and are set by `newtab.js`, not by CSS media queries). Widgets are
 taken in `(y, x, order)` order; each keeps its stored cell if the block fits and
@@ -251,12 +251,15 @@ retry; a retry only writes the cache that `initialize()` already writes.
   motion), links and weather tiles get a − badge (links: delete confirm; weather:
   hide), a tap on a link or weather tile opens its edit dialog (link: URL, name,
   icon, color, size; weather: city row and size), and any tile can be dragged.
-  A drop highlight shows the target cell (dashed error outline when that cell is
-  occupied or outside the page margin left of or above the grid); it is drawn
-  only for a block that lies inside the grid and at most one row below the lowest
-  tile, otherwise there is no highlight. Any invalid drop returns the tile and
-  writes nothing. Escape, a viewport
-  change, a pointer cancel or leaving the window cancels a drag. Settings, a
+  The whole window is the drop area: the pointer anywhere (side margins, above the
+  grid, below the last row) targets the nearest allowed cell, `x` within the columns
+  and `y` at most `maxDropRow` (every row of the first screen, `viewportRows`; below
+  it at most one row below the lowest other tile; a tile may always stay in its own
+  row or move up). A drop highlight is always drawn on that cell (dashed error
+  outline only when it is occupied). While dragging the grid is as high as that
+  area needs, so a drop inside the window never scrolls. An occupied drop returns
+  the tile and writes nothing. Escape, a viewport change, a pointer cancel, a
+  window blur, leaving the window or leaving edit mode cancels a drag. Settings, a
   background click or Escape leaves edit mode.
 - **Add.** In edit mode with at least one hidden metric, Add opens a menu
   (`role="menu"`, "Add link", "Add weather tile…" → one item per hidden metric);

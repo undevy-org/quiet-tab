@@ -16,9 +16,9 @@
 These were recommended by the stage 1 review and applied as defaults so the pipeline does not wait. Override any of them before the plan starts.
 
 1. **Which tile keeps the plus:** `chrome:add`. The city hint at 1×1 gets the existing `mapPin` icon from `icons.js` (no new icon, no new colors). The wide hint keeps the text "Set a city".
-2. **Always-invalid row during drag:** the extra row below `lowest + 1` (and every row beyond it; `lowest` excludes the dragged tile) shows no highlight (not a red one). User-visible effect: a drop two rows below still returns the tile and writes nothing, it just no longer flashes red. This **amends AS-DS-20** and `docs/architecture.md` § Desktop grid UI, which today say a dashed error outline appears "more than one row below the lowest tile".
-3. **Highlight never moves to another cell and never leaves the grid:** the outline is drawn at the evaluated cell only when that block lies fully inside the rendered grid (`0 ≤ x`, `x + w ≤ columns`, `y ≤ lowest + 1`, where `lowest` is the lowest occupied row excluding the dragged tile, as in `canPlace`). Otherwise no `.drop-highlight` exists. It is never clamped into the grid. (An overhanging outline would widen the page at narrow viewports and add scroll height during autoscroll.)
-4. **Engine untouched:** `canPlace`, `displayLayout` and the "at most one row below" rule stay as they are.
+2. *(Superseded by `docs/widget-drag-limits.md`.)* **Always-invalid row during drag:** the extra row below `lowest + 1` (and every row beyond it; `lowest` excludes the dragged tile) shows no highlight (not a red one). User-visible effect: a drop two rows below still returns the tile and writes nothing, it just no longer flashes red. This **amends AS-DS-20** and `docs/architecture.md` § Desktop grid UI, which today say a dashed error outline appears "more than one row below the lowest tile".
+3. *(Superseded by `docs/widget-drag-limits.md`.)* **Highlight never moves to another cell and never leaves the grid:** the outline is drawn at the evaluated cell only when that block lies fully inside the rendered grid (`0 ≤ x`, `x + w ≤ columns`, `y ≤ lowest + 1`, where `lowest` is the lowest occupied row excluding the dragged tile, as in `canPlace`). Otherwise no `.drop-highlight` exists. It is never clamped into the grid. (An overhanging outline would widen the page at narrow viewports and add scroll height during autoscroll.)
+4. *(Superseded by `docs/widget-drag-limits.md`.)* **Engine untouched:** `canPlace`, `displayLayout` and the "at most one row below" rule stay as they are.
 
 ## Scope
 
@@ -35,7 +35,7 @@ This changes what the user sees, so it follows the full UI-phase cycle: spec, pl
 
 ## Non-goals
 
-- Changing the "at most one row below the lowest tile" rule or `canPlace` itself.
+- Changing the "at most one row below the lowest tile" rule or `canPlace` itself. *(Superseded by `docs/widget-drag-limits.md`.)*
 - Changing tile keyboard focus tokens (`test/focusTokens.test.js`) without a dedicated AS and owner approval.
 - New design tokens or colors (`--danger`, `--primary`, drop-highlight radius stay as they are) (lifted for `--color-border-control` by `docs/border-contrast.md`).
 - Rewriting weather fetch, geocoding, or storage schemas.

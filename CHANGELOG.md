@@ -46,8 +46,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   grid has one plus icon (Add) instead of two. The wide hint keeps its text.
 - Dragging a tile in edit mode: the drop outline is drawn only at the cell being
   judged and no longer jumps to a neighbouring free cell. A block that does not
-  fit at the right edge, or lies more than one row below the lowest tile, shows
-  no outline (the drop is still rejected and writes nothing).
+  fit at the right edge, or lies below the allowed rows, snaps to the nearest
+  allowed cell and the outline is drawn there; only an occupied cell shows the
+  dashed error outline (the drop is rejected and writes nothing).
+- Dragging a tile in edit mode now works over the whole window: the columns fill
+  the window width, every row of the first screen is a drop target (below it a
+  tile can still go one row below the lowest tile), and a pointer in the side
+  margins, above the grid or below the last row targets the nearest allowed cell.
+  Only an occupied cell is invalid, and a drop inside the window never makes the
+  page scroll. E2E: `dg-55-drag-whole-window.mjs`.
 
 ### Changed
 
@@ -82,7 +89,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A full-window, macOS-style desktop grid replaces the favorites toolbar: links,
   weather tiles and two fixed tiles (Settings and Add) sit on a 2D grid of
-  1×1, 2×1 or 2×2 cells. The number of columns follows the window (2–12) and a
+  1×1, 2×1 or 2×2 cells. The number of columns follows the window (2 or more, no upper limit) and a
   narrower window repacks the tiles for display only; widening it restores your
   arrangement.
 - Edit mode: the Settings tile turns it on (Settings again, Escape or a click on
