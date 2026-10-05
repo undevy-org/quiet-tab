@@ -8,7 +8,7 @@ import {
   placeResized,
   sizeOf
 } from "./desktopLayout.js";
-import { MAX_FAVORITE_WIDGETS, MAX_GRID_COLUMNS } from "./widgetsShared.js";
+import { MAX_FAVORITE_WIDGETS } from "./widgetsShared.js";
 import {
   BACKGROUND_COLOR_SOURCES,
   HEX_COLOR_VALIDATION_PATTERN,
@@ -149,14 +149,21 @@ function normalizeSpan(value, name) {
   return value;
 }
 
-// The caller passes the current column count (effectiveColumns of the viewport): every explicit mutation
+// The caller passes the current column count (effectiveColumns of the viewport, no upper bound): every explicit mutation
 // is computed against the DISPLAYED layout (spec § Writes) and persists the displayed grid of every widget.
 function requireColumns(options) {
   const columns = options?.columns;
-  if (!Number.isInteger(columns) || columns < 2 || columns > MAX_GRID_COLUMNS) {
+  if (!Number.isInteger(columns) || columns < 2) {
     throw new Error("The current column count is required");
   }
   return columns;
+}
+
+// `viewportRows` (the page's first-screen row count, optional) only widens the drop area: anything but an integer
+// 0..MAX_VIEWPORT_ROWS counts as 0, the old rule.
+const MAX_VIEWPORT_ROWS = 4096;
+function sanitizeViewportRows(value) {
+  return Number.isInteger(value) && value >= 0 && value <= MAX_VIEWPORT_ROWS ? value : 0;
 }
 
 function placeholderGrid(item) {
@@ -343,7 +350,8 @@ export function createWidgetsService({
       });
     },
 
-    // Drop at cell (x, y). Rejected with PlacementError when the block overlaps, overflows or is too far below.
+    // Drop at cell (x, y). Rejected with PlacementError when the block overlaps, overflows or lies below the allowed row
+    // (`options.viewportRows` adds the rows of the first screen, see maxDropRow).
     moveWidget(id, target, options) {
       return mutate(options, ({ base, columns }) => {
         const layout = displayLayout(base.items, columns);
@@ -352,7 +360,7 @@ export function createWidgetsService({
           throw new Error("Widget not found");
         }
         const next = { x: target?.x, y: target?.y, w: current.w, h: current.h };
-        if (!isValidGrid(next) || !canPlace(layout, id, next, columns)) {
+        if (!isValidGrid(next) || !canPlace(layout, id, next, columns, sanitizeViewportRows(options?.viewportRows))) {
           throw new PlacementError();
         }
         return withGrid(base.items, id, next);
