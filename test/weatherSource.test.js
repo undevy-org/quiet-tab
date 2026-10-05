@@ -377,6 +377,13 @@ describe("newtab weather retry source (AS-WR-13)", () => {
     assert.match(retry, /weatherResult\?\.status === "stale"/);
   });
 
+  it("the gone outcome clears a non-persist status line and the cooldown timer", async () => {
+    const code = await source();
+    const retry = fn(code, "retryWeather");
+    const gone = retry.slice(retry.indexOf('outcome === "gone"'), retry.indexOf("const failed ="));
+    assert.match(gone, /clearTimeout\(weatherRetryTimer\);\s*if \(!desktopStatusPersistent\) showDesktopStatus\(""\);/);
+  });
+
   it("the cooldown end updates nodes in place and never re-renders", async () => {
     const code = await source();
     const end = fn(code, "endWeatherRetryCooldown");

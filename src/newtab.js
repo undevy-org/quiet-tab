@@ -2452,6 +2452,8 @@ async function retryWeather() {
     weatherResult = result;
     weatherLocation = null;
     weatherLocationError = "";
+    clearTimeout(weatherRetryTimer);
+    if (!desktopStatusPersistent) showDesktopStatus(""); // a failure text of an earlier attempt would now contradict the hint tile
     renderFavorites();
     const active = document.activeElement;
     if (!active || active === document.body) favoritesRoot?.querySelector(HINT_TILE_SELECTOR)?.focus();
