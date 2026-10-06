@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- First run: while the "Show weather on your new tab?" window is open, the page behind it is
+  empty (no links, Settings, Add or hint tile); they appear with a soft fade when the window
+  closes, also for users who already have links. The window now opens before the page is
+  drawn, so no tile flashes first. E2E: `dg-56-first-run-empty-desk.mjs`.
 - Weather tiles: a tile that could not load, or that shows saved (stale) data, can now be pressed
   to try again, from the tile itself with the mouse, Enter or Space. It repeats once for all
   tiles, shows a small refresh sign in its corner and a spinner while it works, waits a few

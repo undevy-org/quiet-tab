@@ -30,6 +30,30 @@ html {
   padding: var(--grid-pad, 16px);
 }
 
+/* First run (docs/first-run-empty-desk.md): while the first-run city modal is open the desk is veiled. Nothing is painted,
+   hit-testable, focusable or in the accessibility tree; one screen high and no scroll, so a long desk leaves no empty page
+   under the modal. Then one soft fade brings the desk back (none with reduced motion). */
+.desktop[data-veiled="true"] {
+  visibility: hidden;
+  height: 100vh;
+  overflow: hidden;
+}
+
+@keyframes desk-reveal {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.desktop[data-reveal="true"] {
+  animation: desk-reveal 200ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .desktop[data-reveal="true"] {
+    animation: none;
+  }
+}
+
 .desktop-grid {
   position: relative;
   margin: 0 auto;
