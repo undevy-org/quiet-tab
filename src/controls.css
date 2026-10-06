@@ -36,11 +36,6 @@
   align-items: center;
   gap: var(--form-row-gap);
   padding: var(--form-row-padding-y) 0;
-  border-top: 1px solid var(--border);
-}
-
-.favorite-form__row:first-child {
-  border-top: none;
 }
 
 .favorite-form__row-label {
@@ -94,12 +89,14 @@
   display: flex;
   align-items: center;
   gap: var(--form-footer-gap);
-  padding: var(--form-footer-padding-y) 0;
-  border-top: 1px solid var(--border);
+  margin-top: var(--modal-actions-margin-top);
 }
 
-.favorite-form__footer .button--danger {
-  margin-right: auto;
+.favorite-form__footer .button {
+  flex: 1;
+  min-height: var(--control-height);
+  justify-content: center;
+  gap: var(--form-footer-gap);
 }
 
 .segmented {

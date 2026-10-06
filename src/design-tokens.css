@@ -54,9 +54,9 @@
   --control-disabled-opacity: 0.62;
   --form-label-width: 100px;
   --form-row-gap: 12px;
-  --form-row-padding-y: 12px;
+  --form-row-padding-y: 10px;
   --form-footer-gap: 8px;
-  --form-footer-padding-y: 14px;
+  --modal-actions-margin-top: 16px;
   --title-margin-bottom: 12px;
   --surface-modal-padding: 20px;
   --surface-modal-max-width: 420px;

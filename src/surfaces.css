@@ -66,7 +66,7 @@
 .city-modal__actions {
   display: flex;
   gap: var(--form-footer-gap);
-  margin-top: 16px;
+  margin-top: var(--modal-actions-margin-top);
 }
 
 .city-modal__actions .button {
@@ -81,8 +81,7 @@
   font-size: var(--font-size-title);
 }
 
-.city-modal__description,
-.city-modal__current {
+.city-modal__description {
   margin: 0 0 12px;
   color: var(--muted);
   overflow-wrap: anywhere;
@@ -96,11 +95,15 @@
   overflow-wrap: anywhere;
 }
 
-/* Room for a two-line error, always: Save stays put when an error appears or goes. A third line grows the block.
-   placePopover sets --city-feedback-reserve while the window cannot hold the full room: the room then shrinks with the window
-   (to 0 below the dialog's own height), so the dialog never jumps at one window height. */
+/* No reserved room: the slot is empty (height 0) until an error shows; the card then grows (accepted). The 16px to the actions
+   comes from --modal-actions-margin-top, the 8px above the error from the error rule below. */
 .city-modal__feedback {
-  min-height: var(--city-feedback-reserve, calc(2 * var(--line-height-body) * var(--font-size-md)));
+  margin: 0;
+  padding: 0;
+}
+
+.city-modal__feedback .status--error {
+  margin: 8px 0 0;
 }
 
 /* The rule above must not defeat [hidden] on the empty error slot. */
@@ -193,6 +196,7 @@
 
   .desktop-dialog .favorite-form__row > .segmented,
   .desktop-dialog .favorite-form__row > .favorite-input,
+  .desktop-dialog .favorite-form__row > .city-field,
   .desktop-dialog .favorite-form__color-controls {
     flex: 1 1 100%;
   }
@@ -201,25 +205,10 @@
     padding: 0 6px;
     white-space: nowrap;
   }
-
-  /* Edit link: Delete, Cancel and Save do not fit one row; Delete takes its own row, Cancel and Save share the next. */
-  .desktop-dialog[data-dialog="edit-link"] .favorite-form__footer {
-    flex-wrap: wrap;
-  }
-
-  .desktop-dialog[data-dialog="edit-link"] .favorite-form__footer > .button {
-    flex: 1 1 0;
-    min-width: 0;
-  }
-
-  .desktop-dialog[data-dialog="edit-link"] .favorite-form__footer > .button--danger {
-    flex-basis: 100%;
-    margin-right: 0;
-  }
 }
 
 .desktop-dialog__error {
-  margin: 12px 0;
+  margin: 8px 0 0;
   color: var(--danger);
   font-size: var(--font-size-md);
   overflow-wrap: anywhere;
@@ -281,37 +270,62 @@
   outline: none;
 }
 
-/* Delete confirm and weather edit dialog (Task 10). */
+/* Confirm dialogs (delete, hide): no bottom margin, the 16px to the actions comes from --modal-actions-margin-top. */
 .desktop-dialog__body {
-  margin: 0 0 4px;
+  margin: 0;
   color: var(--muted);
   font-size: var(--font-size-md);
 }
 
-.desktop-dialog[data-dialog="confirm-delete"] .favorite-form__footer {
-  justify-content: flex-end;
-  margin-top: 12px;
-  padding-bottom: 0;
-}
-
-.desktop-dialog[data-dialog="confirm-delete"] .favorite-form__footer .button--danger {
-  margin-right: 0;
-}
-
-.desktop-dialog__city {
+/* City-field (Edit weather, City row): a button that looks like .favorite-input and shows the value and a hint. */
+.city-field {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--form-row-gap);
+  flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
   min-height: var(--control-height);
-  margin-bottom: 8px;
+  padding: 0 var(--control-padding-x);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-control);
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  gap: 8px;
 }
 
-.desktop-dialog__city-name {
+.city-field:disabled {
+  cursor: default;
+  opacity: var(--control-disabled-opacity);
+}
+
+.city-field > [data-weather-dialog-city] {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.city-field__hint {
+  flex: none;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.desktop-dialog .city-field:focus-visible {
+  background: var(--soft-fill);
+  box-shadow: 0 0 0 2px var(--focus-overlay-ring);
+}
+
+/* Selected segment inside dialogs: soft fill, weight and an inset ring (the global rule in controls.css stays primary). */
+.desktop-dialog .segmented__option:has(input:checked) {
+  background: var(--soft-fill-strong);
+  color: var(--text);
+  font-weight: var(--font-weight-control);
+  box-shadow: inset 0 0 0 1px var(--border-control);
 }
 
 /* Add menu (edit mode, >= 1 hidden metric): a popover anchored to the Add tile, placed by newtab.js. */

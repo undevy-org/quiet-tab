@@ -1019,7 +1019,7 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     }
     for (const block of css.matchAll(/@media \(max-width: \d+px\) \{[\s\S]*?\n\}/g)) assert.doesNotMatch(block[0], /weather-tile/);
     assert.match(css, /\.desktop-status \{[^}]*width: max-content;[^}]*max-width: min\(560px, calc\(100vw - 32px\)\);/s);
-    assert.match(styles, /\.desktop-dialog__error \{\s*margin: 12px 0;/);
+    assert.match(styles, /\.desktop-dialog__error \{\s*margin: 8px 0 0;/);
     assert.doesNotMatch(css, /--metric-(on|off)/);
     assert.doesNotMatch(css, /z-index 40/);
   });
