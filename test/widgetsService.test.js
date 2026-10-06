@@ -15,13 +15,25 @@ const COLS = { columns: 12 };
 const g = (x, y, w = 1, h = 1) => ({ x, y, w, h });
 const metric = (id, extra = {}) => ({ id, type: "weather-metric", enabled: true, ...extra });
 
-// v2 seed with a validity guard, so a malformed fixture fails loudly instead of testing nothing.
-async function seed(store, items) {
-  const state = { version: 2, items, createdAt: NOW, updatedAt: NOW };
-  assert.equal(isWidgetsState(state), true, "seed state must be a valid v2 state");
+// Run 15 (centered grid): the stored `grid.x` counts from the center line, origin = floor(columns / 2). These tests keep
+// thinking in DISPLAYED cells: `seed` takes the cells a person sees at `columns` columns (default 12) and stores them
+// as displayed - origin; `gridsOf` and `shown` read stored grids back as displayed cells. `stored` is the raw frame.
+const originOf = (columns) => Math.floor(columns / 2); // independent of the engine
+const shift = (grid, dx) => (grid ? { ...grid, x: grid.x + dx } : grid);
+const shown = (grid, columns = 12) => shift(grid, originOf(columns));
+// v3 seed with a validity guard, so a malformed fixture fails loudly instead of testing nothing.
+async function seed(store, items, columns = 12) {
+  const state = {
+    version: 3,
+    items: items.map((item) => (item.grid ? { ...item, grid: shift(item.grid, -originOf(columns)) } : item)),
+    createdAt: NOW,
+    updatedAt: NOW
+  };
+  assert.equal(isWidgetsState(state), true, "seed state must be a valid v3 state");
   await store.setState(state);
 }
-const gridsOf = (state) => Object.fromEntries(state.items.map((item) => [item.id, item.grid]));
+const gridsOf = (state, columns = 12) => Object.fromEntries(state.items.map((item) => [item.id, shown(item.grid, columns)]));
+const storedGridsOf = (state) => Object.fromEntries(state.items.map((item) => [item.id, item.grid]));
 
 async function createHarness() {
   let id = 0;
@@ -162,7 +174,7 @@ describe("widgetsService", () => {
         customIconUrl: null,
         backgroundColor: "#24292f",
         backgroundColorSource: "auto",
-        grid: g(0, 0),
+        grid: g(0, 0), // stored from the center line: displayed (6, 0) at 12 columns
         createdAt: NOW,
         updatedAt: NOW
       }
@@ -242,13 +254,15 @@ describe("widgetsService", () => {
     const { service } = await createHarness();
 
     const defaulted = await service.addFavorite({ url: "example.com" }, COLS);
-    assert.deepEqual(defaulted.items[0].grid, g(0, 0));
+    assert.deepEqual(shown(defaulted.items[0].grid), g(6, 0));
 
     const wide = await service.addFavorite({
       url: "wide.example.com",
       w: 2
     }, COLS);
-    assert.deepEqual(wide.items[1].grid, g(1, 0, 2, 1));
+    // changed in run 15: the nearest free pair to the center (block center 5 of 6), not the first free cell from the left
+    assert.deepEqual(shown(wide.items[1].grid), g(4, 0, 2, 1));
+    assert.deepEqual(wide.items[1].grid, g(-2, 0, 2, 1));
   });
 
   it("updates the size", async () => {
@@ -267,7 +281,7 @@ describe("widgetsService", () => {
 
     const labelOnly = await service.updateFavorite("fav-1", { label: "Renamed" }, COLS);
     assert.equal("tileSize" in labelOnly.items[0], false);
-    assert.deepEqual(labelOnly.items[0].grid, g(0, 0, 2, 1));
+    assert.deepEqual(shown(labelOnly.items[0].grid), g(0, 0, 2, 1));
     const resized = await service.updateFavorite("fav-2", { w: 2, h: 2 }, COLS);
     assert.equal("tileSize" in resized.items[1], false);
     assert.equal(resized.items[1].label, "Example");
@@ -309,7 +323,7 @@ describe("widgetsService", () => {
       state.items.map((item) => item.id),
       ["fav-2"]
     );
-    assert.deepEqual(gridsOf(state), { "fav-2": g(1, 0) });
+    assert.deepEqual(gridsOf(state), { "fav-2": g(5, 0) }); // fav-1 took the middle (6,0), fav-2 the cell left of it
     assert.deepEqual(await store.getState(), state);
   });
 
@@ -411,23 +425,23 @@ describe("widgetsService: whole-window drag (AS-DL-11)", () => {
   // Layout A (0,0), B (0,1); every call starts from a fresh store.
   async function twoTiles() {
     const h = await createHarness();
-    await seed(h.store, [favorite({ id: "A", grid: g(0, 0) }), favorite({ id: "B", grid: g(0, 1) })]);
+    await seed(h.store, [favorite({ id: "A", grid: g(0, 0) }), favorite({ id: "B", grid: g(0, 1) })], 15);
     return h;
   }
 
   it("moveWidget with viewportRows 9 accepts a row of the first screen and stores it", async () => {
     const { service, store } = await twoTiles();
     const state = await service.moveWidget("A", { x: 4, y: 7 }, { columns: 15, viewportRows: 9 });
-    assert.deepEqual(gridsOf(state), { A: g(4, 7), B: g(0, 1) });
-    assert.deepEqual(gridsOf(await store.getState()), { A: g(4, 7), B: g(0, 1) });
+    assert.deepEqual(gridsOf(state, 15), { A: g(4, 7), B: g(0, 1) });
+    assert.deepEqual(gridsOf(await store.getState(), 15), { A: g(4, 7), B: g(0, 1) });
   });
 
   it("without viewportRows the old rule holds (lowest row 1: row 2 at most)", async () => {
     const { service, store } = await twoTiles();
     await assert.rejects(() => service.moveWidget("A", { x: 4, y: 7 }, { columns: 15 }), PlacementError);
-    assert.deepEqual(gridsOf(await store.getState()), { A: g(0, 0), B: g(0, 1) });
+    assert.deepEqual(gridsOf(await store.getState(), 15), { A: g(0, 0), B: g(0, 1) });
     const state = await service.moveWidget("A", { x: 4, y: 2 }, { columns: 15 });
-    assert.deepEqual(gridsOf(state), { A: g(4, 2), B: g(0, 1) });
+    assert.deepEqual(gridsOf(state, 15), { A: g(4, 2), B: g(0, 1) });
   });
 
   it("a viewportRows that is not an integer in 0..4096 is treated as 0: it only narrows the area", async () => {
@@ -438,31 +452,31 @@ describe("widgetsService: whole-window drag (AS-DL-11)", () => {
         PlacementError,
         String(bad)
       );
-      assert.deepEqual(gridsOf(await store.getState()), { A: g(0, 0), B: g(0, 1) }, String(bad));
+      assert.deepEqual(gridsOf(await store.getState(), 15), { A: g(0, 0), B: g(0, 1) }, String(bad));
     }
   });
 
   it("the upper bound 4096 itself is a valid viewportRows", async () => {
     const { service } = await twoTiles();
     const state = await service.moveWidget("A", { x: 4, y: 7 }, { columns: 15, viewportRows: 4096 });
-    assert.deepEqual(state.items.find((item) => item.id === "A").grid, g(4, 7));
+    assert.deepEqual(shown(state.items.find((item) => item.id === "A").grid, 15), g(4, 7));
   });
 
   it("the last column is a target; one past it is not", async () => {
     const { service } = await twoTiles();
     const state = await service.moveWidget("A", { x: 14, y: 0 }, { columns: 15 });
-    assert.deepEqual(state.items.find((item) => item.id === "A").grid, g(14, 0));
+    assert.deepEqual(shown(state.items.find((item) => item.id === "A").grid, 15), g(14, 0));
     const fresh = await twoTiles();
     await assert.rejects(() => fresh.service.moveWidget("A", { x: 15, y: 0 }, { columns: 15 }), PlacementError);
   });
 
   it("a 2-wide block ends at the last column: x 21 of 23 fits, x 22 does not", async () => {
     const h = await createHarness();
-    await seed(h.store, [favorite({ id: "A", grid: g(0, 0, 2, 1) })]);
+    await seed(h.store, [favorite({ id: "A", grid: g(0, 0, 2, 1) })], 23);
     const state = await h.service.moveWidget("A", { x: 21, y: 0 }, { columns: 23 });
-    assert.deepEqual(state.items[0].grid, g(21, 0, 2, 1));
+    assert.deepEqual(shown(state.items[0].grid, 23), g(21, 0, 2, 1));
     const fresh = await createHarness();
-    await seed(fresh.store, [favorite({ id: "A", grid: g(0, 0, 2, 1) })]);
+    await seed(fresh.store, [favorite({ id: "A", grid: g(0, 0, 2, 1) })], 23);
     await assert.rejects(() => fresh.service.moveWidget("A", { x: 22, y: 0 }, { columns: 23 }), PlacementError);
   });
 
@@ -472,7 +486,7 @@ describe("widgetsService: whole-window drag (AS-DL-11)", () => {
       const added = await service.addFavorite({ url: "example.com" }, { columns });
       assert.equal(added.items.length, 3, `add at ${columns}`);
       const moved = await service.moveWidget("A", { x: columns - 1, y: 0 }, { columns });
-      assert.deepEqual(moved.items.find((item) => item.id === "A").grid, g(columns - 1, 0), `move at ${columns}`);
+      assert.deepEqual(shown(moved.items.find((item) => item.id === "A").grid, columns), g(columns - 1, 0), `move at ${columns}`);
       const resized = await service.updateFavorite("A", { w: 2 }, { columns });
       assert.equal(resized.items.find((item) => item.id === "A").grid.w, 2, `resize at ${columns}`);
     }
@@ -490,23 +504,23 @@ describe("widgetsService: whole-window drag (AS-DL-11)", () => {
 
   it("own row (N1): a tile that sits below the allowed area may stay in its row without viewportRows", async () => {
     const { service, store } = await createHarness();
-    await seed(store, [favorite({ id: "A", grid: g(0, 5) }), favorite({ id: "B", grid: g(1, 0) }), favorite({ id: "C", grid: g(2, 0) })]);
+    await seed(store, [favorite({ id: "A", grid: g(0, 5) }), favorite({ id: "B", grid: g(1, 0) }), favorite({ id: "C", grid: g(2, 0) })], 15);
     const state = await service.moveWidget("A", { x: 3, y: 5 }, { columns: 15 });
-    assert.deepEqual(state.items.find((item) => item.id === "A").grid, g(3, 5));
+    assert.deepEqual(shown(state.items.find((item) => item.id === "A").grid, 15), g(3, 5));
     await assert.rejects(() => service.moveWidget("A", { x: 3, y: 6 }, { columns: 15 }), PlacementError);
     // and with viewportRows (the first screen is shorter than the own row)
     const up = await service.moveWidget("A", { x: 4, y: 8 }, { columns: 15, viewportRows: 9 });
-    assert.deepEqual(up.items.find((item) => item.id === "A").grid, g(4, 8));
+    assert.deepEqual(shown(up.items.find((item) => item.id === "A").grid, 15), g(4, 8));
   });
 
   it("every drop the page's rule accepts, the service accepts (same helper, same numbers)", async () => {
     // lowest row 12, 9 viewport rows: row 13 is the last target, 14 is not.
     const h = await createHarness();
-    await seed(h.store, [favorite({ id: "A", grid: g(0, 0) }), favorite({ id: "L", grid: g(10, 12) })]);
+    await seed(h.store, [favorite({ id: "A", grid: g(0, 0) }), favorite({ id: "L", grid: g(10, 12) })], 15);
     const state = await h.service.moveWidget("A", { x: 3, y: 13 }, { columns: 15, viewportRows: 9 });
-    assert.deepEqual(state.items.find((item) => item.id === "A").grid, g(3, 13));
+    assert.deepEqual(shown(state.items.find((item) => item.id === "A").grid, 15), g(3, 13));
     const fresh = await createHarness();
-    await seed(fresh.store, [favorite({ id: "A", grid: g(0, 0) }), favorite({ id: "L", grid: g(10, 12) })]);
+    await seed(fresh.store, [favorite({ id: "A", grid: g(0, 0) }), favorite({ id: "L", grid: g(10, 12) })], 15);
     await assert.rejects(() => fresh.service.moveWidget("A", { x: 3, y: 14 }, { columns: 15, viewportRows: 9 }), PlacementError);
   });
 });
@@ -589,7 +603,7 @@ describe("widgetsService with weather metrics", () => {
     const grids = gridsOf(state);
     assert.deepEqual(grids.new0, g(8, 0));
     assert.deepEqual(grids["weather:temperature"], g(2, 0));
-    assert.deepEqual(grids["weather:uv"], g(7, 0));
+    assert.deepEqual(grids["weather:uv"], g(7, 0)); // displayed cells at 12 columns; the new link is the free cell nearest the center (8, then 9..)
   });
 
   it("updates a metric's size and enabled, rejects bad input and unknown ids", async () => {
@@ -612,7 +626,7 @@ describe("widgetsService with weather metrics", () => {
   it("every mutation reports the newer-version message (not 'not found') when the meta became newer", async () => {
     const { area, service } = await serviceWithMetrics();
     const before = await area.get(null);
-    const newer = { ...before.quietTabWidgetsMeta, version: 3 };
+    const newer = { ...before.quietTabWidgetsMeta, version: 4 };
     await area.set({ quietTabWidgetsMeta: newer });
     const snapshot = await area.get(null);
     const message = { message: NEWER_WIDGETS_MESSAGE };
