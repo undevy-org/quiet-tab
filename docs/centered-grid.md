@@ -2,7 +2,7 @@
 
 ## Status
 
-`draft`
+`implemented`
 
 Decision: **do it**. Owner request 2026-10-06 (local session): the grid starts from the center of the screen by default; the starting tiles sit in the center and new cells appear from the center towards the edges. Owner answers to the UX questions (2026-10-06):
 
@@ -112,7 +112,7 @@ Common setup unless stated: unpacked extension in the E2E harness (`--hide-scrol
 ### AS-CG-04 New links fill from the center outwards
 - Given: 1280×800, the default row, no links.
 - When: nine links are added one by one through Add link (1×1 each).
-- Then: they are drawn at (11,0), (2,0), (12,0), (1,0), (13,0), (0,0), then (7,1), (6,1), (8,1); stored x: 4, −5, 5, −6, 6, −7, 0, −1, 1. Focus after each add is on the new tile (unchanged rule).
+- Then: they are drawn at (11,0), (2,0), (12,0), (1,0), (13,0), (0,0), then (7,1), (6,1), (8,1); stored x: 4, −5, 5, −6, 6, −7, 0, −1, 1. Focus after each add returns to the Add tile (the unchanged add rule, `dg-17`), not to the new tile.
 - Verified by: E2E `dg-57` (group 4); `test/desktopLayout.test.js` (`placeNew` order with ties to the right; a 2×1 and a 2×2 block; an odd column count).
 
 ### AS-CG-05 A restored weather tile takes the nearest free block to the center

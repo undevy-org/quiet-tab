@@ -12,8 +12,10 @@ weather tiles — nothing else.
 
 - A full-window, macOS-style desktop grid: links, weather tiles and two fixed
   tiles (Settings and Add) sit on a 2D grid of 1×1, 2×1 or 2×2 cells. The
-  number of columns follows the window (2 or more); a narrower window repacks the
-  tiles for display only, and widening it restores your arrangement.
+  number of columns follows the window (an even count, 2 or more); the tiles
+  start in the middle of the window, a new tile goes to the free cell nearest the
+  middle, a narrower window repacks the tiles for display only, and widening it
+  restores your arrangement around the middle.
 - Edit mode (turned on by the Settings tile; Settings again, Escape or a click
   on the background turns it off): tiles jiggle, a − badge deletes a link or
   hides a weather tile, and any tile can be dragged to a free cell.

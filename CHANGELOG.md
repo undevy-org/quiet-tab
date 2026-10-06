@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The desk starts from the middle of the window. The grid always has an even number of
+  columns, a fresh install puts the weather, Settings and Add tiles in the center of
+  the row, widening or narrowing the window keeps the tiles around the center, and
+  layouts saved by the earlier development layout are moved to the center once on the
+  first open. Weather tiles of an upgraded legacy layout are placed as one block
+  below the links. E2E: `dg-57-centered-grid.mjs`.
 - First run: while the "Show weather on your new tab?" window is open, the page behind it is
   empty (no links, Settings, Add or hint tile); they appear with a soft fade when the window
   closes, also for users who already have links. The window now opens before the page is
@@ -54,7 +60,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   allowed cell and the outline is drawn there; only an occupied cell shows the
   dashed error outline (the drop is rejected and writes nothing).
 - Dragging a tile in edit mode now works over the whole window: the columns fill
-  the window width, every row of the first screen is a drop target (below it a
+  the window width (an even count, so one edge column can go to the margins), every row of the first screen is a drop target (below it a
   tile can still go one row below the lowest tile), and a pointer in the side
   margins, above the grid or below the last row targets the nearest allowed cell.
   Only an occupied cell is invalid, and a drop inside the window never makes the
@@ -103,8 +109,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   slides back).
 - Dialogs for adding and editing a link (address, name, icon, color, size), a
   weather edit dialog (size, and the city through the city modal), and an Add menu
-  in edit mode that restores hidden weather tiles. A new link takes the first free
-  cell from the top left.
+  in edit mode that restores hidden weather tiles. A new link takes the free
+  cell nearest to the center of the first row that has one.
 - A page status line reports a change that could not be saved; nothing is
   half-applied.
 - Weather tiles in the same grid as your links: temperature, precipitation, air
@@ -126,13 +132,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Favorites are stored in a new widgets layout (`quietTabWidgetsMeta` /
-  `quietTabWidget:<id>`, layout version 2) where every widget stores its own cell
-  (`grid: { x, y, w, h }`). Existing favorites are migrated automatically on the
+  `quietTabWidget:<id>`, layout version 3) where every widget stores its own cell
+  (`grid: { x, y, w, h }`, with `x` counted from the center line of the grid). Existing favorites are migrated automatically on the
   first open, keeping their arrangement; the migration is chunked and resumable,
   locks the grid with an explanation and "reload this tab" advice (never clipped)
   if it fails, leaves your data untouched in that case, and never runs over data
   written by a newer version. A widget whose cell is missing or broken is kept and
-  placed at the first free cell instead of being dropped.
+  placed at the free cell nearest to the center instead of being dropped.
 - The Settings and Add tiles are restored automatically if they are ever missing
   from the synced layout.
 - Tiles take their size from the grid cell (72px, 64px on windows up to 600px
