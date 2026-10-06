@@ -1,6 +1,6 @@
 // src/desktopUiState.js — pure UI state for the desktop grid (no DOM, no I/O). Spec § Edit mode, § Escape order (AS-11).
 export const MENU_KINDS = new Set(["add", "restore-weather"]);
-export const DIALOG_KINDS = new Set(["add-link", "edit-link", "edit-weather", "confirm-delete"]);
+export const DIALOG_KINDS = new Set(["add-link", "edit-link", "edit-weather", "confirm-delete", "confirm-hide-weather"]);
 
 export function createDesktopUiState() {
   return { editMode: false, menu: null, dialog: null, drag: null };

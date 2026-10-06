@@ -152,7 +152,7 @@ describe("newtab weather source", () => {
 
   it("resets suggestion state on every fresh mount of the city form and guards stale async responses", async () => {
     const code = await source();
-    const formStart = code.indexOf("function createCityForm(mode) {");
+    const formStart = code.indexOf("function createCityForm(mode, location) {");
     const formEnd = code.indexOf("function createWeatherMetricTile(");
     const form = code.slice(formStart, formEnd);
 
@@ -171,7 +171,7 @@ describe("newtab weather source", () => {
 
   it("keeps the input focused when clicking a suggestion, so the click is not lost to a blur race", async () => {
     const code = await source();
-    const formStart = code.indexOf("function createCityForm(mode) {");
+    const formStart = code.indexOf("function createCityForm(mode, location) {");
     const formEnd = code.indexOf("function createWeatherMetricTile(");
     const form = code.slice(formStart, formEnd);
 
@@ -187,7 +187,7 @@ describe("newtab weather source", () => {
 
   it("cancels a pending suggestion request when focus leaves the field wrapper or Escape is pressed (Escape is central)", async () => {
     const code = await source();
-    const formStart = code.indexOf("function createCityForm(mode) {");
+    const formStart = code.indexOf("function createCityForm(mode, location) {");
     const formEnd = code.indexOf("function createWeatherMetricTile(");
     const form = code.slice(formStart, formEnd);
 
@@ -238,7 +238,7 @@ describe("newtab weather source", () => {
     const branch = listeners.slice(branchStart, listeners.indexOf("root.addEventListener(\"submit\""));
     assert.match(branch, /activeCityForm\?\.choose\(\{/);
     assert.doesNotMatch(branch, /changeCity/);
-    const form = code.slice(code.indexOf("function createCityForm(mode) {"), code.indexOf("function buildCityModal("));
+    const form = code.slice(code.indexOf("function createCityForm(mode, location) {"), code.indexOf("function buildCityModal("));
     const choose = form.slice(form.indexOf("choose(city) {"), form.indexOf("chosen: () =>"));
     assert.match(choose, /^choose\(city\) \{\s*closeList\(\);/);
     assert.match(choose, /input\.focus\(\)/);
@@ -250,7 +250,7 @@ describe("newtab weather source", () => {
 
   it("the clear button empties the field, closes the list, cancels the request, forgets the choice and focuses the field", async () => {
     const code = await source();
-    const form = code.slice(code.indexOf("function createCityForm(mode) {"), code.indexOf("function buildCityModal("));
+    const form = code.slice(code.indexOf("function createCityForm(mode, location) {"), code.indexOf("function buildCityModal("));
     const start = form.indexOf('clear.addEventListener("click"');
     assert.ok(start > -1);
     const handler = form.slice(start, form.indexOf("});", start));
@@ -262,7 +262,7 @@ describe("newtab weather source", () => {
 
   it("a pointer press is tracked for the main button only, cleared on window blur, and every listener is disposed", async () => {
     const code = await source();
-    const form = code.slice(code.indexOf("function createCityForm(mode) {"), code.indexOf("function buildCityModal("));
+    const form = code.slice(code.indexOf("function createCityForm(mode, location) {"), code.indexOf("function buildCityModal("));
     const down = form.slice(form.indexOf("const onPointerDown"), form.indexOf("const onPointerUp"));
     assert.match(down, /if \(event\.button !== 0\) return;/);
     assert.match(form, /const onWindowBlur = \(\) => \{\s*pressing = false;/);
@@ -299,7 +299,7 @@ describe("newtab weather source", () => {
 
   it("disambiguates suggestions with the same name using admin1", async () => {
     const code = await source();
-    const formStart = code.indexOf("function createCityForm(mode) {");
+    const formStart = code.indexOf("function createCityForm(mode, location) {");
     const formEnd = code.indexOf("function createWeatherMetricTile(");
     const form = code.slice(formStart, formEnd);
 
