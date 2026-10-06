@@ -227,26 +227,6 @@
   color: var(--danger);
 }
 
-.text-button {
-  flex: none;
-  min-height: var(--control-height);
-  padding: 0 4px;
-  border: 0;
-  border-radius: var(--radius-control);
-  background: none;
-  color: var(--text);
-  font: inherit;
-  font-weight: var(--font-weight-control);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  cursor: pointer;
-}
-
-.text-button:disabled {
-  color: var(--muted);
-  cursor: default;
-}
-
 .weather-form {
   display: flex;
   flex-direction: column;
