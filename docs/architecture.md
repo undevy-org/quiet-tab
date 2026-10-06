@@ -194,13 +194,17 @@ retry; a retry only writes the cache that `initialize()` already writes.
 
 ### City modal
 
-- **First-run rule.** After the first grid render, once per page load,
-  `shouldAutoShowCityPrompt` opens the modal in first-run mode only when the
-  stored city was read and is unset, the flag was read and is not set, at least one
-  weather tile is shown, weather is available, and the grid is not locked (newer
-  meta or failed migration). Any unknown input (a failed read) means it does not open.
-  It never replaces, duplicates or reopens a modal that was already opened (and closed)
-  during this page load.
+- **First-run rule.** The decision is taken once per page load, **before** the
+  first grid render. First `firstRunPromptPossible` checks every input except the
+  flag (the stored city was read and is unset, at least one weather tile is enabled,
+  weather is available, the grid is not locked: no newer meta, no failed migration);
+  only if it passes is the dismissal flag read, capped at 250 ms (a read that fails
+  or is slower counts as unknown and a late result is ignored). Then
+  `shouldAutoShowCityPrompt` opens the modal in first-run mode only when the flag was
+  read and is not set as well. Any unknown input means it does not open. The first
+  render, the ensure-failure status and the weather start follow in every case; a
+  resize before that first render does not render. It never replaces, duplicates or
+  reopens a modal that was already opened (and closed) during this page load.
 - **Dismissal.** Closing the first-run modal by any route (Not now, Escape, a click
   on the backdrop) writes the flag; a failed write is silent, so the modal may show
   again next time. Choosing a city does not write it (a city being set is what
@@ -232,7 +236,15 @@ retry; a retry only writes the cache that `initialize()` already writes.
   with a pointer (not Enter/Space) on the backdrop, Not now/Cancel or Save within 350 ms is
   ignored, so the second click of a double click cannot dismiss or submit.
 - **Background.** While open, the grid is `inert` (and, when stacked, the weather
-  edit dialog under it), so the modal is the only interactive region.
+  edit dialog under it), so the modal is the only interactive region. While the
+  first-run modal is open the desk is also veiled: `#favorites[data-veiled]` is
+  `visibility: hidden`, one screen high with no scroll, so no tile is painted,
+  hit-testable, focusable or in the accessibility tree (the tiles stay in the DOM);
+  the change-mode modal never veils. `showCityModal` sets the veil right after the
+  insertion and `hideCityModal` clears it before focus is restored. On close, unless
+  reduced motion is on, `#favorites[data-reveal]` runs one `desk-reveal` fade
+  (opacity 0 to 1, 200 ms, ease-out), ended by the desk's own `animationend` with a
+  400 ms fallback timer.
 - **Focus.** In change mode focus moves to the city field at once; the first-run
   modal never takes focus by itself. Tab wraps inside the modal, and Tab from `body`
   or outside it enters the modal; while a request runs every control is disabled, so Tab does nothing and focus stays on `body`.

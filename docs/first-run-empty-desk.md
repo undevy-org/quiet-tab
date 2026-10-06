@@ -2,7 +2,7 @@
 
 ## Status
 
-`draft`
+`implemented`
 
 Decision: **do it**. Owner request 2026-10-06 (local session): on the first run, while the city modal is open there must be no tiles under it; Settings, Add and the "Set a city" hint appear only after the modal closes. Owner answers to the UX questions (2026-10-06): the tiles appear with a soft fade (about 200 ms), instantly with reduced motion; users who already have links (e.g. a second computer where the links arrived through sync and no city is set) also get the empty desk while the modal is open ("Да, пустой стол всегда").
 
