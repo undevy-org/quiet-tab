@@ -466,8 +466,8 @@ describe("newtab city modal source", () => {
   it("the automatic prompt never reopens a modal already shown this page load", async () => {
     const code = await source();
     assert.match(code, /let cityModalShownThisLoad = false;/);
-    const auto = between(code, "function maybeAutoShowCityPrompt(", "const items");
-    assert.match(auto, /cityModalShownThisLoad/);
+    const auto = between(code, "function maybeAutoShowCityPrompt(", "\n}\n");
+    assert.match(auto, /if \(cityModalRoot \|\| desktopDialogRoot \|\| cityModalShownThisLoad\) return;/);
     const show = between(code, "function showCityModal(", "// `dismiss` is set");
     assert.match(show, /cityModalShownThisLoad = true;/);
   });
@@ -550,40 +550,65 @@ describe("newtab first-run city prompt source", () => {
     return code.slice(start, code.indexOf("})();", start));
   }
 
-  it("evaluates the automatic prompt exactly once, in the bootstrap, after the first render", async () => {
+  // docs/first-run-empty-desk.md decision 3: ONE decision point, before the first render.
+  const betweenIn = (code, from, to) => {
+    const start = code.indexOf(from);
+    assert.ok(start > -1, from);
+    const end = code.indexOf(to, start + from.length);
+    assert.ok(end > start, `${from} .. ${to}`);
+    return code.slice(start, end);
+  };
+  const functionBody = (code, name) => betweenIn(code, `function ${name}(`, "\n}\n");
+
+  it("takes the prompt decision once, in the bootstrap, BEFORE the first render: early check, capped flag read, modal, render, status, weather", async () => {
     const code = await source();
     assert.equal(code.match(/maybeAutoShowCityPrompt\(\{ flagRead, dismissed \}\);/g)?.length, 1); // the one call (the definition has no semicolon)
     assert.equal(code.match(/maybeAutoShowCityPrompt\(/g)?.length, 2); // definition + one call
     const boot = bootstrap(code);
+    const stateRead = boot.indexOf("widgetsState = await widgetsService.getState();");
+    const location = boot.indexOf("weatherLocationKnown = true;");
+    const early = boot.indexOf("firstRunPromptPossible(promptLiveState())");
+    const flag = boot.indexOf("await readDismissalFlag()");
     const call = boot.indexOf("maybeAutoShowCityPrompt({ flagRead, dismissed });");
-    assert.ok(call > 0, "called from the bootstrap");
-    const lastRender = boot.lastIndexOf("renderFavorites();", call);
-    const startWeather = boot.lastIndexOf("void startWeather();", call);
-    assert.ok(lastRender > 0 && startWeather > lastRender && call > startWeather, "render, then weather, then the prompt");
-    assert.ok(boot.indexOf("weatherPromptStore.isDismissed()") > startWeather, "the flag is read after the first render");
+    const firstRender = boot.indexOf("\n    renderFavorites();\n", call); // the first render of the normal path (4-space indent; the error paths are nested deeper)
+    const status = boot.indexOf("if (widgetsEnsureFailed) showDesktopStatus(ENSURE_FAILED_MESSAGE, { persist: true });", firstRender);
+    const startWeather = boot.indexOf("void startWeather();", firstRender);
+    assert.ok(stateRead > 0 && location > stateRead, "state and city are read first");
+    assert.ok(early > location, "the early check follows the city read");
+    assert.ok(flag > early && call > flag, "early check, then the flag read, then the decision");
+    assert.ok(firstRender > call, "the first render comes after the decision");
+    assert.ok(status > firstRender && startWeather > status, "render, then the ensure-failure status, then weather (today's order)");
+    assert.equal(boot.indexOf("isDismissed", firstRender), -1, "no flag read after the first render");
+    assert.equal(code.match(/\.isDismissed\(\)/g)?.length, 1, "the flag is read in exactly one place");
+    // the flag is read only when the early check passes; an exception before the modal is inserted never blocks the render
+    assert.match(boot.slice(0, firstRender), /try \{\s*if \(firstRunPromptPossible\(promptLiveState\(\)\)\) \{\s*const \{ flagRead, dismissed \} = await readDismissalFlag\(\);\s*maybeAutoShowCityPrompt\(\{ flagRead, dismissed \}\);\s*\}\s*\} catch \{/);
   });
 
-  it("fails closed when the flag cannot be read", async () => {
-    const boot = bootstrap(await source());
-    assert.match(boot, /let flagRead = false;/);
-    assert.match(boot, /catch \{\s*flagRead = false;/);
-    assert.match(boot, /dismissed = await weatherPromptStore\.isDismissed\(\);\s*flagRead = true;/);
+  it("reads the flag with a 250 ms cap, fails closed on error or timeout and ignores a late result", async () => {
+    const code = await source();
+    assert.match(code, /const FLAG_READ_CAP_MS = 250;/);
+    const read = functionBody(code, "readDismissalFlag");
+    assert.match(read, /Promise\.race\(/);
+    assert.match(read, /setTimeout\([^;]*FLAG_READ_CAP_MS\)/);
+    assert.match(read, /clearTimeout\(/);
+    assert.match(read, /const unknown = \{ flagRead: false, dismissed: false \};/);
+    assert.match(read, /weatherPromptStore\.isDismissed\(\)\.then\(\(dismissed\) => \(\{ flagRead: true, dismissed \}\), \(\) => unknown\)/); // a rejection is unknown too; the late settle is a no-op
   });
 
   it("builds the prompt store only with local storage and writes the flag silently", async () => {
     const code = await source();
-    assert.match(code, /import \{ feedbackReserve, shouldAutoShowCityPrompt \} from "\.\/cityPrompt\.js";/);
+    assert.match(code, /import \{ feedbackReserve, firstRunPromptPossible, shouldAutoShowCityPrompt \} from "\.\/cityPrompt\.js";/);
     assert.match(code, /const weatherPromptStore = hasStorageArea\(localStorageArea\) \? createWeatherPromptStore\(localStorageArea\) : null;/);
     assert.match(code, /weatherPromptStore\.dismiss\(\)\.catch\(/);
     assert.doesNotMatch(code, /onFirstRunDismissed\(\) \{\}/);
   });
 
-  it("feeds the pure rule with live state and never replaces an open modal", async () => {
+  it("feeds the pure rules with live state and never replaces an open modal", async () => {
     const code = await source();
-    const start = code.indexOf("function maybeAutoShowCityPrompt(");
-    assert.ok(start >= 0);
-    const body = code.slice(start, code.indexOf("\n}\n", start));
-    assert.match(body, /^function maybeAutoShowCityPrompt\(\{ flagRead, dismissed \}\) \{\s*if \(cityModalRoot \|\| desktopDialogRoot \|\| cityModalShownThisLoad\) return;/);
+    const auto = functionBody(code, "maybeAutoShowCityPrompt");
+    assert.match(auto, /^function maybeAutoShowCityPrompt\(\{ flagRead, dismissed \}\) \{\s*if \(cityModalRoot \|\| desktopDialogRoot \|\| cityModalShownThisLoad\) return;/);
+    assert.match(auto, /shouldAutoShowCityPrompt\(\{ \.\.\.promptLiveState\(\), flagRead, dismissed \}\)/);
+    const live = functionBody(code, "promptLiveState");
     for (const part of [
       "locationRead: weatherLocationKnown && !weatherLocationError",
       "hasLocation: Boolean(weatherLocation)",
@@ -591,8 +616,59 @@ describe("newtab first-run city prompt source", () => {
       "weatherAvailable: Boolean(weatherService && weatherPromptStore)",
       "gridLocked: widgetsNewer || widgetsMigrationFailed"
     ]) {
-      assert.ok(body.includes(part), part);
+      assert.ok(live.includes(part), part);
     }
+  });
+
+  it("the resize handler renders nothing until the first render has happened (no tile before the decision)", async () => {
+    const code = await source();
+    const start = code.indexOf('window.addEventListener("resize", () => {');
+    assert.ok(start > -1);
+    const handler = code.slice(start, code.indexOf("\n});\n", start));
+    assert.match(handler, /if \(!widgetsState \|\| widgetsNewer \|\| widgetsMigrationFailed \|\| renderedColumns === 0\) return;/);
+  });
+
+  it("veils the desk only from showCityModal (first-run, right after the insertion) and clears it only from hideCityModal, before focus", async () => {
+    const code = await source();
+    assert.equal(code.match(/dataset\.veiled = "true"/g)?.length, 1, "one place sets the veil");
+    const show = functionBody(code, "showCityModal");
+    const insert = show.indexOf("cityModalRoot = root;");
+    const veil = show.indexOf('if (mode === "first-run" && favoritesRoot) favoritesRoot.dataset.veiled = "true";');
+    assert.ok(insert > 0 && veil === show.indexOf("\n", insert) + 3, "the veil is the first statement after cityModalRoot = root");
+    for (const later of ["activeCityForm?.place();", "hideTooltip();", "closeAddMenu();", "favoritesRoot.inert = true;"]) {
+      assert.ok(show.indexOf(later) > veil, `${later} comes after the veil`);
+    }
+    assert.equal(code.match(/delete favoritesRoot\.dataset\.veiled/g)?.length, 1, "one place clears the veil");
+    assert.equal(code.match(/\brevealDesk\(\)/g)?.length, 2, "revealDesk: its definition and the one call");
+    const hide = functionBody(code, "hideCityModal");
+    const reveal = hide.indexOf("revealDesk();");
+    assert.ok(reveal > 0, "hideCityModal reveals the desk");
+    assert.ok(reveal < hide.indexOf("applyPendingFocus();"), "the veil is cleared before focus is restored");
+    assert.ok(reveal > hide.indexOf("cityModalRoot.remove();") && reveal < hide.indexOf("if (desktopDialogRoot) {"), "after the modal is removed, before the inert restore");
+    assert.ok(hide.includes("} else if (favoritesRoot) favoritesRoot.inert = false;"), "the inert line keeps its exact form");
+  });
+
+  it("reveals with one CSS fade, none with reduced motion, ended only by the desk's own animationend, with a fallback timer", async () => {
+    const code = await source();
+    assert.match(code, /const REVEAL_FALLBACK_MS = 400;/);
+    const reveal = functionBody(code, "revealDesk");
+    const clear = reveal.indexOf("delete favoritesRoot.dataset.veiled;");
+    const guard = reveal.indexOf("if (prefersReducedMotion()) return;");
+    const set = reveal.indexOf('favoritesRoot.dataset.reveal = "true";');
+    assert.ok(clear > 0 && guard > clear && set > guard, "clear the veil, then the reduced-motion guard, then data-reveal");
+    assert.equal(code.match(/dataset\.reveal = "true"/g)?.length, 1, "data-reveal is set in one place");
+    assert.match(reveal, /setTimeout\(endReveal, REVEAL_FALLBACK_MS\)/);
+    assert.match(code, /favoritesRoot\.addEventListener\("animationend", \(event\) => \{\s*if \(event\.target === favoritesRoot && event\.animationName === "desk-reveal"\) endReveal\(\);/);
+    assert.match(functionBody(code, "endReveal"), /delete favoritesRoot\.dataset\.reveal;/);
+  });
+
+  it("styles the veil (hidden, one screen high, no scroll) and the 200 ms ease-out reveal, off with reduced motion", async () => {
+    const css = await appStyles();
+    assert.match(css, /\.desktop\[data-veiled="true"\] \{\s*visibility: hidden;\s*height: 100vh;\s*overflow: hidden;\s*\}/);
+    assert.match(css, /@keyframes desk-reveal \{\s*from \{ opacity: 0; \}\s*to \{ opacity: 1; \}\s*\}/);
+    assert.match(css, /\.desktop\[data-reveal="true"\] \{\s*animation: desk-reveal 200ms ease-out;\s*\}/);
+    const reduced = css.match(/@media \(prefers-reduced-motion: reduce\) \{\s*\.desktop\[data-reveal="true"\] \{\s*animation: none;\s*\}\s*\}/);
+    assert.ok(reduced, "reduced motion: no reveal animation");
   });
 
   it("opens the first-run modal from one place and never calls focus() on that path", async () => {
