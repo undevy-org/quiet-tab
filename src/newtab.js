@@ -35,7 +35,7 @@ import { placeTooltip } from "./widgetsLayout.js";
 import { NEWER_WIDGETS_MESSAGE, weatherMetricKey } from "./widgetsShared.js";
 import { searchCities, WeatherApiError, weatherErrorMessage } from "./weatherApi.js";
 import { createWeatherService } from "./weatherService.js";
-import { feedbackReserve, shouldAutoShowCityPrompt } from "./cityPrompt.js";
+import { feedbackReserve, firstRunPromptPossible, shouldAutoShowCityPrompt } from "./cityPrompt.js";
 import { createWeatherCacheStore, createWeatherLocationStore, createWeatherPromptStore } from "./weatherStore.js";
 import { describeWeatherMetric } from "./weatherTiles.js";
 import {
@@ -1034,6 +1034,7 @@ function showCityModal(mode, openerSelector) {
     throw error;
   }
   cityModalRoot = root;
+  if (mode === "first-run" && favoritesRoot) favoritesRoot.dataset.veiled = "true"; // the desk stays empty under the first-run modal; hideCityModal is the only place that clears it
   activeCityForm?.place();
   cityModalShownThisLoad = true;
   weatherUi = openCityModalState(weatherUi, mode);
@@ -1062,6 +1063,7 @@ function hideCityModal({ dismiss = false } = {}) {
   weatherFormGeneration += 1; // late suggestion responses are ignored
   cityModalRoot.remove();
   cityModalRoot = null;
+  revealDesk(); // before focus is restored: Settings must be visible when applyPendingFocus runs
   weatherUi = closeCityModalState(weatherUi);
   cityModalError = "";
   cityModalHadFocus = false;
@@ -1086,20 +1088,67 @@ function onFirstRunDismissed() {
   if (weatherPromptStore) void weatherPromptStore.dismiss().catch(() => {});
 }
 
-// Evaluated once per page load, after the first grid render, on live state (spec § Storage and the automatic-show rule).
-// First-run open never moves focus (D2): showCityModal only focuses in change mode.
-function maybeAutoShowCityPrompt({ flagRead, dismissed }) {
-  if (cityModalRoot || desktopDialogRoot || cityModalShownThisLoad) return; // a modal was opened meanwhile (or already shown and closed): never replace, duplicate or reopen it
+// Reveal (docs/first-run-empty-desk.md, decision 4): the veil goes away, and unless motion is reduced the whole desk fades in
+// once (CSS `desk-reveal`, 200 ms). The animation lives on the persistent #favorites, so a re-render during the fade neither
+// restarts nor cancels it. Only the desk's own animationend ends it (child animations bubble); a timer is the fallback.
+const REVEAL_FALLBACK_MS = 400;
+let revealTimer = 0;
+
+function endReveal() {
+  clearTimeout(revealTimer);
+  if (favoritesRoot) delete favoritesRoot.dataset.reveal;
+}
+
+function revealDesk() {
+  if (!favoritesRoot || favoritesRoot.dataset.veiled !== "true") return; // nothing was veiled (change mode): no fade
+  delete favoritesRoot.dataset.veiled;
+  if (prefersReducedMotion()) return;
+  favoritesRoot.dataset.reveal = "true";
+  clearTimeout(revealTimer);
+  revealTimer = setTimeout(endReveal, REVEAL_FALLBACK_MS);
+}
+
+if (favoritesRoot) {
+  favoritesRoot.addEventListener("animationend", (event) => {
+    if (event.target === favoritesRoot && event.animationName === "desk-reveal") endReveal();
+  });
+}
+
+// The live-state inputs of the first-run rule, except the dismissal flag (read separately, capped).
+function promptLiveState() {
   const items = widgetsState?.items ?? [];
-  const show = shouldAutoShowCityPrompt({
+  return {
     locationRead: weatherLocationKnown && !weatherLocationError,
     hasLocation: Boolean(weatherLocation),
-    flagRead,
-    dismissed,
     anyMetricEnabled: items.some((item) => item.type === "weather-metric" && item.enabled === true),
     weatherAvailable: Boolean(weatherService && weatherPromptStore),
     gridLocked: widgetsNewer || widgetsMigrationFailed
+  };
+}
+
+// The dismissal flag, read once before the first render and capped: a read that fails or takes longer than the cap is unknown
+// (fail closed: no modal this load, the flag is not written) and a late result is ignored.
+const FLAG_READ_CAP_MS = 250;
+
+async function readDismissalFlag() {
+  const unknown = { flagRead: false, dismissed: false };
+  let timer = 0;
+  const cap = new Promise((resolve) => {
+    timer = setTimeout(() => resolve(unknown), FLAG_READ_CAP_MS);
   });
+  const read = weatherPromptStore.isDismissed().then((dismissed) => ({ flagRead: true, dismissed }), () => unknown);
+  try {
+    return await Promise.race([read, cap]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// The one decision point of the page load, taken before the first grid render (spec § Default decisions 3).
+// First-run open never moves focus (D2): showCityModal only focuses in change mode.
+function maybeAutoShowCityPrompt({ flagRead, dismissed }) {
+  if (cityModalRoot || desktopDialogRoot || cityModalShownThisLoad) return; // a modal was opened meanwhile (or already shown and closed): never replace, duplicate or reopen it
+  const show = shouldAutoShowCityPrompt({ ...promptLiveState(), flagRead, dismissed });
   if (show) showCityModal("first-run", null);
 }
 
@@ -1787,7 +1836,7 @@ window.addEventListener("resize", () => {
   cancelDrag(); // Review focus 1: a viewport change cancels an active drag (tile returns, nothing written)
   cancelAnimationFrame(resizeFrame);
   resizeFrame = requestAnimationFrame(() => {
-    if (!widgetsState || widgetsNewer || widgetsMigrationFailed) return;
+    if (!widgetsState || widgetsNewer || widgetsMigrationFailed || renderedColumns === 0) return; // nothing is rendered yet: the first render (after the first-run decision) lays the grid out
     if (currentColumns() !== renderedColumns || gridMetrics(viewportWidth()).cell !== renderedCell) renderFavorites();
     placeAddMenu(); // after the re-render: the Add tile may have moved
   });
@@ -2191,26 +2240,20 @@ if (favoritesRoot) {
       weatherLocationKnown = true;
     }
 
+    // One decision point, before the first render: no tile is ever painted before the modal (docs/first-run-empty-desk.md). The
+    // flag is read only when every other input already allows the modal; an exception here means no modal and no veil.
+    try {
+      if (firstRunPromptPossible(promptLiveState())) {
+        const { flagRead, dismissed } = await readDismissalFlag();
+        maybeAutoShowCityPrompt({ flagRead, dismissed });
+      }
+    } catch {
+      // the automatic prompt is best-effort; a failure must not surface as an unhandled rejection or block the render
+    }
+
     renderFavorites();
     if (widgetsEnsureFailed) showDesktopStatus(ENSURE_FAILED_MESSAGE, { persist: true });
     void startWeather();
-
-    // The flag is read after the first render so it never delays the grid.
-    let flagRead = false;
-    let dismissed = false;
-    if (weatherPromptStore) {
-      try {
-        dismissed = await weatherPromptStore.isDismissed();
-        flagRead = true;
-      } catch {
-        flagRead = false; // fail closed: an unreadable flag never shows the modal
-      }
-    }
-    try {
-      maybeAutoShowCityPrompt({ flagRead, dismissed });
-    } catch {
-      // the automatic prompt is best-effort; a failure must not surface as an unhandled rejection
-    }
   })();
 
   // Normal mode: a link tile opens its URL, the hint tile opens the city modal. A click on the background does
