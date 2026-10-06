@@ -27,10 +27,10 @@ import {
   WIDGET_TYPES
 } from "./widgetsShared.js";
 import { defaultColumnsForItems } from "./widgetsLayout.js";
-import { CHROME_IDS, isValidGrid, migrateV1ToV2, placeMissing } from "./desktopLayout.js";
+import { CHROME_IDS, centerShift, isValidGrid, isValidGridV2, migrateV1ToV2, placeMissing } from "./desktopLayout.js";
 
 export const WIDGETS_META_KEY = "quietTabWidgetsMeta";
-// A v1 meta (an upgrade in progress, possibly from another device) or an unreadable meta is never written over.
+// A v1 or v2 meta (an upgrade in progress, possibly from another device) or an unreadable meta is never written over.
 export const V1_WIDGETS_MESSAGE = "Your saved widgets are still being updated to the new layout. Reload this tab to finish.";
 export const INVALID_WIDGETS_MESSAGE =
   "Your saved widgets data could not be read, so changes are paused. Reload this tab; if this keeps happening, update Quiet Tab.";
@@ -39,7 +39,10 @@ export const INVALID_WIDGETS_MESSAGE =
 // run through it, so two new-tab pages can never interleave read-modify-write cycles.
 export const withWidgetsMutationLock = createMutationLock(WIDGETS_MUTATION_LOCK_NAME);
 
-const WIDGETS_VERSION = 2;
+// Layout version 3: a stored `grid.x` is signed and counts from the center line (docs/centered-grid.md). Version 2 counted
+// from the left column and exists only to be migrated; version 1 is the pre-desktop layout.
+const WIDGETS_VERSION = 3;
+const WIDGETS_VERSION_V2 = 2;
 const WIDGETS_VERSION_V1 = 1;
 const SYNC_WRITE_ERROR =
   "Couldn't save this change to Chrome Sync — it may be full, offline, or temporarily unavailable. Try removing a few favorites or try again shortly.";
@@ -138,12 +141,20 @@ export function isWidgetItem(value) {
   return isChromeItem(value);
 }
 
-function hasValidGrid(item) {
-  return isValidGrid(item.grid) && (item.type !== "chrome" || (item.grid.w === 1 && item.grid.h === 1));
+function hasGrid(item, gridCheck) {
+  return gridCheck(item.grid) && (item.type !== "chrome" || (item.grid.w === 1 && item.grid.h === 1));
 }
+
+// v3 reads and writes use the signed grid check; the v1 -> v2 and v2 -> v3 steps read with the non-negative v2 check.
+const hasValidGrid = (item) => hasGrid(item, isValidGrid);
+const hasValidGridV2 = (item) => hasGrid(item, isValidGridV2);
 
 function isStrictWidgetItem(value) {
   return isWidgetItem(value) && hasValidGrid(value);
+}
+
+function isStrictWidgetItemV2(value) {
+  return isWidgetItem(value) && hasValidGridV2(value);
 }
 
 function countOf(items, type) {
@@ -151,13 +162,13 @@ function countOf(items, type) {
 }
 
 // `lenient` is for reads: items may lack a valid grid. Writes (setState) are strict: every item has one.
-function isWidgetsStateWith(value, itemCheck) {
+function isWidgetsStateWith(value, itemCheck, version = WIDGETS_VERSION) {
   const requiredFields = ["version", "items", "createdAt", "updatedAt"];
 
   return (
     isRecord(value) &&
     hasOwnFields(value, requiredFields) &&
-    value.version === WIDGETS_VERSION &&
+    value.version === version &&
     Array.isArray(value.items) &&
     value.items.length <= MAX_WIDGETS &&
     countOf(value.items, "favorite") <= MAX_FAVORITE_WIDGETS &&
@@ -174,13 +185,18 @@ export function isWidgetsState(value) {
   return isWidgetsStateWith(value, isStrictWidgetItem);
 }
 
-function isWidgetsMeta(value) {
+// The v2 state the v1 -> v2 step builds (non-negative x, version 2).
+function isWidgetsStateV2(value) {
+  return isWidgetsStateWith(value, isStrictWidgetItemV2, WIDGETS_VERSION_V2);
+}
+
+function isWidgetsMetaOfVersion(value, version) {
   const requiredFields = ["version", "order", "createdAt", "updatedAt"];
 
   return (
     isRecord(value) &&
     hasOwnFields(value, requiredFields) &&
-    value.version === WIDGETS_VERSION &&
+    value.version === version &&
     Array.isArray(value.order) &&
     value.order.length <= MAX_WIDGETS &&
     value.order.every(isNonEmptyString) &&
@@ -189,6 +205,9 @@ function isWidgetsMeta(value) {
     isParseableTimestamp(value.updatedAt)
   );
 }
+
+const isWidgetsMeta = (value) => isWidgetsMetaOfVersion(value, WIDGETS_VERSION);
+const isWidgetsMetaV2 = (value) => isWidgetsMetaOfVersion(value, WIDGETS_VERSION_V2);
 
 function isColumns(value) {
   return Number.isInteger(value) && value >= MIN_GRID_COLUMNS && value <= MAX_GRID_COLUMNS;
@@ -233,9 +252,9 @@ function isWidgetsStateV1(value) {
   );
 }
 
-function buildWidgetsMeta(state) {
+function buildWidgetsMeta(state, version = WIDGETS_VERSION) {
   return {
-    version: WIDGETS_VERSION,
+    version,
     order: state.items.map((item) => item.id),
     createdAt: state.createdAt,
     updatedAt: state.updatedAt
@@ -254,7 +273,8 @@ function buildWidgetsMetaV1(state) {
 }
 
 // `result` is what storageArea.get(WIDGETS_META_KEY) returned.
-// missing | valid (v2) | v1 (valid pre-desktop meta, to be migrated) | newer (version above ours) | invalid
+// missing | valid (v3) | v2 (valid left-based desktop meta, to be shifted to the center) | v1 (valid pre-desktop meta, to be
+// migrated) | newer (version above ours) | invalid
 export function inspectWidgetsMeta(result) {
   if (!Object.hasOwn(result ?? {}, WIDGETS_META_KEY)) {
     return "missing";
@@ -262,6 +282,9 @@ export function inspectWidgetsMeta(result) {
   const raw = result[WIDGETS_META_KEY];
   if (isWidgetsMeta(raw)) {
     return "valid";
+  }
+  if (isWidgetsMetaV2(raw)) {
+    return "v2";
   }
   if (isWidgetsMetaV1(raw)) {
     return "v1";
@@ -288,23 +311,26 @@ async function setOrThrow(storageArea, payload) {
 
 // A read keeps an item whose fields are valid but whose grid is missing or malformed: the grid is dropped and
 // the item is "unplaced" (displayLayout gives it a cell). A read never deletes a key.
-function readItem(value) {
+function readItemWith(value, gridCheck) {
   if (!isWidgetItem(value)) return null;
-  if (value.grid === undefined || hasValidGrid(value)) return value;
+  if (value.grid === undefined || gridCheck(value)) return value;
   const { grid: _dropped, ...rest } = value;
   return rest;
 }
+const readItem = (value) => readItemWith(value, hasValidGrid);
+// The v2 -> v3 step reads items as v2 wrote them: a negative x was never valid there (decision 7).
+const readItemV2 = (value) => readItemWith(value, hasValidGridV2);
 
 export function createWidgetsStore(
   storageArea,
   { now = () => new Date().toISOString() } = {}
 ) {
-  // Only a valid v2 meta or none at all may be written. Anything else reads as an empty state, so a write from it
+  // Only a valid v3 meta or none at all may be written. Anything else reads as an empty state, so a write from it
   // would replace the stored layout with just the affected items and orphan every other widget.
   async function assertWritable() {
     const kind = inspectWidgetsMeta(await storageArea.get(WIDGETS_META_KEY));
     if (kind === "newer") throw new Error(NEWER_WIDGETS_MESSAGE);
-    if (kind === "v1") throw new Error(V1_WIDGETS_MESSAGE);
+    if (kind === "v1" || kind === "v2") throw new Error(V1_WIDGETS_MESSAGE);
     if (kind === "invalid") throw new Error(INVALID_WIDGETS_MESSAGE);
   }
 
@@ -435,7 +461,8 @@ export function migrateToWidgets(
     if (metaKind === "newer") {
       return { migrated: false, newer: true };
     }
-    const existingMeta = metaKind === "valid" || metaKind === "v1" ? widgetsMetaResult[WIDGETS_META_KEY] : null;
+    const existingMeta =
+      metaKind === "valid" || metaKind === "v2" || metaKind === "v1" ? widgetsMetaResult[WIDGETS_META_KEY] : null;
 
     const legacyMetaResult = await syncStorageArea.get(LEGACY_FAVORITES_META_KEY);
     const legacyMeta = legacyMetaResult?.[LEGACY_FAVORITES_META_KEY];
@@ -544,6 +571,7 @@ export function migrateToWidgets(
 //
 // Under the shared mutation lock. Writes items in chunks of 25 (each with its `grid`; the legacy
 // `tileSize` stays on migrated items for one release), then the two chrome items, then the v2 meta LAST.
+// This step writes version 2 explicitly (grids counted from the left column); the v2 -> v3 step below centers them.
 // Until the meta is v2 the whole run repeats; items that already carry a valid grid are kept as placed
 // and the rest is packed by the same first-free rule, so a resumed run equals an uninterrupted one.
 // ---------------------------------------------------------------------------
@@ -570,10 +598,10 @@ export function migrateWidgetsToV2(storageArea, { now = () => new Date().toISOSt
     const v1Items = [
       ...listed.filter((item) => item.type === "favorite"),
       ...listed.filter((item) => item.type === "weather-metric")
-    ].map((item) => (hasValidGrid(item) ? item : { ...item, grid: undefined }));
+    ].map((item) => (hasValidGridV2(item) ? item : { ...item, grid: undefined }));
 
     const chromeResult = await storageArea.get(CHROME_STORAGE_KEYS);
-    const chromeItems = CHROME_STORAGE_KEYS.map((key) => chromeResult[key]).filter(isStrictWidgetItem);
+    const chromeItems = CHROME_STORAGE_KEYS.map((key) => chromeResult[key]).filter(isStrictWidgetItemV2);
 
     const grids = migrateV1ToV2([...v1Items, ...chromeItems], meta.columns);
     const withGrid = (item) => ({ ...item, grid: grids.get(item.id) });
@@ -584,8 +612,8 @@ export function migrateWidgetsToV2(storageArea, { now = () => new Date().toISOSt
     ];
 
     const timestamp = now();
-    const state = { version: WIDGETS_VERSION, items, createdAt: meta.createdAt, updatedAt: timestamp };
-    if (!isWidgetsState(state)) {
+    const state = { version: WIDGETS_VERSION_V2, items, createdAt: meta.createdAt, updatedAt: timestamp };
+    if (!isWidgetsStateV2(state)) {
       throw new Error("Invalid widgets state");
     }
 
@@ -596,16 +624,59 @@ export function migrateWidgetsToV2(storageArea, { now = () => new Date().toISOSt
         Object.fromEntries(chunk.map((item) => [widgetItemStorageKey(item.id), item]))
       );
     }
-    const v2Meta = buildWidgetsMeta(state);
+    const v2Meta = buildWidgetsMeta(state, WIDGETS_VERSION_V2);
     await setOrThrow(storageArea, { [WIDGETS_META_KEY]: { ...v2Meta, order: [...v2Meta.order, ...absentIds] } });
     return { migrated: true };
   });
 }
 
 // ---------------------------------------------------------------------------
+// Migration widgets v2 -> v3 (centered grid). docs/centered-grid.md decision 7.
+//
+// Under the shared mutation lock, only for a valid v2 meta (re-read inside the lock, so of two tabs opening at once only
+// the first migrates). Items are read like v2 wrote them (non-negative x; an invalid item is neither rewritten nor deleted;
+// an id whose key has not synced yet is simply absent and stays in `order`). The bounding columns of the on-grid items are
+// centered once (`centerShift`); every readable item with a grid, hidden metrics included, gets x + shift. Everything goes
+// out in ONE set() call (items and the v3 meta), so storage is either fully v2 or fully v3. A rejected write leaves it as it
+// was and the next load retries.
+// ---------------------------------------------------------------------------
+export function migrateWidgetsToV3(storageArea, { now = () => new Date().toISOString() } = {}) {
+  return withWidgetsMutationLock(async () => {
+    const metaResult = await storageArea.get(WIDGETS_META_KEY);
+    const kind = inspectWidgetsMeta(metaResult);
+    if (kind !== "v2") {
+      return { migrated: false, meta: kind };
+    }
+    const meta = metaResult[WIDGETS_META_KEY];
+
+    const itemsResult = meta.order.length > 0 ? await storageArea.get(meta.order.map(widgetItemStorageKey)) : {};
+    const readable = meta.order
+      .map((id) => ({ id, item: readItemV2(itemsResult[widgetItemStorageKey(id)]) }))
+      .filter(({ item }) => item !== null);
+    const shift = centerShift(readable.map(({ item }) => item));
+
+    const timestamp = now();
+    const items = readable.map(({ item }) => (item.grid ? { ...item, grid: { ...item.grid, x: item.grid.x + shift } } : item));
+    const state = { version: WIDGETS_VERSION, items, createdAt: meta.createdAt, updatedAt: timestamp };
+    if (!isWidgetsStateWith(state, isWidgetItem)) {
+      throw new Error("Invalid widgets state");
+    }
+
+    const payload = {
+      [WIDGETS_META_KEY]: { version: WIDGETS_VERSION, order: [...meta.order], createdAt: meta.createdAt, updatedAt: timestamp }
+    };
+    readable.forEach(({ id }, index) => {
+      payload[widgetItemStorageKey(id)] = items[index];
+    });
+    await setOrThrow(storageArea, payload);
+    return { migrated: true };
+  });
+}
+
+// ---------------------------------------------------------------------------
 // ensureWidgetsLayout: fresh-install defaults and self-heal (replaces ensureWeatherMetrics).
-// Appends any missing weather metric and chrome tile at the first free block over 12 columns.
-// Writes only for a `valid` or `missing` meta; `newer`, `invalid` and un-migrated `v1` are left alone.
+// Lays out any missing weather metric and chrome tile as one contiguous block nearest the center of 12 reference columns.
+// Writes only for a `valid` (v3) or `missing` meta; `newer`, `invalid` and un-migrated `v1` / `v2` are left alone.
 // Item keys are written before the meta; idempotent.
 // ---------------------------------------------------------------------------
 const ENSURED_IDS = [...WEATHER_METRIC_IDS, CHROME_IDS.settings, CHROME_IDS.add];

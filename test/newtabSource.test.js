@@ -926,6 +926,21 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     assert.ok(order.every((at, i) => at > 0 && (i === 0 || at > order[i - 1])), JSON.stringify(order));
   });
 
+  it("run 15: the bootstrap runs the v2 -> v3 step after the v2 step, inside the locking try, and locks on a newer result", async () => {
+    const code = await source();
+    assert.match(code, /import \{[^}]*\bmigrateWidgetsToV3\b[^}]*\} from "\.\/widgetsStore\.js"/);
+    assert.match(code, /const v3 = await migrateWidgetsToV3\(syncStorageArea\);\s*if \(v3\?\.meta === "newer"\) \{\s*widgetsNewer = true;\s*renderFavorites\(\);\s*return;/);
+    // R7 order: legacy chain, v1 -> v2, v2 -> v3, ensure, first read.
+    const order = ["await migrateToWidgets(", "await migrateWidgetsToV2(", "await migrateWidgetsToV3(", "await ensureWidgetsLayout(", "await widgetsService.getState()"].map((m) => code.indexOf(m));
+    assert.ok(order.every((at, i) => at > 0 && (i === 0 || at > order[i - 1])), JSON.stringify(order));
+    // a failure of the v3 step goes through the same catch as the v2 step: the grid is locked with the migration-failure text
+    const boot = code.slice(code.indexOf("if (favoritesRoot) {\n  void (async () => {"));
+    const tryBlock = boot.slice(0, boot.indexOf("} catch (error) {\n      widgetsMigrationFailed = true;"));
+    assert.ok(tryBlock.includes("await migrateWidgetsToV3(syncStorageArea);"), "v3 migration runs inside the locking try");
+    // the page works in displayed cells: it never converts between the displayed and the stored frame itself
+    assert.doesNotMatch(code, /toStored|toDisplayed|originColumn/);
+  });
+
   it("Task 11: edit dialogs select the displayed size, never reading a stored grid that a lenient read may have dropped", async () => {
     const code = await source();
     const build = fn(code, "buildDialogContent");

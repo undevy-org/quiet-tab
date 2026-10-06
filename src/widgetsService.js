@@ -6,7 +6,8 @@ import {
   isValidGrid,
   placeNew,
   placeResized,
-  sizeOf
+  sizeOf,
+  toStored
 } from "./desktopLayout.js";
 import { MAX_FAVORITE_WIDGETS } from "./widgetsShared.js";
 import {
@@ -171,16 +172,17 @@ function placeholderGrid(item) {
   return { x: 0, y: 0, w: size.w, h: size.h };
 }
 
-// Resolve every widget to a valid stored grid: on-grid ones to their displayed cell, hidden metrics keep (or get)
-// a placeholder that is ignored while hidden.
+// Resolve every widget to a valid STORED grid (x counts from the center line, run 15): on-grid ones to their displayed
+// cell minus the origin of `columns`, hidden metrics keep (or get) a placeholder, already in the stored frame, that is
+// ignored while hidden. Layouts the engine returns are displayed cells; every grid written back goes through toStored.
 function rebase(state, columns) {
   const layout = displayLayout(state.items, columns);
   return {
     ...state,
-    items: state.items.map((item) => ({
-      ...item,
-      grid: layout.get(item.id) ?? (isValidGrid(item.grid) ? item.grid : placeholderGrid(item))
-    }))
+    items: state.items.map((item) => {
+      const spot = layout.get(item.id);
+      return { ...item, grid: spot ? toStored(spot, columns) : isValidGrid(item.grid) ? item.grid : placeholderGrid(item) };
+    })
   };
 }
 
@@ -218,7 +220,7 @@ export function createWidgetsService({
       return store.getState();
     },
 
-    // input.w / input.h (1 or 2, default 1×1). The new link takes the first free block from (0,0).
+    // input.w / input.h (1 or 2, default 1×1). The new link takes the free block nearest to the center line.
     addFavorite(input, options) {
       const payload = inputObject(input);
       return mutate(options, ({ base, columns, updatedAt }) => {
@@ -244,7 +246,7 @@ export function createWidgetsService({
             defaultBackgroundColor
           ),
           backgroundColorSource: deriveBackgroundColorSource(payload, "auto"),
-          grid: placeNew(layout, size, columns),
+          grid: toStored(placeNew(layout, size, columns), columns),
           createdAt: updatedAt,
           updatedAt
         };
@@ -294,7 +296,7 @@ export function createWidgetsService({
             w: normalizeSpan(payload.w ?? nextItem.grid.w, "width"),
             h: normalizeSpan(payload.h ?? nextItem.grid.h, "height")
           };
-          nextItem.grid = placeResized(displayLayout(base.items, columns), id, size, columns);
+          nextItem.grid = toStored(placeResized(displayLayout(base.items, columns), id, size, columns), columns);
         }
         nextItem.updatedAt = updatedAt;
         return base.items.with(index, nextItem);
@@ -310,8 +312,8 @@ export function createWidgetsService({
       });
     },
 
-    // payload: { enabled?: boolean, w?: 1|2, h?: 1|2 }. Hiding keeps the placeholder grid; restoring takes the first
-    // free block for its size.
+    // payload: { enabled?: boolean, w?: 1|2, h?: 1|2 }. Hiding keeps the placeholder grid; restoring takes the free
+    // block nearest to the center for its size.
     updateWeatherMetric(id, input, options) {
       const payload = inputObject(input);
       return mutate(options, ({ base, columns }) => {
@@ -340,9 +342,9 @@ export function createWidgetsService({
 
         const layout = displayLayout(base.items, columns);
         if (next.enabled && !current.enabled) {
-          next.grid = placeNew(layout, size, columns);
+          next.grid = toStored(placeNew(layout, size, columns), columns);
         } else if (next.enabled) {
-          next.grid = placeResized(layout, id, size, columns);
+          next.grid = toStored(placeResized(layout, id, size, columns), columns);
         } else {
           next.grid = { ...current.grid, ...size };
         }
@@ -363,7 +365,7 @@ export function createWidgetsService({
         if (!isValidGrid(next) || !canPlace(layout, id, next, columns, sanitizeViewportRows(options?.viewportRows))) {
           throw new PlacementError();
         }
-        return withGrid(base.items, id, next);
+        return withGrid(base.items, id, toStored(next, columns));
       });
     }
   };
