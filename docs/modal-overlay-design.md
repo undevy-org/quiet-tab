@@ -2,7 +2,7 @@
 
 ## Status
 
-`draft` (product-approved target 2026-10-06; pipeline sections added for run #16; revised after spec review round 1, see § Changes after review).
+`draft` (product-approved target 2026-10-06; pipeline sections added for run #16; revised after spec review rounds 1 and 2, see § Changes after review).
 
 ## Intake log
 
@@ -25,14 +25,15 @@
 2. **Supersede the city feedback reserve** — remove permanent `min-height`, `--city-feedback-reserve`, `city-modal__dialog--compact` and `feedbackReserve` (`src/cityPrompt.js:35`) with its tests; errors may move the field and the buttons (accepted). `placePopover` keeps docked/overlay list logic only.
 3. **Canonical pixels** — right column of [`approved-target-comparison.html`](superpowers/mockups/2026-10-06-overlay-modals/approved-target-comparison.html) at modal width 420px, light theme; §1–3 unchanged. Where this spec and the mock disagree, the mock wins and its CSS is the check (its lines 40–54). Known gap: the mock's `css/` folder has no `surfaces.css`, so text-to-buttons spacing in confirm dialogs (body margin) cannot be read from it; the spacing contract below governs there.
 4. **Tokens follow the mock** (reason: the approved visual is what the owner signed off) — dialog form-row padding **10px** (token `--form-row-padding-y` changes 12px → 10px; its only consumer is the dialog row, `controls.css:38`), icon–label gap in modal action buttons **8px** (= `--form-footer-gap`; `--control-gap-icon` stays 6px for every other button and segmented), `--modal-actions-margin-top` **16px**. `--form-footer-padding-y` has no consumer after the footer padding goes (`grep` over `src/`: `controls.css:97` only), so it is deleted.
-5. **Error spacing follows the mock** (reason: mock line 51 `margin: 8px 0 0`): **8px** from the field/last row to the error text, **16px** from the error text to the buttons. `.desktop-dialog__error` becomes `margin: 8px 0 0` (today `12px 0`, `surfaces.css:221`); the confirm body loses its `4px` bottom margin so text → buttons is exactly 16px.
+5. **Error spacing follows the mock** (reason: mock line 51 `margin: 8px 0 0`): **8px** from the city input (city modal) or from the border box of the last row (dialogs) to the error text, **16px** from the error text to the buttons. Mock line 51 draws this only for the city modal; dialog rows keep their 10px padding, so in a desktop dialog the visible distance from the control to the error text is 18px (accepted, § Accepted exceptions). `.desktop-dialog__error` becomes `margin: 8px 0 0` (today `12px 0`, `surfaces.css:221`); the confirm body loses its `4px` bottom margin so text → buttons is exactly 16px.
 6. **Hide confirm title** — `Hide ${metric}?` with the metric name in lower case, except the acronym: `Hide temperature?`, `Hide precipitation?`, `Hide air quality?`, `Hide UV index?` (implemented as an explicit four-entry map next to `METRIC_LABELS`, `newtab.js:590`). A hint tile (`weather:hint`) stands for the first enabled metric, so its − opens the confirm for that metric (its badge carries `data-remove-for` = that metric id, `newtab.js:1246-1250`, `1519`).
 7. **Hide uses primary + `eyeOff`**, not `button--danger` — to tell it from Delete link (`trash2`, danger). Reason: hiding is reversible from Add, deleting is not.
 8. **Dialog kind for hide** — `confirm-hide-weather` in `DIALOG_KINDS` (`src/desktopUiState.js:3`); behaviour in § Hide confirm contract and AS-MO-09, AS-MO-16.
 9. **City prefill (change mode)** — the input is prefilled with the stored city's display label: `name, country`, or only `name` when `country` is empty (admin1 is not stored, `src/weatherStore.js:13-24`, so the label can be shorter than the suggestion label `name, admin1, country` the user once picked, `newtab.js:703`; accepted). The stored city is also set as `chosenCity` (label = the prefilled text), so **Save without editing** calls `weatherService.selectLocation` with the stored coordinates (no geocoding, `newtab.js:1008-1013`). Editing the text drops `chosenCity` as today and Save runs `setCity`. Caret: change mode puts the caret **at the end, no selection** (`setSelectionRange(len, len)`, no `select()`); first-run mode has no prefill, no focus and no selection (it never steals focus, `newtab.js:1052`). **Clear** empties the field; Save with an empty field reports `Enter a city name`.
-10. **City-field is one `<button type="button">`** in the City row (not a link, not a second control), with `aria-labelledby` naming the row label, the city value and the visible hint so the visible text is part of the accessible name (WCAG 2.5.3). It keeps `data-weather-action="open-city-modal"` and the value node keeps `data-weather-dialog-city` (focus return and E2E depend on them).
+    **Change mode without a stored city** (hint tile, `newtab.js:2300`; or the city-field in the `No city set` state, `weatherLocationError`; `buildCityModal(mode, location = null)`, `newtab.js:1027`): title `Set a city`, the field is empty, there is no `chosenCity`, Save is **disabled** while the field is empty (`refresh()`, `newtab.js:650-655`), focus goes to the field as in every change-mode open (`newtab.js:1052`; the caret sits in the empty field), Clear is hidden, Cancel/Escape/backdrop close without a write. Typing and picking a suggestion then work as in first-run. Prefill exists only when a city is stored; it is reached from the weather dialog's city-field (stored city), never from the hint tile.
+10. **City-field is one `<button type="button">`** in the City row (not a link, not a second control), with `aria-labelledby` naming the row label, the city value and the visible hint so the visible text is part of the accessible name (WCAG 2.5.3). The value and hint spans get their own unique ids, generated like the row label id (`newtab.js:354`). It keeps `data-weather-action="open-city-modal"` and the value node keeps `data-weather-dialog-city` (focus return and E2E depend on them).
 11. **Error-driven layout** — after an error is shown or cleared, `placePopover` runs again (`syncCityModal` already does on show, `newtab.js:942-955`; `clearCityError` gains the call and its pin is rewritten). The input may move when the dialog height changes (Accepted exceptions).
-12. **Selected segment** — soft fill + font weight 600 + inset 1px `--border-control` ring, as in the approved mock. The contrast of the soft fill alone is low (measured in the review run: `--color-fill-soft-strong` on the panel 1.25:1); this is an accepted exception (owner approved the mock). Forced colors drop fill and ring; the selected option then stays distinguishable by font weight and the group's own border only. No new CSS for forced colors and **no new animation or transition** anywhere in this phase.
+12. **Selected segment** — soft fill + font weight 600 + inset 1px `--border-control` ring, as in the approved mock. The contrast of the soft fill alone is low (measured in the review run: `--color-fill-soft-strong` on the panel 1.25:1); this is an accepted exception (owner approved the mock). Forced colors drop fill and ring; the selected option is then distinguishable by **font weight alone** (the group border is shared by all options and does not mark the selection; accepted). No new CSS for forced colors and **no new animation or transition** anywhere in this phase.
 13. **Mock deviation (known)** — mock §11 draws the city-field without the "Change" hint, §7 with it. The spec requires the hint always (it is the visible affordance; §7 is the canon for the field).
 14. **Data compatibility: not required (no-users policy, `agent-config/CLAUDE.md`)**. Storage is unchanged.
 
@@ -97,6 +98,8 @@ Measured with `getBoundingClientRect()` in light theme, modal width 420px (viewp
 | Dialog row | computed `border-*-width`, `padding-top/bottom` | 0px; **10px** |
 | Footer | computed `border-top-width`, `padding-top/bottom` | 0px; 0px |
 
+This section is the priority source for every number in this spec; other mentions repeat it. All distances are measured from the **border box** of the field or row. A dialog row keeps 10px bottom padding, so from the control itself to the error text a dialog shows 10 + 8 = **18px**; the city modal has no row, so its input to error text is **8px** (accepted, § Accepted exceptions).
+
 **Anti-patterns:** no `--form-footer-padding-y`; no summing `--surface-modal-padding` with extra footer padding; no `border-top` on `.favorite-form__row` inside desktop dialogs; no `border-top` on the actions row; no `min-height` reserve on `.city-modal__feedback`; no bottom margin on `.desktop-dialog__error` or `.desktop-dialog__body` (the 16px comes only from `--modal-actions-margin-top`); no hardcoded `16px` on `.city-modal__actions`.
 
 ## Modal actions (desktop dialogs §4–7, §12; city modal §8–11)
@@ -113,6 +116,8 @@ Measured with `getBoundingClientRect()` in light theme, modal width 420px (viewp
 |-------|------|--------|
 | `src/controls.css:93-99` | `.favorite-form__footer` `padding`, `border-top` | removed; `margin-top: var(--modal-actions-margin-top)`, `gap` kept |
 | `src/controls.css:101-103` | `.favorite-form__footer .button--danger { margin-right: auto }` | deleted |
+| `src/controls.css` (new rule) | `.favorite-form__footer .button` | `flex: 1; min-height: var(--control-height); justify-content: center; gap: var(--form-footer-gap)` (same for `.city-modal__actions .button`) |
+| `src/controls.css:34-44` | `.favorite-form__row` `border-top` (and the 12px padding) inside dialogs | `border-top` removed (0px), `padding: var(--form-row-padding-y) 0` (10px) |
 | `src/surfaces.css:206-218` | `data-dialog="edit-link"` footer wrap, `> .button`, `> .button--danger` inside `@media (max-width: 400px)` | deleted (no Delete there) |
 | `src/surfaces.css:291-299` | `data-dialog="confirm-delete"` `justify-content: flex-end`, `margin-top: 12px`, `.button--danger { margin-right: 0 }` | deleted; 50/50 like every dialog |
 | `src/surfaces.css:285-289` | `.desktop-dialog__body { margin: 0 0 4px }` | `margin: 0` |
@@ -172,7 +177,9 @@ First-run city description paragraph — **unchanged**.
 
 Replace `.desktop-dialog__city` + `text-button`. Row label **City** (`createFormRow` today attaches `aria-labelledby` only to an INPUT or a radiogroup, `newtab.js:357-361`; it is extended so a button control gets `aria-labelledby`, see below).
 
-**city-field** (`<button type="button" class="city-field">`), looks like `.favorite-input`: `min-height: var(--control-height)` (40px), `border: 1px solid var(--border-control)`, `border-radius: var(--radius-control)`, `padding: 0 var(--control-padding-x)`, panel background, full width of the control column (`flex: 1; min-width: 0`, `flex: 1 1 100%` under 400px next to the other controls, `controls.css:53-54`, `surfaces.css:194-197`). Children: value `<span data-weather-dialog-city>` (truncated, `text-overflow: ellipsis`, `white-space: nowrap`, `min-width: 0`, `flex: 1`) and hint `<span>` (12px, `--muted`, `flex: none`).
+**city-field** (`<button type="button" class="city-field">`), looks like `.favorite-input`: `min-height: var(--control-height)` (40px), `border: 1px solid var(--border-control)`, `border-radius: var(--radius-control)`, `padding: 0 var(--control-padding-x)`, panel background, full width of the control column (`flex: 1; min-width: 0`, `flex: 1 1 100%` under 400px next to the other controls, `controls.css:53-54`, `surfaces.css:194-197`). Children: value `<span data-weather-dialog-city>` (truncated, `text-overflow: ellipsis`, `white-space: nowrap`, `min-width: 0`, `flex: 1`) and hint `<span>` (12px, `--muted`, `flex: none`), each with its own id (for `aria-labelledby`); `gap: 8px` between value and hint (as `.city-field-btn` in the mock, line 53).
+
+**DOM placement:** the City row is built by `createFormRow` and sits **inside** the dialog's `form` as its first `.favorite-form__row` (today `root.append(title, cityRow, form)`, `newtab.js:~1393`, becomes `root.append(title, form)`), so it shares the row padding and the 16px footer margin with the Size row.
 
 | State | Value | Hint | Notes |
 |-------|-------|------|-------|
@@ -220,7 +227,8 @@ Edit mode − on an enabled weather tile (or on the hint tile, which stands for 
 | Delete favorite | Edit mode − → Delete link? → Delete |
 | Edit link | No Delete button in the dialog |
 | Hide weather metric | Edit mode − → Hide <metric>? → Hide (§ Hide confirm contract) |
-| Change city | Prefill input; open from city-field (stacked) or from the hint tile |
+| Change city (city stored) | From the weather dialog's city-field (stacked): title `Change city`, input prefilled |
+| Set a city (no city stored) | From the hint tile or the `No city set` city-field: title `Set a city`, empty input, Save disabled until text |
 
 ## UI strings and states
 
@@ -234,15 +242,15 @@ All strings are set with `textContent` / text nodes (no `innerHTML`; `test/newta
 | `Temperature hidden`, `Precipitation hidden`, `Air quality hidden`, `UV index hidden` | polite live region after a successful hide |
 | `City` (row label), city label / `No city set`, `Change` / `Set a city` | city-field; also its accessible name and `title` |
 | `Zürich, Switzerland`-style label | city modal input in change mode (prefill) |
-| Removed: `Current: <name>`, `Change city` (button text) | — |
-| Unchanged: city error texts, `Enter a city name`, first-run description, Delete link copy, all Add/Edit labels | — |
+| Removed: `Current: <name>`; the **button** text `Change city` / `Set a city` in the weather dialog (the old text-button, replaced by the city-field hint) | — |
+| Unchanged: city modal titles `Change city`, `Set a city`, `Show weather on your new tab?` (the `Change city` title is not the removed button text); city error texts, `Enter a city name`, first-run description, Delete link copy, all Add/Edit labels | — |
 
 ## Scope
 
 Code:
 - `src/design-tokens.css`: add `--modal-actions-margin-top`; `--form-row-padding-y: 10px`; delete `--form-footer-padding-y` (line 59).
 - `src/controls.css`, `src/surfaces.css`: per § Footer rules removed or rewritten, Direction B/D styles, city-field, scoped segmented, city feedback/error spacing, deleted `.desktop-dialog__city*` and `.text-button`.
-- `src/newtab.js`: dialog footers and `createFavoriteForm` (no Delete); `confirm-hide-weather` branch of `buildDialogContent`, `handleEditModeClick` and a confirm-hide runner (replaces the direct call to `hideWeatherMetric`); city-field row and `createFormRow` for a button control; `syncWeatherDialogCity`; city prefill (`createCityForm(mode, location)`, `chosenCity`, caret) and removal of `.city-modal__current`; `placePopover` simplification and `clearCityError` call; no `widgetsService` API changes.
+- `src/newtab.js`: dialog footers and `createFavoriteForm` (no Delete); `confirm-hide-weather` branch of `buildDialogContent`, `handleEditModeClick` and a confirm-hide runner (replaces the direct call to `hideWeatherMetric`); city-field row (first row inside `form`) and `createFormRow` for a button control (ids on value and hint); `syncWeatherDialogCity`; city prefill (`createCityForm(mode, location)`, `chosenCity`, caret) and removal of `.city-modal__current`; `placePopover` simplification and `clearCityError` call; no `widgetsService` API changes.
 - `src/desktopUiState.js`: `confirm-hide-weather` in `DIALOG_KINDS`.
 - `src/cityPrompt.js:35`: delete `feedbackReserve`; remove the import at `src/newtab.js:39`.
 
@@ -294,11 +302,12 @@ Full UI-phase cycle: this spec → spec review and spec gate → plan in `quiet-
 
 ## Accepted exceptions
 
-- **City error moves the field and the buttons** — no permanent feedback reserve; showing or clearing an error changes the dialog height, and because the dialog is centered the dialog is centered, so the input moves up and the buttons down by half of (8px + error height) each (reverses `docs/city-error-ux.md` decision 3, AS-CE-04, AS-CE-05 where this spec applies).
+- **City error moves the field and the buttons** — no permanent feedback reserve; showing or clearing an error changes the dialog height, and because the dialog is centered, so the input moves up and the buttons down by half of (8px + error height) each (reverses `docs/city-error-ux.md` decision 3, AS-CE-04, AS-CE-05 where this spec applies).
 - **Low window with error** — in a viewport that already scrolls the city dialog, a visible error may push Save/Not now out of view; full error text is shown, Enter/Submit still work.
 - **Docked vs overlay suggestions list** — flip band and overlay list height step from `docs/dialog-threshold-jump.md` may remain for list placement; only reserve-related compact behaviour is removed. If visual review finds a regression in list mode, fix within `placePopover` without reintroducing a permanent reserve.
 - **Hide uses primary + eyeOff** — not `button--danger`, to distinguish from Delete link.
-- **Selected segment contrast** — Default decision 12: soft fill 1.25:1 against the panel, accepted; weight + inset ring + (forced colors) weight and group border are the cues.
+- **Selected segment contrast** — Default decision 12: soft fill 1.25:1 against the panel, accepted; weight + inset ring are the cues; under forced colors font weight alone.
+- **Error text 18px from the control in desktop dialogs** — the 8px is measured from the row's border box and the row keeps 10px padding (§ Spacing contract); in the city modal it is 8px from the input.
 - **Prefill label shorter than the suggestion label** — admin1 is not stored (Default decision 9).
 - **Mock §11 lacks the "Change" hint** — Default decision 13.
 - **Save in the change modal without editing re-selects the stored city** — it calls `selectLocation` (a weather refresh), not a no-op.
@@ -338,10 +347,10 @@ Common setup unless stated: unpacked extension in the E2E harness; light theme; 
 - Verified by: E2E `dg-58` (group 5); design review vs mock §8.
 
 ### AS-MO-06 City modal change — prefill, no Current line
-- Given: a stored city (country present; and a stored city with an empty country); change mode opened from the hint tile or the weather dialog.
-- When: the modal is open; then (a) Save without editing, (b) the text is edited and Save pressed, (c) Clear is pressed, (d) Cancel or Escape.
-- Then: no **Current:** paragraph; the input value is **Zürich, Switzerland** (or just the name when country is empty); caret at the end, nothing selected, no suggestions request, list closed; Save is enabled; **Cancel** \| **Save** 50/50. (a) calls the select-location path (no geocoding request), the modal closes and the city is unchanged. (b) runs the geocoding path (`setCity`) as today. (c) empties the field, Save disabled, Clear hidden, focus in the field; Enter on the empty field shows `Enter a city name`. (d) closes without any write.
-- Verified by: E2E `dg-58` (group 6).
+- Given: a stored city (country present; and a stored city with an empty country); change mode opened from the weather dialog's city-field (the only entry with a stored city); and, for (e), no stored city: opened from the hint tile, and from the `No city set` city-field (`weatherLocationError`).
+- When: the modal is open; then (a) Save without editing, (b) the text is edited and Save pressed, (c) Clear is pressed, (d) Cancel or Escape; (e) the modal is opened without a stored city.
+- Then: no **Current:** paragraph; the input value is **Zürich, Switzerland** (or just the name when country is empty); caret at the end, nothing selected, no suggestions request, list closed; Save is enabled; **Cancel** \| **Save** 50/50. (a) calls the select-location path (no geocoding request), the modal closes and the city is unchanged. (b) runs the geocoding path (`setCity`) as today. (c) empties the field, Save disabled, Clear hidden, focus in the field; Enter on the empty field shows `Enter a city name`. (d) closes without any write. (e) title **Set a city**, no **Current:** paragraph, the input is empty and focused with the caret in it, no `chosenCity`, no suggestions request, Save **disabled**, Clear hidden, **Cancel** \| **Save** 50/50; typing enables Save; Cancel, Escape and the backdrop close without a write.
+- Verified by: E2E `dg-58` (group 6, including (e)).
 
 ### AS-MO-07 City modal error spacing
 - Given: change or set city modal; submit with an empty city or the harness triggers a validation, not-found or network error.
@@ -364,7 +373,7 @@ Common setup unless stated: unpacked extension in the E2E harness; light theme; 
 ### AS-MO-10 City-field — states, name, keyboard, size
 - Given: Edit weather open in each state: city set; no city (opened from the hint tile); city read error; `weatherService` missing; a 60-character city name; widths 1280, 500 and 320.
 - When: the row is inspected; the field is focused by Tab; Enter, then Space (second run) activates it.
-- Then: height ≥ 40px (≥ 39.5 measured); value/hint per the state table; accessible name `City Zürich, Switzerland Change` (or `City No city set Set a city`) read through the accessibility tree; the visible hint text is contained in the name; the long name is truncated (`scrollWidth > clientWidth`), hint visible, `title` holds the full label, no horizontal scroll at 320; Enter and Space each open the stacked city modal; Tab order City → Size → Cancel → Save (Save skipped while disabled); with `weatherService` missing the field is `disabled`; the focus ring is `box-shadow` `--focus-overlay-ring` 2px plus a transparent outline (under forced-colors emulation the computed outline is not transparent; otherwise design review only); hint contrast ≥ 4.5:1; after the city modal closes focus is on the city-field; a click while `weatherBusy` does nothing.
+- Then: height ≥ 40px (≥ 39.5 measured); value/hint per the state table; the value box right edge → hint left edge is 8px (±0.5) when the value is truncated; value and hint have unique ids referenced by `aria-labelledby`; accessible name `City Zürich, Switzerland Change` (or `City No city set Set a city`) read through the accessibility tree; the visible hint text is contained in the name; the long name is truncated (`scrollWidth > clientWidth`), hint visible, `title` holds the full label, no horizontal scroll at 320; Enter and Space each open the stacked city modal; Tab order City → Size → Cancel → Save (Save skipped while disabled); with `weatherService` missing the field is `disabled`; the focus ring is `box-shadow` `--focus-overlay-ring` 2px plus a transparent outline (under forced-colors emulation the computed outline is not transparent; otherwise design review only); hint contrast ≥ 4.5:1; after the city modal closes focus is on the city-field; a click while `weatherBusy` does nothing.
 - Verified by: E2E `dg-58` (group 10); `test/focusTokens.test.js` pin for the ring rule.
 
 ### AS-MO-11 Segmented outside dialogs unchanged (unit-only)
@@ -374,9 +383,9 @@ Common setup unless stated: unpacked extension in the E2E harness; light theme; 
 - Verified by: `test/newtabSource.test.js` (scoped rule pin); no E2E group.
 
 ### AS-MO-12 Keyboard — Escape, focus, Tab trap
-- Given: each of these opened, in edit mode where needed: (1) Add link from the Add tile; (2) Edit link from a tile; (3) Delete link? from a − badge; (4) Edit weather from a tile; (5) Hide confirm from a − badge; (6) city modal first-run; (7) city modal change from the hint tile; (8) city modal stacked over Edit weather.
+- Given: each of these opened, in edit mode where needed: (1) Add link from the Add tile; (2) Edit link from a tile; (3) Delete link? from a − badge; (4) Edit weather from a tile; (5) Hide confirm from a − badge; (6) city modal first-run; (7) city modal change without a stored city, from the hint tile; (8) city modal stacked over Edit weather.
 - When: Escape is pressed (stacked: twice); separately Tab and Shift+Tab are pressed from the last and first control.
-- Then: (1) closes, focus on the Add tile; (2) on the edited tile; (3) and (5) on the − badge, nothing deleted or hidden; (4) on its tile; (6) closes and records the dismissal as today, focus on Settings when focus was inside the modal; (7) closes, city unchanged, focus on the opener; (8) the first Escape closes only the city modal (focus on the city-field), the second closes the dialog (focus on the tile). Escape while a write or city request runs does nothing. Tab wraps inside the open modal in every case.
+- Then: (1) closes, focus on the Add tile; (2) on the edited tile; (3) and (5) on the − badge, nothing deleted or hidden; (4) on its tile; (6) closes and records the dismissal as today, focus on Settings when focus was inside the modal; (7) closes, nothing written, focus on the opener; (8) the first Escape closes only the city modal (focus on the city-field), the second closes the dialog (focus on the tile). Escape while a write or city request runs does nothing. Tab wraps inside the open modal in every case.
 - Verified by: existing E2E where present (`dg-29`, `dg-40`, `13-city-modal`); `dg-58` (group 12) for (3), (5) and the stacked case.
 
 ### AS-MO-13 Low window — buttons visible at rest without error
@@ -424,33 +433,14 @@ Common setup unless stated: unpacked extension in the E2E harness; light theme; 
 
 ## Changes after review
 
-Round 1 (spec review `modal-overlay-design-spec-review.md` C1–C4, I1–I8, M1–M6; design review run `2026-10-06-76ba999-spec-r1` L0-01..14):
+Spacing contract is the priority source for all numbers; this table lists themes only.
 
-| Finding | Change |
-|---------|--------|
-| C1, L0-01, L0-02 | Error spacing 8px field → error, 16px error → buttons; `.desktop-dialog__error` `margin: 8px 0 0`; body margin 0; Spacing contract with anchors and tolerance; AS-MO-01/03/05/07 rewritten |
-| C2, L0-14 | Tokens follow the mock: row padding 10px, modal icon gap 8px; token table, Modal actions and all 12px mentions updated; `--form-footer-padding-y` deleted |
-| C3, L0-04 | Hide titles for all four metrics (`Hide UV index?`); AS-MO-09 on every metric and the hint tile |
-| C4, L0-05 | § Hide confirm contract and AS-MO-16 (neighbour at confirm time, success/failure focus, Escape/backdrop, initial focus, repeat press, announcement, hidden elsewhere) |
-| I1 | `place()` after error show and clear; input movement in Accepted exceptions; AS-MO-17 |
-| I2 | Scope lists `feedbackReserve` removal and every unit-test consumer by file and line |
-| I3 | Scope lists the E2E scenarios and `lib/cityModalSweep.mjs` by file and line; `data-weather-action` and `data-weather-dialog-city` kept |
-| I4, L0-06, L0-07 | § Direction D: element, accessible name, states, ellipsis, ring, forced colors, focus return; AS-MO-10 (the former AS-MO-10 is merged into AS-MO-02) |
-| I5, L0-12 | Measurement method; AS-MO-13 criterion and windows; AS-MO-14 sweep instead of numbers; AS-MO-11 and AS-MO-15 unit-only; AS-MO-12 lists eight scenarios; AS-MO-08 focus on the city-field |
-| I6, L0-09, L0-10 | Cross-reference fixed (hide → AS-MO-09, AS-MO-16); duplicate AS-MO-10 merged; dg-58 group = AS number, unit-only scenarios named; Task A/B references removed (Default decision 1 reworded); mock §11 deviation recorded; AS-MO-11 states there is no consumer outside dialogs |
-| I7, L0-13 | § Footer rules removed or rewritten by name and line; Save disabled at rest in Edit weather |
-| I8 | Docs list extended (`architecture.md` lines, `design-system.md` lines, AS-DS-1/10) |
-| L0-03 | Default decision 9: prefill label, `chosenCity`, Save without editing, caret, Clear, Cancel; AS-MO-06 |
-| L0-08 | AS-MO-18 matrix 500×800, 320×600, 1280×600 for every dialog |
-| L0-11 | Default decision 12 and Accepted exceptions: selected segment cues |
-| M1 | Current behaviour: Delete on its own row only for edit-link at ≤ 400px |
-| M2 | `surfaces.css:69` hardcoded 16px → token; modal button gap 8px |
-| M3 | Review focus: the dialog's single `role="alert"` slot |
-| M4 | § City modal item 5: the steps `placePopover` keeps and the ones that go |
-| M5 | Hide body text verified for the hint tile (Hide confirm contract item 8) |
-| M6 | No migration discussion; one Data compatibility line |
+| Round | Sources | Main changes |
+|-------|---------|--------------|
+| 1 | [`modal-overlay-design-spec-review.md`](../.private/pipeline/reports/modal-overlay-design-spec-review.md) (C1–C4, I1–I8, M1–M6); design review run `2026-10-06-76ba999-spec-r1` (L0-01..14) | Error spacing 8/16px and the Spacing contract; tokens follow the mock (row padding 10px, icon gap 8px); Hide titles for all four metrics and the Hide confirm contract (AS-MO-09, AS-MO-16); Direction D city-field states and accessible name (AS-MO-10); `place()` after error clear (AS-MO-17); Scope by file and line; city prefill (Default decision 9, AS-MO-06); narrow/low-window matrix (AS-MO-18); footer rules removed by name |
+| 2 | Stage-3 re-review N1–N6; design review run `2026-10-06-e297e9a-spec-r2` (L0-15..17) | Change mode without a stored city (Default decision 9, Product flows, AS-MO-06 (e)); city-field 8px value–hint gap and ids; footer button rules and row border-top in the removal table, City row inside the form; typo, title vs removed button text; forced colors: font weight alone; dialog error 18px from the control as an accepted exception |
 
-Unresolved: none from the two reports. Open for the next round: the measured flip heights (AS-MO-14) and the 2.6px margin (AS-MO-13) are taken from the review run's static reading, to be confirmed by the E2E harness.
+Unresolved: none. Open for the next round: the measured flip heights (AS-MO-14) and the 2.6px margin (AS-MO-13) come from the review run's static reading, to be confirmed by the E2E harness.
 
 ## Changelog (spec document)
 
@@ -460,3 +450,4 @@ Unresolved: none from the two reports. Open for the next round: the measured fli
 | final (product) | 2026-10-06 | Owner-approved target; mockups archived |
 | draft (pipeline) | 2026-10-06 | Run #16: `AS-MO-*`, Scope, supersession of city reserve docs |
 | draft r2 | 2026-10-06 | Review round 1 applied (§ Changes after review) |
+| draft r3 | 2026-10-06 | Review round 2 applied (§ Changes after review) |
