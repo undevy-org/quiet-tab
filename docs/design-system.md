@@ -30,7 +30,7 @@ See [Phase 2](#phase-2-grid--tiles--page-chrome) and
 | File | Contents |
 |------|----------|
 | `design-tokens.css` | Color, type, spacing, radius, shadow, focus tokens; light/dark |
-| `controls.css` | Buttons, inputs, segmented, icon-button, text-button, color input, list/menu rows |
+| `controls.css` | Buttons, inputs, segmented, icon-button, city-field, color input, list/menu rows |
 | `surfaces.css` | Modal shells, backdrops, popovers (add menu, suggestions), focus rings scoped to `.desktop-dialog` / `.city-modal` |
 | `newtab.css` | Desktop grid, tiles, weather presentation, tooltip, page chrome |
 
@@ -52,7 +52,7 @@ new names where applicable.
 | `--color-text-muted` | Labels, secondary copy, field placeholder |
 | `--color-border` | Decorative separators and surface borders |
 | `--color-border-control` | Boundary of a control (text field, segmented, color field, chrome and hint tile, secondary button); alias `--border-control` |
-| `--color-primary` | Primary fill, active segmented segment |
+| `--color-primary` | Primary fill (outside dialogs, the active segmented segment) |
 | `--color-primary-hover` | Primary hover |
 | `--color-on-primary` | Text on primary |
 | `--color-danger` | Destructive actions, errors |
@@ -84,7 +84,7 @@ separator uses `--color-border`.
 | `--font-size-sm` | **13px** | Form row labels, segmented labels, tooltip |
 | `--font-size-md` | **14px** | Status, dialog body, page status line |
 | `--font-size-title` | **18px** | Modal titles |
-| `--font-weight-control` | **600** | Buttons, checked segmented, text-button |
+| `--font-weight-control` | **600** | Buttons, checked segmented |
 | `--line-height-control` | **1.2** | Buttons |
 | `--line-height-body` | **1.4** | Status / error text (declared in Phase 1; `newtab.css` adopts it in Phase 2) |
 
@@ -96,14 +96,14 @@ separator uses `--color-border`.
 | `--control-border-width` | **1px** | Standard control border |
 | `--control-padding-x` | **12px** | Text inputs |
 | `--control-padding-x-button` | **14px** | Buttons |
-| `--control-gap-icon` | **6px** | Icon + label in `.button` |
+| `--control-gap-icon` | **6px** | Icon + label in `.button` (modal action buttons use `--form-footer-gap`, 8px) |
 | `--list-row-padding-y` | **8px** | Vertical padding of suggestion rows (keeps wrapped names off the row edges) |
 | `--control-disabled-opacity` | **0.62** | `:disabled` on buttons (including primary) |
 | `--form-label-width` | **100px** | Left column in form rows |
 | `--form-row-gap` | **12px** | Gap between label and control |
-| `--form-row-padding-y` | **12px** | Vertical padding per form row |
-| `--form-footer-gap` | **8px** | Gap between footer buttons |
-| `--form-footer-padding-y` | **14px** | Footer block padding |
+| `--form-row-padding-y` | **10px** | Vertical padding per dialog form row (rows have no `border-top`) |
+| `--form-footer-gap` | **8px** | Gap between the two modal action buttons and between a modal action button's icon and label |
+| `--modal-actions-margin-top` | **16px** | From the last content, row or error text to the top of the modal actions row (the footer has no padding or `border-top`; `--form-footer-padding-y` is removed) |
 | `--title-margin-bottom` | **12px** | Space below modal titles (all modals) |
 | `--surface-modal-padding` | **20px** | Inner padding of dialog cards |
 | `--surface-modal-max-width` | **420px** | `min()` with viewport margin |
@@ -124,7 +124,7 @@ unless a future phase explicitly requires it).
 
 | Token | Value | Use |
 |-------|-------|-----|
-| `--radius-control` | **8px** | Inputs, buttons, segmented, icon-button, text-button, list/menu rows, color input, tooltip |
+| `--radius-control` | **8px** | Inputs, buttons, segmented, icon-button, city-field, list/menu rows, color input, tooltip |
 | `--radius-popover` | **12px** | Add menu, geocode suggestion panel |
 | `--radius-modal` | **16px** | Desktop dialog, city modal card |
 | `--radius-tile` | **13px** | Favorite, chrome, weather, city-hint tiles (Phase 2) |
@@ -216,17 +216,49 @@ All heights are **border-box** (`box-sizing: border-box` globally).
 - Container: 1px `var(--color-border-control)` border (dividers between options keep the decorative `--border`), radius **8px**; **outer height 40px**
 - Option: `height: calc(var(--control-height) - 2 * var(--control-border-width))` → **38px**
 - Option padding `0 8px` (narrow dialog: `0 6px`)
-- Font **13px**; checked segment: primary fill, weight **600**
+- Font **13px**; checked segment outside dialogs: primary fill, weight **600**
+- **Direction B (inside `.desktop-dialog`):** the checked segment uses the soft fill
+  (`--soft-fill-strong`), `--text`, weight **600** and an inset 1px `--border-control`
+  ring instead of the primary fill. Soft fill against the panel is 1.25:1 (accepted,
+  owner-approved mock); the weight and the ring are the cues, and under forced colors
+  the font weight alone. The global primary rule stays as the base for segmented
+  groups outside dialogs.
 
 ### `.favorite-color-input`
 
 - **40×48px**, padding **2px**, radius **8px**, border `var(--color-border-control)`
 - Dimmed when Color = Auto; pointer-events restored for Manual
 
-### `.text-button`
+### `.city-field`
 
-- City row: Change city / Set a city
-- `min-height: var(--control-height)` (**40px**); padding `0 4px`; underline; radius **8px**
+- The City row control of Edit weather: one `<button type="button">` that looks like
+  `.favorite-input` (`min-height: var(--control-height)` **40px**, 1px
+  `--border-control`, radius **8px**, `0 var(--control-padding-x)` padding, panel fill)
+- Children: the city label (`data-weather-dialog-city`, one line with ellipsis, the full
+  label in `title`) and a 12px muted hint, `Change` or `Set a city` (`No city set` as
+  the value when no city is stored); 8px between them. Accessible name through
+  `aria-labelledby` (row label, value, hint)
+- Focus ring in dialogs like `.favorite-input` (soft fill and 2px overlay ring);
+  `disabled` (no weather service) uses `--control-disabled-opacity`
+- Replaces the former `.text-button` and `.desktop-dialog__city` row; `.text-button`
+  no longer exists
+
+### Modal actions
+
+- Every dialog and the city modal ends with the same row (`.favorite-form__footer`,
+  `.city-modal__actions`): exactly **two** buttons, 50/50 (`flex: 1`), `min-height`
+  **40px**, `gap: var(--form-footer-gap)` (**8px**) between them and between icon and
+  label, secondary (`x`, Cancel or Not now) on the left, commit on the right
+- `margin-top: var(--modal-actions-margin-top)` (**16px**); no footer padding or
+  `border-top`; **20px** (`--surface-modal-padding`) is the only inset under the buttons
+- Commit icons: `check` (Add, Save), `trash2` on `button--danger` (Delete),
+  `eyeOff` on primary (Hide)
+- Edit link has Cancel and Save only; Delete lives in edit mode (− then Delete link?)
+- Error text (`.desktop-dialog__error`, `.city-modal__feedback .status--error`):
+  `margin: 8px 0 0` (**8px** from the control or last row, **16px** to the actions);
+  in a dialog row the control sits 10px above the row's bottom, so the visible gap is
+  18px. The city modal has no feedback reserve: the error appears and goes with the
+  dialog height
 
 ### `.weather-form__suggestion` / `.add-menu__item`
 
@@ -242,7 +274,7 @@ All heights are **border-box** (`box-sizing: border-box` globally).
 - `.favorite-form__row` — label **100px**, `--font-size-sm`, muted color
 - `.desktop-dialog .favorite-form` — no outer border (legacy `.favorite-form` box
   reset inside dialogs)
-- `.desktop-dialog__city` — row `min-height: 40px`, space-between, text-button + city name
+- `.city-field` — the City row of Edit weather (see `.city-field`); the row is the first `.favorite-form__row` inside the form
 
 ## Surfaces
 
@@ -262,9 +294,10 @@ Modal titles: `--font-size-title`, `margin: 0 0 var(--title-margin-bottom)` (**1
 | Screen | Controls (all **40px** outer, **8px** radius unless noted) |
 |--------|--------------------------------------------------------------|
 | Add link | Link, Name inputs; Icon / Color segmented; Cancel, Add |
-| Edit link | Above + Size segmented; Delete, Cancel, Save; color swatch **40px** tall |
+| Edit link | Above + Size segmented; Cancel, Save; color swatch **40px** tall |
 | Delete link? | Cancel, Delete |
-| Edit weather | City row **40px**; Size segmented; Cancel, Save |
+| Hide <metric>? | Cancel, Hide (primary, `eyeOff`) |
+| Edit weather | City-field **40px**; Size segmented; Cancel, Save |
 | Change city / Set a city | Search input **40px**; clear **36px** inset **2px**; suggestion rows **40px**; Cancel or Not now, Save |
 | Add menu | Each menu item **40px** |
 
@@ -531,9 +564,9 @@ Phase 1 must not change strings. Key labels (English UI):
 
 | Surface | Strings (representative) |
 |---------|--------------------------|
-| Add / Edit link | Cancel, Add, Save, Delete; row labels Link, Name, Icon, Color, Size |
+| Add / Edit link | Cancel, Add, Save; row labels Link, Name, Icon, Color, Size |
 | Delete confirm | Cancel, Delete; title asks to confirm removal |
-| Edit weather | Cancel, Save; Change city / city name row |
+| Edit weather | Cancel, Save; City row (city name, `Change` / `Set a city` hint) |
 | City modal | Cancel, Not now, Save; search placeholder; geocode error status |
 | Add menu | Add link, Add weather, Settings (exact labels per `newtab.js`) |
 
@@ -551,7 +584,7 @@ Given/When/Then text, not file presence.
 ### AS-DS-1 Overlay control height (Add link)
 - Given: A fresh grid; Add link dialog open; custom icon row and manual color visible.
 - When: The user inspects visible controls (inputs, segmented groups, footer buttons).
-- Then: Each control’s border-box height is **40px** ± **0.5px** (segmented outer box included; radio inputs excluded).
+- Then: Each control’s border-box height is **40px** ± **0.5px** (segmented outer box and the city-field included; radio inputs excluded); the two footer buttons are equal width ± **0.5px** with an **8px** gap.
 - Verified by: E2E `dg-41-control-metrics.mjs` (plan Task 2)
 
 ### AS-DS-2 Overlay control height (city modal)
@@ -629,7 +662,9 @@ Given/When/Then text, not file presence.
 - Then: Overlay control heights use `var(--control-height)` (or documented calc);
   banned legacy heights (`34px` menu rows, `44px` city field, `36px` menu
   min-height) are absent from `controls.css`; modal titles use
-  `var(--title-margin-bottom)`.
+  `var(--title-margin-bottom)`; the modal actions row uses
+  `var(--modal-actions-margin-top)`, `--form-footer-padding-y` and `.text-button` are
+  absent.
 - Verified by: `test/designSystem.test.js` extensions (plan Task 3)
 
 ## Review focus

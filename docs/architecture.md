@@ -15,7 +15,7 @@ forecast cache and a per-device "city prompt dismissed" flag persist to
 
 | File | Responsibility |
 | --- | --- |
-| `src/newtab.js` | Renders the desktop grid (links, weather tiles, the "Set a city" hint tile, the Settings and Add tiles), edit mode (jiggle, − badges, pointer drag with drop highlight and autoscroll), the desktop dialogs (add link, edit link, delete confirm, weather edit), the Add menu, the page status line, the shared tooltip layer and the city modal, and wires them to the services. The only file that touches the DOM. |
+| `src/newtab.js` | Renders the desktop grid (links, weather tiles, the "Set a city" hint tile, the Settings and Add tiles), edit mode (jiggle, − badges, pointer drag with drop highlight and autoscroll), the desktop dialogs (add link, edit link without a Delete button, delete confirm, hide-weather confirm, weather edit), the Add menu, the page status line, the shared tooltip layer and the city modal, and wires them to the services. The only file that touches the DOM. |
 | `src/desktopLayout.js` | Pure grid engine: grid metrics and the (always even) column count for a viewport width, grid validation (`isValidGrid` with a signed `x`, `isValidGridV2` for the v1/v2 readers), the stored/displayed frame (`originColumn`, `toStored`, `toDisplayed`), the displayed layout (`displayLayout`, a stateless anchored repack of the stored grids for the current column count), placement rules (`canPlace`, `placeResized`, `placeNew` nearest to the center, `cellFromPoint`), the default block (`placeMissing`), the one-time v2 → v3 shift (`centerShift`) and the v1 → v2 packing (`migrateV1ToV2`). |
 | `src/desktopUiState.js` | Pure UI state for edit mode, the Add menu, the open dialog and an active drag, and the Escape layering (`escapeLayer`). |
 | `src/widgetsStore.js` | Validates, reads, and writes persisted widgets state (links, weather metrics and chrome tiles, each with a `grid`), sharded across `chrome.storage.sync` keys; reads are lenient about a missing or malformed `grid`. Also holds the legacy favorites → widgets v1 migration, the v1 → v2 migration (`migrateWidgetsToV2`), the v2 → v3 migration (`migrateWidgetsToV3`), `ensureWidgetsLayout` (defaults and self-heal), `inspectWidgetsMeta` and the write guard (`assertWritable`) that refuses `newer`, `v2`, `v1`, and `invalid` metas (only `valid` and `missing` are writable). |
@@ -204,8 +204,10 @@ the forecast arrives. A 2-wide tile shows the primary and secondary values, a
    names), stores the resolved location, and fetches a fresh forecast. Choosing a
    suggestion only fills the field; Save then stores that city without a geocoding
    request (editing the text drops the choice, so Save geocodes it instead). The
-   modal is opened by the hint tile, by the weather edit dialog's "Set a city" /
-   "Change city" button (change mode, stacked over that dialog), or automatically
+   modal is opened by the hint tile, by the weather edit dialog's city-field (a single
+   button in the City row showing the stored city and a `Change` / `Set a city` hint; change mode,
+   stacked over that dialog; in change mode the input is prefilled with the stored city, so Save
+   without editing re-selects it by its coordinates), or automatically
    (first-run mode). While a request runs the field and buttons are disabled; on
    failure the modal stays open, keeps the typed text and shows the error. Save is
    always visible and is disabled while the field is empty; Enter in an empty field
@@ -248,19 +250,21 @@ retry; a retry only writes the cache that `initialize()` already writes.
   stops the modal). Leaving the tab without closing the modal is not a dismissal.
   Backdrop clicks in the first 300 ms after opening are ignored.
 - **Layout.** The dialog holds the city field with a clear button (shown while the
-  field has text and no request runs), then the error line, then full-width
-  Not now (first-run) or Cancel (change mode) and Save buttons with icons. Typing
+  field has text and no request runs), then the error line, then the modal actions
+  row: Not now (first-run) or Cancel (change mode) and Save, 50/50 with icons. Change
+  mode has no "Current: …" line; the field is prefilled with the stored city (caret at
+  the end), first-run starts empty. Typing
   two or more characters opens the suggestion list as an absolutely positioned
   popover over the dialog, so the dialog does not move. When under 96px is free
   below the input (measured as if the list were an overlay) the list is docked in
   the dialog's flow instead and the dialog scrolls.
 - **Error line.** The error text lives in one `role="alert"` node inside a feedback
-  block that always keeps room for two lines, so Save does not move when an error
-  appears or goes (a third line, only in very narrow windows, grows the block). In a
-  window too low to hold that room, `placePopover` shrinks it with the window
-  (`feedbackReserve`, `--city-feedback-reserve`, down to 0 below the dialog's own height;
-  `city-modal__dialog--compact` marks a below-full room), so the buttons stay in view and
-  the dialog never jumps at one height. Editing
+  block with no reserved height: it is empty (height 0) at rest, so the buttons are
+  16px under the field, and an error adds 8px above and 16px below its text, so
+  the dialog grows when an error appears and shrinks when it goes (the field and the
+  buttons move; there is no `feedbackReserve`, `--city-feedback-reserve` or `compact`
+  state). `placePopover` runs again after an error is shown or cleared, and keeps only
+  the docked/overlay suggestion list logic. Editing
   the field (typing, pasting, deleting) or pressing the clear button empties and hides
   that node; nothing else clears it besides opening the modal and starting a request.
 - **Keyboard.** ArrowDown in the field moves into the list; ArrowDown/ArrowUp move
@@ -297,9 +301,9 @@ retry; a retry only writes the cache that `initialize()` already writes.
   Settings enters edit mode; Add opens the add-link dialog. A click on the
   background does nothing.
 - **Edit mode** (Settings, `aria-pressed`): tiles jiggle (not with reduced
-  motion), links and weather tiles get a − badge (links: delete confirm; weather:
-  hide), a tap on a link or weather tile opens its edit dialog (link: URL, name,
-  icon, color, size; weather: city row and size), and any tile can be dragged.
+  motion), links and weather tiles get a − badge (links: Delete link? confirm; weather:
+  Hide <metric>? confirm, `confirm-hide-weather`, Cancel focused, one write on Hide), a tap on a link or weather tile opens its edit dialog (link: URL, name,
+  icon, color, size; weather: city-field and size), and any tile can be dragged.
   The whole window is the drop area: the pointer anywhere (side margins, above the
   grid, below the last row) targets the nearest allowed cell, `x` within the columns
   and `y` at most `maxDropRow` (every row of the first screen, `viewportRows`; below

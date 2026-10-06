@@ -26,6 +26,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ("Can't reach the weather service..."). When it works, the tiles update and "Weather updated"
   is announced. Fresh tiles have no refresh control. E2E: `dg-54-weather-tile-retry.mjs`.
 
+- Hide weather metric now asks first. Pressing − on a weather tile in edit mode opens
+  "Hide temperature?" (or precipitation, air quality, UV index) with Cancel and Hide; the
+  tile is hidden only after Hide, and "Temperature hidden" (and so on) is announced. The
+  hide button uses an eye-off icon, so it is not mistaken for Delete link. E2E:
+  `dg-58-modal-overlay.mjs`.
+- Edit weather: the city row is a single field that shows the city with a "Change" hint
+  (or "No city set" and "Set a city") and opens the city window; it replaces the
+  "Change city" text button.
+- Change city: the field is now filled with the current city, with the cursor at the end,
+  so Save without editing keeps it and Clear starts a new search.
+
+### Removed
+
+- The "Current: …" line in the Change city window, the extra space kept under the city
+  field for an error, and the Delete button in the Edit link dialog (links are still
+  deleted with − in edit mode).
+
 ### Fixed
 
 - City dialog: resizing the window (or zooming) no longer makes the dialog jump by about
@@ -68,6 +85,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Dialogs and the city window share one footer: two buttons of equal width with icons
+  (Cancel or Not now on the left, Add, Save, Delete or Hide on the right), 16px under the
+  content, with no divider line above. Form rows have no divider lines and 10px padding;
+  the selected option of Icon, Color and Size is a soft fill with a ring instead of the
+  primary color. An error in the city window now sits 8px under the field and 16px above
+  the buttons, so the window grows when it appears (the earlier reserved space and the
+  low-window shrinking of it are gone). E2E: `dg-58-modal-overlay.mjs`.
 - Borders of text fields, the color field, the segmented control, the Settings and Add
   tiles and the first-run "Set a city" tile are darker so they meet 3:1 contrast
   (WCAG 1.4.11) in light and dark. Card edges and dividers keep their quiet look.

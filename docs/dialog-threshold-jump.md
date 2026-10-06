@@ -2,6 +2,8 @@
 
 ## Status
 
+**Superseded in part by `docs/modal-overlay-design.md`** (permanent feedback reserve removed; AS-MO-13/14/17). AS-DJ-01, 02, 03, 05, 07, 08, 11, 12 (reserve continuity, `feedbackReserve` unit, source guards, 360px failures of the reserve) are retired with `feedbackReserve`; AS-DJ-04, 06, 09, 10 (list flip, window-not-history, widths/themes, keyboard) are restated without reserve in AS-MO-14, AS-MO-17, AS-MO-18 and AS-MO-12.
+
 `implemented` (spec gate and final design review passed; merged in `c5dc890`)
 
 Decision: **do it**, with a small change that makes the room kept for an error message shrink continuously with the window height instead of switching off at one pixel. Backlog item 6 ("dialog jumps by 39 px at the threshold; large; rewrites the logic of the low-window run, dg-47/dg-48") was reproduced and measured. The jump is real and has exactly one source. It is **not** a large rewrite: the same `placePopover` pass, the same thresholds for the `compact` class, one custom property instead of one `min-height: 0` rule (see "Default decisions"). One part of the intake is **not** removed and is recorded as an accepted exception: the list flips between overlay and docked at one height, which moves the buttons by the list's own height (see "Accepted exceptions").

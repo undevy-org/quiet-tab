@@ -2,6 +2,8 @@
 
 ## Status
 
+**Amended by `docs/modal-overlay-design.md`:** `.text-button` is removed (the weather dialog's city row is the `.city-field`, which has the control border like `.favorite-input`), the Edit link dialog has no Delete button (so no stacked full-width Delete at narrow widths), and every modal footer is two 50/50 buttons. The mentions of `.text-button`, Delete in Edit link and the stacked footer below describe the earlier state.
+
 `implemented` (spec gate and final design review passed; merged in `9fa8690`)
 
 Decision: **do it** (the `.button` border moves to `--color-border-control`). Backlog item 4. This spec supersedes one line of `docs/border-contrast.md` (the `.button` exclusion); see "What changes in the earlier decision".
