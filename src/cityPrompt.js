@@ -13,6 +13,20 @@ export function shouldAutoShowCityPrompt(input) {
   );
 }
 
+// The early check that runs BEFORE the dismissal flag is read (docs/first-run-empty-desk.md, decision 3a): every input of
+// shouldAutoShowCityPrompt except the flag, with the same fail-closed semantics. The flag is only read when this passes, and
+// shouldAutoShowCityPrompt stays the final rule. Pure.
+export function firstRunPromptPossible(input) {
+  const state = input ?? {};
+  return (
+    state.locationRead === true &&
+    state.hasLocation === false &&
+    state.anyMetricEnabled === true &&
+    state.weatherAvailable === true &&
+    state.gridLocked === false
+  );
+}
+
 // The room kept for an error message under the city field, in px: the full two-line reserve where the window holds the dialog with it,
 // shrinking one pixel per window pixel to 0 where it holds only the dialog without it (docs/dialog-threshold-jump.md). Pure.
 // With room for everything the reserve is returned exactly as given (no rounding, so the dialog keeps its full height); only a smaller

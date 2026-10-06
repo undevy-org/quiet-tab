@@ -179,6 +179,8 @@ Docked suggestion lists use no shadow (in-flow scroll).
 - Segmented: ring on the **whole** `.segmented` group when any radio has
   `:focus-visible`; inner option outline suppressed in overlays.
 - Color input focused: full opacity when focused (Auto mode dimmed otherwise).
+- Desk reveal after the first-run city modal closes: `desk-reveal`, opacity 0 to 1, 200 ms
+  `ease-out`, once, on the whole desk (`#favorites[data-reveal]`); none with reduced motion.
 
 Tests in `test/focusTokens.test.js` guard contrast and overlay replacement rules.
 
