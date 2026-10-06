@@ -29,7 +29,8 @@ import {
   ensureWidgetsLayout,
   inspectWidgetsMeta,
   migrateToWidgets,
-  migrateWidgetsToV2
+  migrateWidgetsToV2,
+  migrateWidgetsToV3
 } from "./widgetsStore.js";
 import { placeTooltip } from "./widgetsLayout.js";
 import { NEWER_WIDGETS_MESSAGE, weatherMetricKey } from "./widgetsShared.js";
@@ -2176,8 +2177,8 @@ if (favoritesRoot) {
       return;
     }
 
-    // R7 bootstrap order: legacy → widgets v1, v1 → v2, then ensure, then the first read. No read or mutation runs
-    // before the v2 migration has succeeded; any failure locks the grid and leaves the stored data untouched.
+    // R7 bootstrap order: legacy → widgets v1, v1 → v2, v2 → v3, then ensure, then the first read. No read or mutation runs
+    // before the v3 migration has succeeded; any failure locks the grid and leaves the stored data untouched.
     try {
       const rawMeta = hasStorageArea(syncStorageArea)
         ? await syncStorageArea.get(WIDGETS_META_KEY)
@@ -2202,6 +2203,14 @@ if (favoritesRoot) {
         // as it is (no message decided yet, backlog L1-02).
         const v2 = await migrateWidgetsToV2(syncStorageArea);
         if (v2?.meta === "newer") {
+          widgetsNewer = true;
+          renderFavorites();
+          return;
+        }
+        // v2 -> v3 (docs/centered-grid.md): one set() call shifts a v2 layout to the center line; a `v2` meta that is still
+        // there afterwards (the write failed) throws into the catch below and locks like a failed v1 -> v2 step.
+        const v3 = await migrateWidgetsToV3(syncStorageArea);
+        if (v3?.meta === "newer") {
           widgetsNewer = true;
           renderFavorites();
           return;

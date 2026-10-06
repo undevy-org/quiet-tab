@@ -280,7 +280,7 @@ describe("ensureWidgetsLayout (Defaults, AS-1, AS-35; centered since run 15)", (
     await ensureWidgetsLayout(area, { now: () => "2026-10-06T00:00:00.000Z" });
     const after = await gridsOf(area);
     assert.deepEqual(after["chrome:settings"], g(2, 0));
-    for (const id of Object.keys(before)) assert.deepEqual(after[id], before[id], id);
+    for (const id of Object.keys(before).filter((id) => id !== CHROME_IDS.settings)) assert.deepEqual(after[id], before[id], id);
     assert.equal((await area.get(WIDGETS_META_KEY))[WIDGETS_META_KEY].updatedAt, "2026-10-06T00:00:00.000Z");
   });
   it("AS-CG-09 b: the four missing metrics next to links and chrome tiles become one block in the first row with room", async () => {
