@@ -2,7 +2,7 @@
 
 ## Status
 
-`draft` (product-approved target 2026-10-06; pipeline sections added for run #16; revised after spec review rounds 1 and 2, see § Changes after review).
+`implemented`
 
 ## Intake log
 
