@@ -77,7 +77,7 @@ describe("no focus rule hides the outline without a visible replacement (fix wav
     ".desktop-dialog :is(button, input):focus-visible": [
       ".desktop-dialog .favorite-input:focus-visible",
       ".desktop-dialog .button:focus-visible",
-      ".desktop-dialog .text-button:focus-visible",
+      ".desktop-dialog .city-field:focus-visible",
       ".desktop-dialog .favorite-color-input:focus-visible",
       ".desktop-dialog .segmented:has(input:focus-visible)"
     ],
@@ -104,6 +104,11 @@ describe("no focus rule hides the outline without a visible replacement (fix wav
       });
     }
   }
+  it("the city-field focus ring is a soft fill plus the 2px --focus-overlay-ring, like .favorite-input in dialogs", () => {
+    const body = ruleFor(".desktop-dialog .city-field:focus-visible").body;
+    assert.match(body, /background: var\(--soft-fill\);/);
+    assert.match(body, /box-shadow: 0 0 0 2px var\(--focus-overlay-ring\);/);
+  });
   it("the color input is at full opacity while focused and the segmented option has no inner --focus outline in dialogs", () => {
     assert.match(ruleFor(".desktop-dialog .favorite-color-input:focus-visible").body, /opacity: 1;/);
     assert.match(ruleFor(".desktop-dialog .segmented__option:has(input:focus-visible)").body, /outline: none;/);

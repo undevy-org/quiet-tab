@@ -268,8 +268,17 @@ describe("newtab favorites source", () => {
 
   it("gives the favorite form action buttons a leading icon instead of bare text", async () => {
     const code = await source();
-    assert.match(code, /createIconButton\("button button--danger", "Delete", "trash2"\)/);
+    // AS-MO-02/03: Delete lives only in the confirm-delete dialog; the Edit link form builds no Delete button.
+    const bodyOf = (name) => {
+      const start = code.indexOf(`function ${name}(`);
+      assert.ok(start > -1, name);
+      return code.slice(start, code.indexOf("\n}\n", start));
+    };
+    assert.match(bodyOf("buildDialogContent"), /createIconButton\("button button--danger", "Delete", "trash2"\)/);
     assert.match(code, /createIconButton\("button", "Cancel", "x"\)/);
+    assert.doesNotMatch(bodyOf("createFavoriteForm"), /Delete|trash2|button--danger|favoriteAction = "delete"/);
+    assert.doesNotMatch(code, /\[data-favorite-action="delete"\]/);
+    assert.doesNotMatch(code, /Delete inside the edit dialog/);
   });
   it("drops the dead min-width already overridden for every .favorite-input use site", async () => {
     const css = await readFile(new URL("../src/newtab.css", import.meta.url), "utf8");
@@ -510,22 +519,26 @@ describe("newtab city modal source", () => {
     const startBody = code.slice(start, code.indexOf("\n}\n", start));
     assert.match(startBody, /error: weatherErrorMessage\(error\)/);
     assert.doesNotMatch(startBody, /error\.message|String\(error\)/);
-    const modal = between(code, "function createCityForm(mode)", "function createWeatherMetricTile(");
+    const modal = between(code, "function createCityForm(mode, location)", "function createWeatherMetricTile(");
     assert.doesNotMatch(modal, /innerHTML/);
   });
   it("builds the modal with text-only buttons, a novalidate form and the approved strings, never innerHTML", async () => {
     const code = await source();
-    const modal = between(code, "function createCityForm(mode)", "function createWeatherMetricTile(");
+    const modal = between(code, "function createCityForm(mode, location)", "function createWeatherMetricTile(");
     assert.doesNotMatch(modal, /innerHTML/);
     assert.match(modal, /createIconButton\("button", mode === "first-run" \? "Not now" : "Cancel", "x"\)/);
     assert.match(modal, /createIconButton\("button button--primary", "Save", "check"\)/);
     assert.match(modal, /form\.noValidate = true;/);
     assert.doesNotMatch(modal, /input\.required/);
-    assert.match(modal, /input\.value = "";/);
+    // AS-MO-06: change mode is prefilled from the stored city, caret at the end, no selection; no "Current:" line.
+    assert.match(modal, /setSelectionRange\(/);
+    assert.doesNotMatch(modal, /\.select\(\)/);
+    assert.doesNotMatch(modal, /city-modal__current|cityModalCurrent|Current: /);
     assert.match(modal, /errorNode\.setAttribute\("role", "alert"\);/);
-    for (const text of ["Enter a city name", "Show weather on your new tab?", "Not now", "Change city", "Set a city", "Current: "]) {
+    for (const text of ["Enter a city name", "Show weather on your new tab?", "Not now", "Change city", "Set a city"]) {
       assert.ok(code.includes(text), text);
     }
+    assert.ok(!code.includes("Current: "), "Current: removed");
   });
 
   it("styles the modal above the panel and tooltip, with a readable placeholder and a visible focus ring", async () => {
@@ -597,7 +610,7 @@ describe("newtab first-run city prompt source", () => {
 
   it("builds the prompt store only with local storage and writes the flag silently", async () => {
     const code = await source();
-    assert.match(code, /import \{ feedbackReserve, firstRunPromptPossible, shouldAutoShowCityPrompt \} from "\.\/cityPrompt\.js";/);
+    assert.match(code, /import \{ firstRunPromptPossible, shouldAutoShowCityPrompt \} from "\.\/cityPrompt\.js";/);
     assert.match(code, /const weatherPromptStore = hasStorageArea\(localStorageArea\) \? createWeatherPromptStore\(localStorageArea\) : null;/);
     assert.match(code, /weatherPromptStore\.dismiss\(\)\.catch\(/);
     assert.doesNotMatch(code, /onFirstRunDismissed\(\) \{\}/);
@@ -853,7 +866,7 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
   it("Task 10: edit, confirm-delete and weather dialogs, the Add menu and the hide/restore actions (copy, kinds, wiring)", async () => {
     const code = await source();
     const build = fn(code, "buildDialogContent");
-    for (const kind of ["add-link", "edit-link", "confirm-delete", "edit-weather"]) assert.ok(build.includes(`case "${kind}":`), kind);
+    for (const kind of ["add-link", "edit-link", "confirm-delete", "confirm-hide-weather", "edit-weather"]) assert.ok(build.includes(`case "${kind}":`), kind);
     assert.match(build, /title\.textContent = "Delete link\?";/);
     assert.match(build, /createNode\("p", "desktop-dialog__body", "This removes the link from your grid\."\)/);
     assert.match(build, /createIconButton\("button button--danger", "Delete", "trash2"\)/);
@@ -862,8 +875,22 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     assert.match(build, /save\.disabled = true; \/\/ enabled only when the size changed/);
     assert.match(build, /showCityModal\("change", WEATHER_DIALOG_CITY_SELECTOR\)/);
     assert.match(code, /const WEATHER_DIALOG_CITY_SELECTOR = '\[data-dialog="edit-weather"\] \[data-weather-action="open-city-modal"\]';/);
-    assert.match(fn(code, "syncWeatherDialogCity"), /location\?\.name \?\? "No city set"/);
-    assert.match(fn(code, "syncWeatherDialogCity"), /location \? "Change city" : "Set a city"/);
+    // AS-MO-10: the city-field is one button; hint text is `Change` / `Set a city`, value `No city set`; the old text-button copy is gone.
+    const sync = fn(code, "syncWeatherDialogCity");
+    assert.match(sync, /"No city set"/);
+    assert.match(sync, /location \? "Change" : "Set a city"/);
+    assert.doesNotMatch(sync, /"Change city"/);
+    assert.match(sync, /\.title = /);
+    assert.doesNotMatch(code, /desktop-dialog__city|"text-button"/);
+    assert.match(build, /"city-field"/);
+    assert.match(code, /aria-labelledby/);
+    // AS-MO-09 / AS-MO-16: weather − opens the hide confirm; titles, body, eyeOff Hide (primary), announcement.
+    for (const text of ["Hide temperature?", "Hide precipitation?", "Hide air quality?", "Hide UV index?", "This hides the tile from your grid. You can add it again from Add.", "Temperature hidden", "Precipitation hidden", "Air quality hidden", "UV index hidden"]) {
+      assert.ok(code.includes(text), text);
+    }
+    assert.match(build, /createIconButton\("button button--primary", "Hide", "eyeOff"\)/);
+    assert.doesNotMatch(fn(code, "handleEditModeClick"), /hideWeatherMetric\(/);
+    assert.match(fn(code, "handleEditModeClick"), /confirm-hide-weather/);
     // Size radiogroup: one shared control, values 1x1|2x1|2x2, shown as 1×1 / 2×1 / 2×2.
     assert.match(code, /const SIZE_OPTIONS = \[\s*\["1x1", "1×1"\],\s*\["2x1", "2×1"\],\s*\["2x2", "2×2"\]\s*\];/);
     assert.match(fn(code, "createSizeControl"), /createSegmentedControl\("size", SIZE_OPTIONS,/);
@@ -1006,13 +1033,12 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     assert.match(update, /drawDropHighlight\(grid, target, s, valid\);/);
   });
 
-  it("fix wave 2: the link dialog's color input has its own accessible name; narrow Edit link footer wraps; a hidden badge is not displayed", async () => {
+  it("fix wave 2: the link dialog's color input has its own accessible name; the narrow Edit link footer rules are gone (no Delete there); a hidden badge is not displayed", async () => {
     const code = await source();
     assert.match(fn(code, "createFavoriteForm"), /color\.type = "color";\s*color\.setAttribute\("aria-label", "Background color"\);/);
     const css = await appStyles();
     const gridCss = await readFile(new URL("../src/newtab.css", import.meta.url), "utf8");
-    assert.match(css, /\.desktop-dialog\[data-dialog="edit-link"\] \.favorite-form__footer\s*\{\s*flex-wrap: wrap;/s);
-    assert.match(css, /\.desktop-dialog\[data-dialog="edit-link"\] \.favorite-form__footer > \.button--danger\s*\{\s*flex-basis: 100%;[^}]*margin-right: 0;/s);
+    assert.doesNotMatch(css, /data-dialog="edit-link"\] \.favorite-form__footer/);
     assert.match(gridCss, /\.desktop-grid > \.tile-remove\[hidden\] \{ display: none; \}/);
   });
 
@@ -1020,5 +1046,88 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     const code = await source();
     assert.doesNotMatch(code, /innerHTML/);
     assert.doesNotMatch(code, /chrome\.storage\.onChanged|storage\.onChanged/);
+  });
+});
+
+// AS-MO-11 and AS-MO-15 (docs/modal-overlay-design.md): unit-only CSS and token pins.
+describe("modal overlay: tokens, rows, footers, segmented (AS-MO-11, AS-MO-15)", () => {
+  const read = (name) => readFile(new URL(`../src/${name}`, import.meta.url), "utf8");
+  const stripCss = (text) => text.replace(/\/\*[\s\S]*?\*\//g, "");
+  const ruleBody = (css, selector) => {
+    const match = [...stripCss(css).matchAll(/([^{}]+)\{([^{}]*)\}/g)].find((m) => m[1].trim() === selector);
+    assert.ok(match, `rule ${selector}`);
+    return match[2];
+  };
+
+  it("tokens: --modal-actions-margin-top 16px, --form-row-padding-y 10px, --form-footer-padding-y gone from src/", async () => {
+    const tokens = await read("design-tokens.css");
+    assert.match(tokens, /--modal-actions-margin-top:\s*16px;/);
+    assert.match(tokens, /--form-row-padding-y:\s*10px;/);
+    for (const name of ["design-tokens.css", "controls.css", "surfaces.css", "newtab.css", "newtab.js"]) {
+      assert.doesNotMatch(await read(name), /--form-footer-padding-y/, name);
+    }
+  });
+
+  it("dialog rows have no border-top and use the row padding token", async () => {
+    const controls = await read("controls.css");
+    const row = ruleBody(controls, ".favorite-form__row");
+    assert.doesNotMatch(row, /border/);
+    assert.match(row, /padding: var\(--form-row-padding-y\) 0;/);
+    assert.doesNotMatch(stripCss(controls), /\.favorite-form__row:first-child/);
+  });
+
+  it("modal action rows: margin from the token, no border-top, no padding, 50/50 buttons, no margin-right:auto on danger", async () => {
+    const controls = await read("controls.css");
+    const surfaces = await read("surfaces.css");
+    const footer = ruleBody(controls, ".favorite-form__footer");
+    assert.match(footer, /margin-top: var\(--modal-actions-margin-top\);/);
+    assert.match(footer, /gap: var\(--form-footer-gap\);/);
+    assert.doesNotMatch(footer, /border|padding/);
+    assert.doesNotMatch(stripCss(controls), /\.favorite-form__footer \.button--danger/);
+    const btn = ruleBody(controls, ".favorite-form__footer .button");
+    assert.match(btn, /flex: 1;/);
+    assert.match(btn, /min-height: var\(--control-height\);/);
+    assert.match(btn, /justify-content: center;/);
+    assert.match(btn, /gap: var\(--form-footer-gap\);/);
+    const city = ruleBody(surfaces, ".city-modal__actions");
+    assert.match(city, /margin-top: var\(--modal-actions-margin-top\);/);
+    assert.doesNotMatch(stripCss(surfaces), /data-dialog="confirm-delete"\] \.favorite-form__footer/);
+  });
+
+  it("dialog body and error spacing: body margin 0, error margin 8px 0 0", async () => {
+    const surfaces = await read("surfaces.css");
+    assert.match(ruleBody(surfaces, ".desktop-dialog__body"), /margin: 0;/);
+    assert.match(ruleBody(surfaces, ".desktop-dialog__error"), /margin: 8px 0 0;/);
+  });
+
+  it("removed rules: .city-modal__current, .desktop-dialog__city*, .text-button, .city-modal__dialog--compact", async () => {
+    const css = stripCss(await appStyles());
+    assert.doesNotMatch(css, /city-modal__current|desktop-dialog__city|\.text-button|city-modal__dialog--compact|--city-feedback-reserve/);
+    assert.doesNotMatch(css, /\.city-modal__feedback \{[^}]*min-height/);
+  });
+
+  it("AS-MO-11: the global checked segmented rule stays primary; the soft fill is scoped to .desktop-dialog", async () => {
+    const controls = await read("controls.css");
+    const surfaces = await read("surfaces.css");
+    const global = ruleBody(controls, ".segmented__option:has(input:checked)");
+    assert.match(global, /background: var\(--primary\);/);
+    assert.match(global, /color: var\(--primary-contrast\);/);
+    assert.doesNotMatch(global, /soft-fill/);
+    const scoped = ruleBody(surfaces, ".desktop-dialog .segmented__option:has(input:checked)");
+    assert.match(scoped, /background: var\(--soft-fill-strong\);/);
+    assert.match(scoped, /color: var\(--text\);/);
+    assert.match(scoped, /font-weight: var\(--font-weight-control\);/);
+    assert.match(scoped, /box-shadow: inset 0 0 0 1px var\(--border-control\);/);
+    const soft = [...stripCss(controls + surfaces).matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((m) => /soft-fill-strong/.test(m[2]) && /:checked/.test(m[1]));
+    assert.ok(soft.length > 0 && soft.every((m) => m[1].trim().startsWith(".desktop-dialog ")), "soft checked fill only under .desktop-dialog");
+  });
+
+  it("city-field: a 40px bordered control with 8px value-hint gap and a disabled look", async () => {
+    const css = (await read("surfaces.css")) + (await read("controls.css"));
+    const field = ruleBody(css, ".city-field");
+    assert.match(field, /min-height: var\(--control-height\);/);
+    assert.match(field, /border: 1px solid var\(--border-control\);/);
+    assert.match(field, /gap: 8px;/);
+    assert.match(stripCss(css), /\.city-field:disabled/);
   });
 });

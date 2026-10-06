@@ -8,7 +8,8 @@ const read = (name) => readFile(new URL(`../src/${name}`, import.meta.url), "utf
 describe("city modal error feedback", () => {
   it("the input listener and the Clear handler empty the existing error slot", async () => {
     const code = await read("newtab.js");
-    assert.match(code, /function clearCityError\(\) \{\s*cityModalError = "";\s*errorNode\.textContent = "";\s*errorNode\.hidden = true;\s*\}/);
+    // AS-MO-17: after the slot is emptied the dialog height changed, so the list placement runs again (no resize event needed).
+    assert.match(code, /function clearCityError\(\) \{\s*cityModalError = "";\s*errorNode\.textContent = "";\s*errorNode\.hidden = true;\s*placePopover\(\);\s*\}/);
     assert.match(code, /input\.addEventListener\("input", \(\) => \{\s*chosenCity = null;[^\n]*\n\s*clearCityError\(\);\s*\}\);/);
     assert.match(code, /clear\.addEventListener\("click", \(\) => \{[^}]*clearCityError\(\);/);
   });
@@ -19,6 +20,7 @@ describe("city modal error feedback", () => {
     const start = code.indexOf("function clearCityError()");
     const helper = code.slice(start, code.indexOf("\n  }\n", start));
     assert.doesNotMatch(helper, /createNode|replaceWith|innerHTML|aria-live|syncCityModal/);
+    assert.match(helper, /placePopover\(\);/);
     const builderStart = code.indexOf('const errorNode = createNode("p"');
     const builder = code.slice(builderStart, code.indexOf("form.append(", builderStart));
     assert.doesNotMatch(builder, /aria-live/);
@@ -31,12 +33,17 @@ describe("city modal error feedback", () => {
     assert.doesNotMatch(code, /feedback\.(setAttribute|textContent)/);
   });
 
-  it("the feedback block only reserves two lines from the two tokens", async () => {
+  it("AS-MO-15: the feedback block has no min-height reserve and no reserve token; errors sit 8px below the input", async () => {
     const css = await read("surfaces.css");
     const rule = css.match(/\.city-modal__feedback \{([^}]*)\}/);
     assert.ok(rule, "rule .city-modal__feedback exists");
-    assert.match(rule[1], /min-height: var\(--city-feedback-reserve, calc\(2 \* var\(--line-height-body\) \* var\(--font-size-md\)\)\);/);
-    assert.deepEqual(rule[1].split(";").map((d) => d.split(":")[0].trim()).filter(Boolean), ["min-height"]);
+    assert.doesNotMatch(rule[1], /min-height/);
+    assert.match(rule[1], /margin: 0;/);
+    assert.match(rule[1], /padding: 0;/);
+    assert.doesNotMatch(css, /--city-feedback-reserve/);
+    const error = css.match(/\.city-modal__feedback \.status--error \{([^}]*)\}/);
+    assert.ok(error, "rule .city-modal__feedback .status--error exists");
+    assert.match(error[1], /margin: 8px 0 0;/);
   });
 
   // Coverage note (docs/city-modal-low-window.md): resetting `cityModalError` in the helper has no UI-visible effect today.
@@ -49,9 +56,9 @@ describe("city modal error feedback", () => {
   });
 });
 
-// AS-LW-01..04 and AS-DJ-08 (docs/city-modal-low-window.md, docs/dialog-threshold-jump.md): source-level guards; the behavior itself is
-// covered by e2e dg-48 and dg-53 (and the step order by dg-49).
-describe("city modal in a very low window", () => {
+// AS-MO-14, AS-MO-15, AS-MO-17 (docs/modal-overlay-design.md): placePopover keeps only the docked/overlay list logic; source-level guards,
+// the behavior itself is covered by e2e dg-58 (groups 14, 17) and the rewritten dg-49 / dg-53.
+describe("city modal placePopover without reserve machinery", () => {
   const place = async () => {
     const code = await read("newtab.js");
     const start = code.indexOf("function placePopover()");
@@ -59,41 +66,39 @@ describe("city modal in a very low window", () => {
   };
   const stripComments = (text) => text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|\s)\/\/[^\n]*/g, "$1");
 
-  it("placePopover drops docked, scroll, compact and the property, reads the base, calls the helper, sets the property and compact, then measures free and tooTall", async () => {
+  it("placePopover drops docked and scroll, measures free and tooTall, toggles docked and scroll, sets the list max-height, restores scrollTop, in this order", async () => {
     const body = stripComments(await place());
     const at = (re) => body.search(re);
     const order = [
       /classList\.remove\("weather-form__suggestions--docked"\)/,
-      /classList\.remove\("city-modal__dialog--scroll", "city-modal__dialog--compact"\)/,
-      /style\.removeProperty\("--city-feedback-reserve"\)/,
-      /const base =/,
-      /feedbackReserve\(/,
-      /setProperty\("--city-feedback-reserve"/,
-      /classList\.add\("city-modal__dialog--compact"\)/,
+      /classList\.remove\("city-modal__dialog--scroll"\)/,
       /const free =/,
       /const tooTall =/,
       /classList\.toggle\("weather-form__suggestions--docked"/,
-      /classList\.toggle\("city-modal__dialog--scroll"/
+      /classList\.toggle\("city-modal__dialog--scroll"/,
+      /suggestionsList\.style\.maxHeight =/,
+      /dialog\.scrollTop = scrollTop/
     ].map(at);
     assert.ok(order.every((i) => i >= 0), `all steps present: ${order}`);
     assert.deepEqual(order, [...order].sort((a, b) => a - b), "steps are in the mandatory order");
-    assert.match(body, /if \(kept < reserve\) \{[\s\S]*?setProperty[\s\S]*?classList\.add\("city-modal__dialog--compact"\)/);
   });
 
-  it("the base is error-independent (current feedback height out); the helper gets the window, the base, the full reserve and the margin; no new listener or observer", async () => {
+  it("no reserve, base, kept, compact class, custom property or feedbackReserve anywhere in src/", async () => {
     const body = stripComments(await place());
-    assert.match(body, /base = dialog\.getBoundingClientRect\(\)\.height - feedback\.getBoundingClientRect\(\)\.height;/);
-    assert.match(body, /feedbackReserve\(\{\s*viewportHeight: window\.innerHeight,\s*baseHeight: base,\s*fullReserve: reserve,\s*margin: VIEWPORT_MARGIN\s*\}\)/);
+    assert.doesNotMatch(body, /reserve|\bbase\b|\bkept\b|compact|--city-feedback-reserve|feedbackReserve/);
+    for (const name of ["newtab.js", "surfaces.css", "controls.css", "newtab.css", "cityPrompt.js"]) {
+      const text = await read(name);
+      assert.doesNotMatch(text, /feedbackReserve|--city-feedback-reserve|city-modal__dialog--compact/, name);
+    }
     const code = await read("newtab.js");
+    assert.doesNotMatch(code, /import \{[^}]*feedbackReserve[^}]*\} from "\.\/cityPrompt\.js";/);
     assert.doesNotMatch(code, /ResizeObserver/);
     assert.equal((code.match(/addEventListener\("resize"/g) ?? []).length, 3, "the resize listeners of the page are unchanged");
-    assert.match(code, /import \{[^}]*feedbackReserve[^}]*\} from "\.\/cityPrompt\.js";/);
   });
 
-  it("the feedback block reads the custom property with the two-line fallback and nothing else; no compact rule; the modal has no transitions", async () => {
+  it("the modal has no compact rule and no transitions or animations", async () => {
     const css = await read("surfaces.css");
-    assert.doesNotMatch(css, /\.city-modal__dialog--compact \.city-modal__feedback/);
-    assert.match(css, /\.city-modal__feedback \{\s*min-height: var\(--city-feedback-reserve, calc\(2 \* var\(--line-height-body\) \* var\(--font-size-md\)\)\);\s*\}/);
+    assert.doesNotMatch(css, /city-modal__dialog--compact/);
     const rules = css.match(/\.city-modal[^{}]*\{[^}]*\}/g) ?? [];
     assert.ok(rules.length > 0);
     assert.equal(rules.filter((r) => /transition|animation/.test(r)).length, 0, "no transition or animation in the city modal rules");
