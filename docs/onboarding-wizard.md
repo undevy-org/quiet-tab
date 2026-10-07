@@ -11,6 +11,10 @@ Owner decisions (2026-10-07):
 - **Skip on step 1** means **only** skip setting a city and go to step 2; it does **not** dismiss the wizard and does **not** write `quietTabWeatherPromptDismissed`.
 - Step 2 has **no Skip**; footer is **Back** | **Finish** only.
 - **Finish with zero links selected** is allowed (user gets the default desk only).
+- **Escape and backdrop on step 2** (after the 300 ms guard) run the same path as **Finish**: apply checked starters, set `quietTabOnboardingWizardComplete`, close the wizard. They do **not** set `quietTabWeatherPromptDismissed`.
+- The wizard **never** writes `quietTabWeatherPromptDismissed` on any path (there is no Not now). Users without a city keep the hint tile after completion.
+- **Reload or new tab before completion:** if `quietTabOnboardingWizardComplete` is false, the wizard auto-opens again at **step 1** only. No persisted step index or checkbox selections. If a city is already in sync (user had Continue earlier), step 1 reflects that stored location (`chosenCity` / field state) so they can Skip to step 2 or Continue without retyping.
+- **Starter list a11y:** each row uses a native **`<input type="checkbox">`** (visually styled) with an accessible name including the link label; the scroll region keeps keyboard access to every checkbox and Finish.
 - **Data compatibility: not required** (no users rule, `agent-config/CLAUDE.md`).
 
 Terms: **the wizard** = the first-run overlay that replaces today's first-run city modal. **Step 1** = city. **Step 2** = starter link picker. **Complete** = the wizard will not auto-open again on later loads (local flag, decision 8).
@@ -20,6 +24,7 @@ Terms: **the wizard** = the first-run overlay that replaces today's first-run ci
 | Date | Raw note (owner) | Verdict | Reference |
 |------|------------------|---------|-----------|
 | 2026-10-07 | Replace first-run city modal with 2-step onboarding (city + starter links); progress D; Skip on step 1 = skip city only → step 2; mockup approved. | `confirmed` | Brainstorm mockup `onboarding-mockup-final.html`; session 2026-10-07. |
+| 2026-10-07 | Step 2 Escape/backdrop = Finish; no dismissed flag from wizard; incomplete profile restarts wizard at step 1; native checkboxes in list. | `confirmed` | Owner session (fix Review focus). |
 
 ## Current behaviour (`main` at `43474f0`)
 
@@ -32,11 +37,12 @@ When `shouldAutoShowCityPrompt` allows, boot opens `showCityModal("first-run", n
 3. **Progress indicator (variant D).** Inset row at the top of the dialog panel (same horizontal padding as modal content): two pills, height **5px**, gap **6px**, border-radius full. Inactive: `--soft-fill`. Active: `--border-control` (not `--primary`). Step 1: left pill active. Step 2: both pills active (completed + current). No numeric "Step 1 of 2" text.
 4. **Step 1 — City.** Title: "Where should we show weather?" Subtitle: "Enter a city, or skip for now." Body: the same city field, suggestions popover, busy/save validation and error slot behaviour as first-run `#city-modal` today (no "Current:" line; no prefill; does not steal focus on open). Footer **50/50**: **Skip** (secondary, no icon) | **Continue** (primary, label then `arrowRight` icon after text). **Skip** advances to step 2 without geocoding, without `weatherService.selectLocation`, without setting `quietTabWeatherPromptDismissed`. **Continue** enabled under the same rules as today's Save (valid chosen city or successful pick); on success persists the city like today's Save, then advances to step 2. On Continue failure the wizard stays on step 1 with the error shown (unchanged city error UX).
 5. **Step 2 — Starter links.** Title: "Add starter links". Subtitle: "Keep the ones you want on your grid." Body: a scrollable list only (title, subtitle, progress, footer fixed). List rows are full-width **2×1** `favorite-tile` previews with a custom checkbox at the right (checked = on grid after Finish). Unchecked rows: ~**0.4** opacity and favicon **grayscale** (CSS filter). Scroll: **~3.5 rows** visible (three full rows + half of the fourth); `overflow-y: auto` on the list region, not the whole dialog (same pattern as inner scroll in the city modal). Default **checked** (3): ChatGPT, YouTube, X. Full list order (8): ChatGPT, YouTube, X, GitHub, Gmail, Spotify, Reddit, Amazon. Favicons via extension `/_favicon/` URLs. Created favorites are **2×1** with labels and auto accent from favicon where applicable; Gmail manual accent **rgb(26, 115, 232)** when that row is selected. Footer **50/50**: **Back** (`arrowLeft` before text) | **Finish** (primary, `check` icon after text). **Back** returns to step 1 preserving step-1 field state (city text and `chosenCity` if any). **Finish** runs one mutation batch: add each checked starter link via `widgetsService.addFavorite` (or equivalent) with `w: 2, h: 1`, then closes the wizard.
-6. **No "Not now" on step 1.** Dismissal without completing is not a primary action. **Escape** and backdrop click (after the existing 300 ms guard) on step 1 behave like **Skip** (advance to step 2, no city write, no dismissed flag). On step 2, Escape and backdrop do **not** close the wizard (only Back and Finish); Tab trap stays. *Review focus* if the owner wants step-2 Escape to dismiss instead.
+6. **Dismissal semantics.** There is no **Not now** and no path that sets `quietTabWeatherPromptDismissed`. **Step 1:** Escape and backdrop (after the 300 ms guard) behave like **Skip** (step 2, no city write). **Step 2:** Escape and backdrop behave like **Finish** (decision 5 mutation + close). **Back** is the only way to return to step 1. Tab trap stays on both steps.
 7. **Focus.** Step 1: same as today's first-run city modal (no auto-focus steal). Step 2: focus moves to the list or first control per mockup; Finish is reachable by keyboard. On close after Finish (or after step 2 completes), focus rules match today's first-run close (`docs/first-run-empty-desk.md` decision 5) adapted to the wizard root.
-8. **Completion flag.** New key in `chrome.storage.local`: `quietTabOnboardingWizardComplete` = `true` when the wizard closes after **Finish** on step 2 (including zero links). `shouldAutoShowCityPrompt` / the boot path treats **complete OR dismissed** as "do not open first-run wizard" (exact composition in code: open only when prompt possible, not complete, not dismissed — dismissed still used if the user later clears completion in devtools only; production path sets complete on Finish). Finishing **without** a city does **not** set `quietTabWeatherPromptDismissed` (hint tile remains). Finishing **with** a city does not need dismissed. Skipping city on step 1 then Finish leaves the hint tile as today.
-9. **Starter link data is code constants**, not sync storage (a single exported list in `src/` with url, label, domain, defaultChecked, optional fixed accent). No migration.
-10. **Nothing else changes** for change-mode city, desktop dialogs, edit mode, weather retry, or grid layout defaults (`docs/vertically-centered-defaults.md`).
+8. **Completion flag.** New key in `chrome.storage.local`: `quietTabOnboardingWizardComplete` = `true` when step 2 closes successfully via **Finish**, **Escape**, or **backdrop** (including zero links selected). `shouldAutoShowCityPrompt` / the boot path opens the wizard only when the first-run prompt is otherwise possible and this flag is false (legacy `quietTabWeatherPromptDismissed` still suppresses the old prompt path for dev profiles that have it; the wizard does not write it). Completing without a city leaves the hint tile as today.
+9. **No mid-wizard persistence.** Step index and checkbox selections live in memory only for the current page load. A new tab or reload before completion runs the boot path again: wizard at **step 1**, defaults for checkboxes, city field reflects sync if a city was already saved on an earlier load.
+10. **Starter link data is code constants**, not sync storage (a single exported list in `src/` with url, label, domain, defaultChecked, optional fixed accent). No migration.
+11. **Nothing else changes** for change-mode city, desktop dialogs, edit mode, weather retry, or grid layout defaults (`docs/vertically-centered-defaults.md`).
 
 ## Scope
 
@@ -45,7 +51,7 @@ When `shouldAutoShowCityPrompt` allows, boot opens `showCityModal("first-run", n
 - `src/newtab.css`, `src/surfaces.css` / `src/controls.css`: wizard layout, progress pills, scroll body, list row checkbox, muted unchecked state.
 - `src/cityPrompt.js`: export or share predicates; extend auto-show logic for completion flag (unit tests).
 - Unit tests: wizard step transitions (Skip → 2, Continue with mock weather), Finish adds N favorites, flag written; boot order pins in `test/newtabSource.test.js` updated.
-- E2E: new `dg-60-onboarding-wizard.mjs` (AS-OB-01..12). **Known to change**: `dg-56-first-run-empty-desk`, `dg-15-city-first-run`, `13-city-modal` first-run cases, any scenario expecting first-run `#city-modal` title "Show weather on your new tab?" or Not now — update to wizard copy and actions; list in run record.
+- E2E: new `dg-60-onboarding-wizard.mjs` (AS-OB-01..13). **Known to change**: `dg-56-first-run-empty-desk`, `dg-15-city-first-run`, `13-city-modal` first-run cases, any scenario expecting first-run `#city-modal` title "Show weather on your new tab?" or Not now — update to wizard copy and actions; list in run record.
 - Docs: `docs/architecture.md` (city / first-run paragraph), `docs/first-run-empty-desk.md` (wizard instead of city modal), `CHANGELOG.md` `[Unreleased]`; private `agent-config/CLAUDE.md` first-run bullet.
 
 ## Process
@@ -136,17 +142,21 @@ Common setup: E2E harness 1280×800, fresh profile, `autoPrompt: true`, weather 
 - Then: step 2 without city write.
 - Verified by: E2E `dg-60` group 10.
 
-### AS-OB-12 Second load with incomplete wizard (no Finish) may reopen
-- Given: user closed tab on step 2 without Finish (no complete flag).
-- When: new tab.
-- Then: wizard opens again (or step 1 — implementer picks restore policy; default: restart at step 1).
-- Verified by: unit or E2E note in plan.
+### AS-OB-12 Incomplete profile reopens wizard at step 1
+- Given: user reached step 2 but closed the tab without complete flag (no Finish/Escape/backdrop on step 2).
+- When: a new tab opens in the same profile.
+- Then: wizard shows step 1; checkbox defaults restored; if a city was saved earlier, step 1 reflects it.
+- Verified by: E2E `dg-60` group 11.
+
+### AS-OB-13 Escape on step 2 finishes like Finish
+- Given: step 2, two starters checked.
+- When: Escape pressed (or backdrop after guard).
+- Then: same storage outcome as Finish (two favorites, complete flag true, wizard closed); `quietTabWeatherPromptDismissed` unset.
+- Verified by: E2E `dg-60` group 12.
 
 ## Review focus
 
-- Should **Escape/backdrop on step 2** dismiss without Finish, and should that set `quietTabWeatherPromptDismissed`?
-- Confirm **restart policy** when the profile reloads mid-wizard (AS-OB-12).
-- Accessibility: checkbox list vs native inputs in the scroll region.
+None (owner confirmed 2026-10-07).
 
 ## Visual reference
 
