@@ -957,7 +957,22 @@ function syncCityModal() {
     if (control.dataset.weatherAction !== "select-city") control.disabled = weatherBusy;
   }
   activeCityForm?.refresh();
-  host.querySelector('[role="dialog"]')?.setAttribute("aria-busy", String(weatherBusy));
+  if (!onboardingWizardRoot) {
+    host.querySelector('[role="dialog"]')?.setAttribute("aria-busy", String(weatherBusy));
+  }
+  if (weatherBusy && onboardingWizardRoot && onboardingStep === 1) {
+    const title = onboardingWizardRoot.querySelector("#onboarding-step1-title");
+    const active = document.activeElement;
+    const focusLeftWizard =
+      !active ||
+      active === document.body ||
+      !onboardingWizardRoot.contains(active) ||
+      (active instanceof HTMLElement && active.matches("input, button") && active.disabled);
+    if (title instanceof HTMLElement && focusLeftWizard) {
+      title.tabIndex = -1;
+      title.focus();
+    }
+  }
   const errorNode = host.querySelector("[data-city-modal-error]");
   if (errorNode) {
     errorNode.textContent = cityModalError;
@@ -1187,16 +1202,16 @@ function syncOnboardingWizardUi() {
     finishError.textContent = onboardingFinishError;
     finishError.hidden = onboardingFinishError === "";
   }
-  const finishBtn = onboardingWizardRoot.querySelector('[data-onboarding-action="finish"]');
-  if (finishBtn) finishBtn.disabled = favoritesBusy;
-  const backBtn = onboardingWizardRoot.querySelector('[data-onboarding-action="back"]');
-  if (backBtn instanceof HTMLButtonElement) backBtn.disabled = favoritesBusy;
-  const busyOnStep2 = favoritesBusy && onboardingStep === 2;
-  onboardingWizardRoot.querySelectorAll('[data-onboarding-step="2"] input[type="checkbox"]').forEach((box) => {
-    if (box instanceof HTMLInputElement) box.disabled = busyOnStep2;
-  });
-  if (dialog) dialog.setAttribute("aria-busy", busyOnStep2 ? "true" : "false");
   syncCityModal();
+  const finishBusy = favoritesBusy && onboardingStep === 2;
+  const finishBtn = onboardingWizardRoot.querySelector('[data-onboarding-action="finish"]');
+  if (finishBtn instanceof HTMLButtonElement) finishBtn.disabled = finishBusy;
+  const backBtn = onboardingWizardRoot.querySelector('[data-onboarding-action="back"]');
+  if (backBtn instanceof HTMLButtonElement) backBtn.disabled = finishBusy;
+  onboardingWizardRoot.querySelectorAll('[data-onboarding-step="2"] input[type="checkbox"]').forEach((box) => {
+    if (box instanceof HTMLInputElement) box.disabled = finishBusy;
+  });
+  if (dialog) dialog.setAttribute("aria-busy", String(weatherBusy || finishBusy));
 }
 
 function onboardingBackdropAllowed() {
@@ -1330,6 +1345,14 @@ function attachOnboardingWizardListeners(root) {
   root.addEventListener("click", (event) => {
     const target = event.target instanceof Element ? event.target : null;
     if (!target) return;
+    if (
+      event.detail > 0 &&
+      activeCityForm?.recentlyChosen() &&
+      (target.matches("[data-onboarding-backdrop]") || target.closest('[data-onboarding-action], button[type="submit"]'))
+    ) {
+      event.preventDefault();
+      return;
+    }
     if (target.closest('[data-onboarding-action="finish"]')) {
       if (!onboardingStep2ActionsAllowed() || favoritesBusy) return;
       void finishOnboardingWizard();
@@ -1347,7 +1370,7 @@ function attachOnboardingWizardListeners(root) {
     }
     if (target.matches("[data-onboarding-backdrop]")) {
       if (!onboardingBackdropAllowed() || weatherBusy || favoritesBusy) return;
-      if (onboardingStep === 1 && !onboardingStep2ActionsAllowed()) return;
+      if (!onboardingStep2ActionsAllowed()) return;
       if (onboardingStep === 1) goToOnboardingStep2();
       else void finishOnboardingWizard();
       return;
@@ -2489,7 +2512,7 @@ function cancelDrag() {
 }
 
 function tabTrapFocusables(trapRoot) {
-  return [...trapRoot.querySelectorAll("input, button")].filter((el) => {
+  const controls = [...trapRoot.querySelectorAll("input, button")].filter((el) => {
     if (el.disabled || el.hidden) return false;
     for (let node = el; node !== trapRoot; node = node.parentElement) {
       if (!node) return false;
@@ -2497,6 +2520,19 @@ function tabTrapFocusables(trapRoot) {
     }
     return true;
   });
+  if (
+    controls.length === 0 &&
+    trapRoot === onboardingWizardRoot &&
+    weatherBusy &&
+    onboardingStep === 1
+  ) {
+    const title = trapRoot.querySelector("#onboarding-step1-title");
+    if (title instanceof HTMLElement) {
+      title.tabIndex = -1;
+      return [title];
+    }
+  }
+  return controls;
 }
 
 function applyPendingFocus() {

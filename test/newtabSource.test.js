@@ -723,6 +723,37 @@ describe("newtab onboarding wizard boot source", () => {
     const code = await source();
     assert.doesNotMatch(code, /onChanged/);
   });
+
+  it("onboarding backdrop respects step-2 guard and ignores a second click after choose like the city modal", async () => {
+    const code = await source();
+    const listeners = betweenIn(code, "function attachOnboardingWizardListeners(root)", "function hideOnboardingWizard(");
+    assert.match(listeners, /if \(!onboardingStep2ActionsAllowed\(\)\) return;/);
+    assert.doesNotMatch(listeners, /onboardingStep === 1 && !onboardingStep2ActionsAllowed/);
+    assert.match(
+      listeners,
+      /event\.detail > 0[\s\S]*activeCityForm\?\.recentlyChosen\(\)[\s\S]*\[data-onboarding-backdrop\]/
+    );
+  });
+
+  it("syncOnboardingWizardUi applies finish busy after syncCityModal so aria-busy and disabled stay set", async () => {
+    const code = await source();
+    const sync = functionBody(code, "syncOnboardingWizardUi");
+    const citySync = sync.indexOf("syncCityModal();");
+    const finishBusy = sync.indexOf("const finishBusy = favoritesBusy && onboardingStep === 2;");
+    const ariaBusy = sync.indexOf('dialog.setAttribute("aria-busy", String(weatherBusy || finishBusy));');
+    assert.ok(citySync > 0 && finishBusy > citySync && ariaBusy > finishBusy, "city sync, then finish busy");
+    const cityModalSync = functionBody(code, "syncCityModal");
+    assert.match(cityModalSync, /if \(!onboardingWizardRoot\) \{\s*host\.querySelector\('\[role="dialog"\]'\)\?\.setAttribute\("aria-busy"/);
+  });
+
+  it("keeps step-1 focus on the title while the city request runs", async () => {
+    const code = await source();
+    const sync = functionBody(code, "syncCityModal");
+    assert.match(sync, /weatherBusy && onboardingWizardRoot && onboardingStep === 1/);
+    assert.match(sync, /#onboarding-step1-title/);
+    const trap = functionBody(code, "tabTrapFocusables");
+    assert.match(trap, /controls\.length === 0[\s\S]*onboardingWizardRoot[\s\S]*#onboarding-step1-title/);
+  });
 });
 
 describe("newtab desktop grid source (DOM contract, normal mode)", () => {
