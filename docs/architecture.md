@@ -27,7 +27,8 @@ forecast cache and a per-device "city prompt dismissed" flag persist to
 | `src/favoriteColor.js` | Derives a tile's accent color from its domain or a sampled icon. |
 | `src/weatherApi.js` | Calls Open-Meteo's forecast, air-quality, and geocoding endpoints, normalizes responses, maps UV index and US AQI values to scale labels, and classifies failures (`details.kind`) into fixed user-facing texts via `weatherErrorMessage`. |
 | `src/weatherStore.js` | Validates, reads, and writes the chosen location and the forecast cache, and reads/writes the per-device city-prompt-dismissed flag. |
-| `src/cityPrompt.js` | Pure rule for whether the first-run city modal opens by itself on this page load. |
+| `src/cityPrompt.js` | Pure rules for whether the onboarding wizard may open on this page load (`onboardingWizardPossible` / `shouldShowOnboardingWizard`). |
+| `src/onboardingWizard.js` / `src/onboardingStore.js` | First-run two-step wizard (city, then starter links) and the `quietTabOnboardingWizardComplete` local flag. |
 | `src/weatherService.js` | Serves a fresh cached forecast or fetches and caches a new one; resolves a typed city name to a location. |
 | `src/weatherPresentation.js` | Formats readings and picks each tile's color tone. |
 | `src/weatherTiles.js` | Pure presentation of one weather tile (label, primary and secondary text, tone, description) for the loading, ready, stale and error states; for error and stale it also carries the retry phase (`ready`, `retrying`, `cooldown`) and the busy text. |
@@ -240,27 +241,27 @@ existing nodes in place, without a re-render. A failure shows the result's user-
 (`no-location`) the hint tile replaces the metric tiles and takes focus. Nothing is stored for
 retry; a retry only writes the cache that `initialize()` already writes.
 
-### City modal
+### Onboarding wizard (first run) and city modal (change mode)
 
-- **First-run rule.** The decision is taken once per page load, **before** the
-  first grid render. First `firstRunPromptPossible` checks every input except the
-  flag (the stored city was read and is unset, at least one weather tile is enabled,
-  weather is available, the grid is not locked: no newer meta, no failed migration);
-  only if it passes is the dismissal flag read, capped at 250 ms (a read that fails
-  or is slower counts as unknown and a late result is ignored). Then
-  `shouldAutoShowCityPrompt` opens the modal in first-run mode only when the flag was
-  read and is not set as well. Any unknown input means it does not open. The first
-  render, the ensure-failure status and the weather start follow in every case; a
-  resize before that first render does not render. It never replaces, duplicates or
-  reopens a modal that was already opened (and closed) during this page load.
-- **Dismissal.** Closing the first-run modal by any route (Not now, Escape, a click
-  on the backdrop) writes the flag; a failed write is silent, so the modal may show
-  again next time. Choosing a city does not write it (a city being set is what
-  stops the modal). Leaving the tab without closing the modal is not a dismissal.
-  Backdrop clicks in the first 300 ms after opening are ignored.
+- **First-run rule.** The decision is taken once per page load, **before** the first
+  grid render. `onboardingWizardPossible` checks the same gates as the old first-run
+  city prompt except it does not require an unset city; `shouldShowOnboardingWizard`
+  also requires `quietTabOnboardingWizardComplete` false, `quietTabWeatherPromptDismissed`
+  false, and a single capped `chrome.storage.local` read (250 ms) of both keys. When it
+  opens, `#onboarding-wizard` shows step 1 (city) then step 2 (starter links); Finish
+  writes `quietTabOnboardingWizardComplete` and never writes the weather dismissed flag.
+  Reload or a new tab before completion reopens step 1 (no persisted step or checkbox
+  draft). Spec: `docs/onboarding-wizard.md`.
+- **Veil and reveal.** While the wizard is open the desk uses the same veil/reveal as
+  `docs/first-run-empty-desk.md` (`showOnboardingWizard` / `hideOnboardingWizard`).
+- **Change-mode city modal.** Unchanged: `#city-modal` from the hint tile or weather
+  edit dialog; `quietTabWeatherPromptDismissed` is not written by the wizard.
+- **Dismissal (change mode only).** Backdrop clicks in the first 300 ms after opening
+  are ignored.
 - **Layout.** The dialog holds the city field with a clear button (shown while the
   field has text and no request runs), then the error line, then the modal actions
-  row: Not now (first-run) or Cancel (change mode) and Save, 50/50 with icons. Change
+  row: Cancel and Save in change mode (50/50 with icons). The wizard step 1 footer is
+  Skip | Continue; step 2 is Back | Finish. Change
   mode has no "Current: …" line; the field is prefilled with the stored city (caret at
   the end), first-run starts empty. Typing
   two or more characters opens the suggestion list as an absolutely positioned
@@ -287,20 +288,18 @@ retry; a retry only writes the cache that `initialize()` already writes.
   ignored, so the second click of a double click cannot dismiss or submit.
 - **Background.** While open, the grid is `inert` (and, when stacked, the weather
   edit dialog under it), so the modal is the only interactive region. While the
-  first-run modal is open the desk is also veiled: `#favorites[data-veiled]` is
+  wizard or first-run overlay is open the desk is also veiled: `#favorites[data-veiled]` is
   `visibility: hidden`, one screen high with no scroll, so no tile is painted,
   hit-testable, focusable or in the accessibility tree (the tiles stay in the DOM);
-  the change-mode modal never veils. `showCityModal` sets the veil right after the
-  insertion and `hideCityModal` clears it before focus is restored. On close, unless
+  the change-mode city modal never veils. On close, unless
   reduced motion is on, `#favorites[data-reveal]` runs one `desk-reveal` fade
   (opacity 0 to 1, 200 ms, ease-out), ended by the desk's own `animationend` with a
   400 ms fallback timer.
-- **Focus.** In change mode focus moves to the city field at once; the first-run
-  modal never takes focus by itself. Tab wraps inside the modal, and Tab from `body`
-  or outside it enters the modal; while a request runs every control is disabled, so Tab does nothing and focus stays on `body`.
-  On close, focus returns to the control that opened it (change mode), falling
-  back to the Settings tile; a first-run modal returns focus to the Settings tile
-  only if focus was inside it.
+- **Focus.** In change mode focus moves to the city field at once; the wizard step 1
+  city field never takes focus by itself. Tab wraps inside the active step; while a
+  city request runs on step 1 every control is disabled. On wizard completion, focus
+  returns to the Settings tile when the wizard had focus; change-mode close returns
+  focus to the opener.
 - **Busy.** While a city request runs the modal ignores every closing gesture,
   and Escape does nothing at all (it does not close the dialog behind it).
 
