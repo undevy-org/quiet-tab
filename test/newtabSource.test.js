@@ -133,8 +133,9 @@ describe("newtab favorites source", () => {
     const code = await source();
     // The only stacking: the change-mode city modal over the weather edit dialog; first-run never opens over a dialog.
     assert.match(code, /const overWeatherDialog = mode === "change" && desktopDialogRoot !== null && desktopUi\.dialog\?\.kind === "edit-weather";/);
-    assert.match(code, /if \(cityModalRoot \|\| \(desktopDialogRoot && !overWeatherDialog\) \|\| isCityModalOpen\(weatherUi\)/);
-    assert.match(code, /if \(onboardingWizardRoot \|\| cityModalRoot \|\| desktopDialogRoot \|\| onboardingWizardShownThisLoad\) return;/);
+    const showCity = code.slice(code.indexOf("function showCityModal("), code.indexOf("function hideCityModal("));
+    assert.match(showCity, /onboardingWizardRoot/);
+    assert.match(showCity, /desktopDialogRoot && !overWeatherDialog/);
     assert.match(code, /\[data-favorite-action="cancel"\]'\)\?\.addEventListener\("click", \(\) => \{\s+if \(!favoritesBusy\) closeDesktopDialog\(\);/);
   });
   it("renders everything into the one desktop root; the settings panel root is gone", async () => {
@@ -350,7 +351,8 @@ describe("newtab favorites source", () => {
     assert.match(code, /const migration = await migrateToWidgets\(localStorageArea, syncStorageArea\);\s*if \(migration\?\.newer\) \{\s*widgetsNewer = true;/);
     assert.match(code, /await ensureWidgetsLayout\(syncStorageArea, \{ screen: firstScreen\(\) \}\)/);
     assert.match(code, /widgetsEnsureFailed = true;/);
-    const order = ['inspectWidgetsMeta(rawMeta) === "newer"', "await migrateToWidgets(", "await migrateWidgetsToV2(syncStorageArea);", "await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });", "widgetsState = await widgetsService.getState();"].map((n) => code.indexOf(n));
+    const boot = code.slice(code.indexOf("if (favoritesRoot) {\n  void (async () => {"), code.indexOf("})();", code.indexOf("if (favoritesRoot)")));
+    const order = ['inspectWidgetsMeta(rawMeta) === "newer"', "await migrateToWidgets(", "await migrateWidgetsToV2(syncStorageArea);", "await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });", "widgetsState = await widgetsService.getState();"].map((n) => boot.indexOf(n));
     assert.ok(order.every((i) => i >= 0), order.join());
     assert.deepEqual([...order].sort((a, b) => a - b), order);
   });
@@ -432,7 +434,18 @@ describe("newtab city modal source", () => {
   it("orders the single Escape handler: tooltip, suggestions, modal", async () => {
     const code = await source();
     const handler = between(code, 'if (event.key !== "Escape")', 'if (event.key !== "Tab"');
-    const order = ['tooltip: !tooltipLayer.hidden', "citySuggestions:", "cityModal: Boolean(cityModalRoot)", 'layer === "tooltip"', 'layer === "citySuggestions"', 'layer === "cityModal"', 'layer === "dialog"', 'layer === "exitEdit"'].map((n) => handler.indexOf(n));
+    const order = [
+      'tooltip: !tooltipLayer.hidden',
+      "citySuggestions:",
+      "onboardingWizard: Boolean(onboardingWizardRoot)",
+      "cityModal: Boolean(cityModalRoot)",
+      'layer === "tooltip"',
+      'layer === "citySuggestions"',
+      'layer === "onboardingWizard"',
+      'layer === "cityModal"',
+      'layer === "dialog"',
+      'layer === "exitEdit"'
+    ].map((n) => handler.indexOf(n));
     assert.ok(order.every((i) => i >= 0), order.join());
     assert.deepEqual([...order].sort((a, b) => a - b), order);
     assert.match(handler, /layer === "cityModal"\) \{[^}]*if \(!weatherBusy\) hideCityModal\(\{ dismiss: true \}\);/);
@@ -463,7 +476,7 @@ describe("newtab city modal source", () => {
 
   it("the Tab trap covers the city modal or the desktop dialog, whichever is open", async () => {
     const code = await source();
-    assert.match(code, /const trapRoot = cityModalRoot \?\? desktopDialogRoot;/);
+    assert.match(code, /const trapRoot = onboardingWizardRoot \?\? cityModalRoot \?\? desktopDialogRoot;/);
   });
 
   it("keeps Tab on the page (preventDefault) when every modal control is disabled", async () => {
@@ -497,7 +510,7 @@ describe("newtab city modal source", () => {
 
   it("runs a city change with a timeout, clearing suggestions first, and re-renders the grid", async () => {
     const code = await source();
-    const start = code.indexOf("function changeCity(run)");
+    const start = code.indexOf("function changeCity(run, { onSuccess = null } = {})");
     assert.ok(start > -1);
     const change = code.slice(start, code.indexOf("\n}\n", start));
     assert.match(change, /activeCityForm\?\.cancelPending\(\);/);
@@ -521,15 +534,17 @@ describe("newtab city modal source", () => {
     const startBody = code.slice(start, code.indexOf("\n}\n", start));
     assert.match(startBody, /error: weatherErrorMessage\(error\)/);
     assert.doesNotMatch(startBody, /error\.message|String\(error\)/);
-    const modal = between(code, "function createCityForm(mode, location)", "function createWeatherMetricTile(");
+    const modal = between(code, "function createCityForm(mode, location)", "function buildCityModal(");
     assert.doesNotMatch(modal, /innerHTML/);
   });
   it("builds the modal with text-only buttons, a novalidate form and the approved strings, never innerHTML", async () => {
     const code = await source();
-    const modal = between(code, "function createCityForm(mode, location)", "function createWeatherMetricTile(");
+    const modal = between(code, "function createCityForm(mode, location)", "function buildCityModal(");
     assert.doesNotMatch(modal, /innerHTML/);
-    assert.match(modal, /createIconButton\("button", mode === "first-run" \? "Not now" : "Cancel", "x"\)/);
+    assert.match(modal, /createIconButton\("button", "Cancel", "x"\)/);
     assert.match(modal, /createIconButton\("button button--primary", "Save", "check"\)/);
+    assert.match(modal, /createIconButton\("button", "Skip", "x"\)/);
+    assert.match(modal, /createIconButton\("button button--primary", "Continue", "arrowRight"\)/);
     assert.match(modal, /form\.noValidate = true;/);
     assert.doesNotMatch(modal, /input\.required/);
     // AS-MO-06: change mode is prefilled from the stored city, caret at the end, no selection; no "Current:" line.
@@ -537,7 +552,7 @@ describe("newtab city modal source", () => {
     assert.doesNotMatch(modal, /\.select\(\)/);
     assert.doesNotMatch(modal, /city-modal__current|cityModalCurrent|Current: /);
     assert.match(modal, /errorNode\.setAttribute\("role", "alert"\);/);
-    for (const text of ["Enter a city name", "Show weather on your new tab?", "Not now", "Change city", "Set a city"]) {
+    for (const text of ["Enter a city name", "Where should we show weather?", "Skip", "Continue", "Change city", "Set a city"]) {
       assert.ok(code.includes(text), text);
     }
     assert.ok(!code.includes("Current: "), "Current: removed");
@@ -647,18 +662,18 @@ describe("newtab onboarding wizard boot source", () => {
     assert.match(handler, /if \(!widgetsState \|\| widgetsNewer \|\| widgetsMigrationFailed \|\| renderedColumns === 0\) return;/);
   });
 
-  it("veils the desk only from showCityModal (first-run, right after the insertion) and clears it only from hideCityModal, before focus", async () => {
+  it("veils the desk from showOnboardingWizard and clears it from hideOnboardingWizard or hideCityModal, before focus", async () => {
     const code = await source();
     assert.equal(code.match(/dataset\.veiled = "true"/g)?.length, 1, "one place sets the veil");
-    const show = functionBody(code, "showCityModal");
-    const insert = show.indexOf("cityModalRoot = root;");
-    const veil = show.indexOf('if (mode === "first-run" && favoritesRoot) favoritesRoot.dataset.veiled = "true";');
-    assert.ok(insert > 0 && veil === show.indexOf("\n", insert) + 3, "the veil is the first statement after cityModalRoot = root");
+    const show = functionBody(code, "showOnboardingWizard");
+    const insert = show.indexOf("onboardingWizardRoot = root;");
+    const veil = show.indexOf('favoritesRoot.dataset.veiled = "true"');
+    assert.ok(insert > 0 && veil > insert, "the veil is set after the wizard root is mounted");
     for (const later of ["activeCityForm?.place();", "hideTooltip();", "closeAddMenu();", "favoritesRoot.inert = true;"]) {
       assert.ok(show.indexOf(later) > veil, `${later} comes after the veil`);
     }
     assert.equal(code.match(/delete favoritesRoot\.dataset\.veiled/g)?.length, 1, "one place clears the veil");
-    assert.equal(code.match(/\brevealDesk\(\)/g)?.length, 2, "revealDesk: its definition and the one call");
+    assert.equal(code.match(/\brevealDesk\(\)/g)?.length, 3, "revealDesk: definition plus hideCityModal and hideOnboardingWizard");
     const hide = functionBody(code, "hideCityModal");
     const reveal = hide.indexOf("revealDesk();");
     assert.ok(reveal > 0, "hideCityModal reveals the desk");
@@ -939,9 +954,9 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     assert.match(css, /\.desktop-dialog \{[^}]*z-index: 101;/s);
   });
 
-  it("Task 10: the first-run copy points to a weather tile (the Widgets panel is gone)", async () => {
+  it("Task 10: onboarding step 1 copy mentions skipping the city for now", async () => {
     const code = await source();
-    assert.match(code, /skip this and you can add a city later from a weather tile\./);
+    assert.match(code, /Enter a city, or skip for now\./);
     assert.doesNotMatch(code, /later in Widgets/);
   });
 
@@ -952,11 +967,12 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
 
   it("Task 11: bootstrap runs the v1 -> v2 step whenever the sync area exists and locks on a newer result", async () => {
     const code = await source();
+    const boot = code.slice(code.indexOf("if (favoritesRoot) {\n  void (async () => {"), code.indexOf("})();", code.indexOf("if (favoritesRoot)")));
     // The legacy chain needs both areas; the v1 -> v2 step only sync (a profile without chrome.storage.local still migrates).
-    assert.match(code, /if \(hasStorageArea\(localStorageArea\) && hasStorageArea\(syncStorageArea\)\) \{\s*const migration = await migrateToWidgets\(localStorageArea, syncStorageArea\);[\s\S]*?\n      \}\n      if \(hasStorageArea\(syncStorageArea\)\) \{/);
-    assert.match(code, /const v2 = await migrateWidgetsToV2\(syncStorageArea\);\s*if \(v2\?\.meta === "newer"\) \{\s*widgetsNewer = true;\s*renderFavorites\(\);\s*return;/);
+    assert.match(boot, /if \(hasStorageArea\(localStorageArea\) && hasStorageArea\(syncStorageArea\)\) \{\s*const migration = await migrateToWidgets\(localStorageArea, syncStorageArea\);[\s\S]*?\n      \}\n      if \(hasStorageArea\(syncStorageArea\)\) \{/);
+    assert.match(boot, /const v2 = await migrateWidgetsToV2\(syncStorageArea\);\s*if \(v2\?\.meta === "newer"\) \{\s*widgetsNewer = true;\s*renderFavorites\(\);\s*return;/);
     // R7 order: legacy chain, v1 -> v2, ensure, first read.
-    const order = ["await migrateToWidgets(", "await migrateWidgetsToV2(", "await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });", "await widgetsService.getState()"].map((m) => code.indexOf(m));
+    const order = ["await migrateToWidgets(", "await migrateWidgetsToV2(", "await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });", "widgetsState = await widgetsService.getState()"].map((m) => boot.indexOf(m));
     assert.ok(order.every((at, i) => at > 0 && (i === 0 || at > order[i - 1])), JSON.stringify(order));
   });
 
@@ -971,22 +987,23 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     assert.match(code, /const screenRows = viewportRows\(document\.documentElement\.clientHeight, viewportWidth\(\)\);/);
     // exactly one definition and one call: nothing re-reads the first screen later (no resize hook, no re-render)
     assert.equal(code.split("firstScreen(").length - 1, 2);
-    const call = code.indexOf("await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });");
-    assert.ok(call > code.indexOf("await migrateWidgetsToV3(") && call < code.indexOf("widgetsState = await widgetsService.getState();"));
+    const boot = code.slice(code.indexOf("if (favoritesRoot) {\n  void (async () => {"), code.indexOf("})();", code.indexOf("if (favoritesRoot)")));
+    const call = boot.indexOf("await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });");
+    assert.ok(call > boot.indexOf("await migrateWidgetsToV3(") && call < boot.indexOf("widgetsState = await widgetsService.getState();"));
     // evaluated before the first render of the desk: after the locking catch (which returns) nothing renders before the call
-    const betweenCatchAndCall = code.slice(code.indexOf("widgetsMigrationFailed = true;", code.indexOf("await migrateWidgetsToV3(")), call);
+    const betweenCatchAndCall = boot.slice(boot.indexOf("widgetsMigrationFailed = true;", boot.indexOf("await migrateWidgetsToV3(")), call);
     assert.ok(betweenCatchAndCall.indexOf("return;") < betweenCatchAndCall.indexOf("if (hasStorageArea(syncStorageArea))"), "the locking catch returns before the ensure");
     assert.equal((betweenCatchAndCall.match(/renderFavorites\(\)/g) ?? []).length, 1, "only the locking catch renders before the call (it returns)");
   });
   it("run 15: the bootstrap runs the v2 -> v3 step after the v2 step, inside the locking try, and locks on a newer result", async () => {
     const code = await source();
+    const boot = code.slice(code.indexOf("if (favoritesRoot) {\n  void (async () => {"), code.indexOf("})();", code.indexOf("if (favoritesRoot)")));
     assert.match(code, /import \{[^}]*\bmigrateWidgetsToV3\b[^}]*\} from "\.\/widgetsStore\.js"/);
-    assert.match(code, /const v3 = await migrateWidgetsToV3\(syncStorageArea\);\s*if \(v3\?\.meta === "newer"\) \{\s*widgetsNewer = true;\s*renderFavorites\(\);\s*return;/);
+    assert.match(boot, /const v3 = await migrateWidgetsToV3\(syncStorageArea\);\s*if \(v3\?\.meta === "newer"\) \{\s*widgetsNewer = true;\s*renderFavorites\(\);\s*return;/);
     // R7 order: legacy chain, v1 -> v2, v2 -> v3, ensure, first read.
-    const order = ["await migrateToWidgets(", "await migrateWidgetsToV2(", "await migrateWidgetsToV3(", "await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });", "await widgetsService.getState()"].map((m) => code.indexOf(m));
+    const order = ["await migrateToWidgets(", "await migrateWidgetsToV2(", "await migrateWidgetsToV3(", "await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });", "widgetsState = await widgetsService.getState()"].map((m) => boot.indexOf(m));
     assert.ok(order.every((at, i) => at > 0 && (i === 0 || at > order[i - 1])), JSON.stringify(order));
     // a failure of the v3 step goes through the same catch as the v2 step: the grid is locked with the migration-failure text
-    const boot = code.slice(code.indexOf("if (favoritesRoot) {\n  void (async () => {"));
     const tryBlock = boot.slice(0, boot.indexOf("} catch (error) {\n      widgetsMigrationFailed = true;"));
     assert.ok(tryBlock.includes("await migrateWidgetsToV3(syncStorageArea);"), "v3 migration runs inside the locking try");
     // the page works in displayed cells: it never converts between the displayed and the stored frame itself

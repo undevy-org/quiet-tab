@@ -51,7 +51,7 @@ describe("weatherUiState", () => {
     assert.equal(isSuggestionsOpen(state), false);
     assert.deepEqual(citySuggestions(state), []);
 
-    state = openCityModal(showSuggestions(state, candidates), "first-run");
+    state = openCityModal(showSuggestions(state, candidates), "onboarding");
     assert.equal(isSuggestionsOpen(state), false);
     assert.deepEqual(citySuggestions(state), []);
   });
@@ -88,9 +88,9 @@ describe("city modal state", () => {
 
   it("opens in either mode and closes, dropping suggestions", () => {
     let state = showSuggestions(createInitialWeatherUiState(), [{ name: "Tbilisi" }]);
-    state = openCityModal(state, "first-run");
+    state = openCityModal(state, "onboarding");
     assert.equal(isCityModalOpen(state), true);
-    assert.equal(cityModalMode(state), "first-run");
+    assert.equal(cityModalMode(state), "onboarding");
     assert.equal(isSuggestionsOpen(state), false);
 
     state = closeCityModal(openCityModal(state, "change"));
