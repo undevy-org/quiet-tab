@@ -203,6 +203,96 @@ describe("ensureWidgetsLayout (Defaults, AS-1, AS-35; centered since run 15)", (
     assert.equal((await ensureWidgetsLayout(area)).changed, false);
     assert.deepEqual(await area.get(null), before);
   });
+  describe("with the first screen (docs/vertically-centered-defaults.md; AS-VC-01, 06, 14)", () => {
+    const SIX = ["weather:temperature", "weather:precipitation", "weather:airQuality", "weather:uv", "chrome:settings", "chrome:add"];
+    const atRow = (y) => ({
+      "weather:temperature": g(-4, y), "weather:precipitation": g(-3, y, 2, 1), "weather:airQuality": g(-1, y, 2, 1),
+      "weather:uv": g(1, y), "chrome:settings": g(2, y), "chrome:add": g(3, y)
+    });
+    const recording = (area) => {
+      const calls = [];
+      const set = area.set.bind(area);
+      area.set = async (payload) => {
+        calls.push(Object.keys(payload));
+        return set(payload);
+      };
+      return calls;
+    };
+
+    it("a fresh install with { screen } writes y = Y0 for all six, x as before, one items set then the meta set", async () => {
+      for (const [screen, y] of [[{ rows: 9, columns: 14 }, 4], [{ rows: 8, columns: 14 }, 3], [{ rows: 1, columns: 14 }, 0], [{ rows: 10, columns: 6 }, 4], [{ rows: 9, columns: 4 }, 3]]) {
+        const area = createMemoryStorageArea();
+        const calls = recording(area);
+        const result = await ensureWidgetsLayout(area, { screen });
+        assert.deepEqual(result, { changed: true, meta: "missing" });
+        assert.deepEqual(await gridsOf(area), atRow(y), JSON.stringify(screen));
+        assert.equal(calls.length, 2);
+        assert.deepEqual([...calls[0]].sort(), SIX.map(widgetItemStorageKey).sort());
+        assert.deepEqual(calls[1], [WIDGETS_META_KEY]);
+        const meta = (await area.get(WIDGETS_META_KEY))[WIDGETS_META_KEY];
+        assert.equal(meta.version, 3);
+        assert.equal(inspectWidgetsMeta(await area.get(WIDGETS_META_KEY)), "valid");
+        assert.deepEqual(meta.order, SIX);
+      }
+    });
+    it("without a screen, or with an invalid one, the result is today's row 0", async () => {
+      for (const options of [{}, { screen: undefined }, { screen: { rows: 0, columns: 14 } }, { screen: { rows: NaN, columns: 14 } }, { screen: { rows: Infinity, columns: 14 } }, { screen: { rows: 9, columns: 1 } }, { screen: { rows: 9 } }]) {
+        const area = createMemoryStorageArea();
+        await ensureWidgetsLayout(area, options);
+        assert.deepEqual(await gridsOf(area), atRow(0), JSON.stringify(options));
+      }
+    });
+    it("a second call is a no-op: changed false and nothing written, whatever the screen", async () => {
+      const area = createMemoryStorageArea();
+      await ensureWidgetsLayout(area, { screen: { rows: 9, columns: 14 } });
+      const before = await area.get(null);
+      const calls = recording(area);
+      assert.equal((await ensureWidgetsLayout(area, { screen: { rows: 9, columns: 14 } })).changed, false);
+      assert.equal((await ensureWidgetsLayout(area, { screen: { rows: 3, columns: 14 } })).changed, false);
+      assert.equal(calls.length, 0);
+      assert.deepEqual(await area.get(null), before);
+      assert.deepEqual(await gridsOf(area), atRow(4));
+    });
+    it("a partial missing set ignores the screen: the same result as without one (self-heal stays row 0)", async () => {
+      const gone = [["chrome:settings"], ["chrome:add"], SIX.slice(0, 4), ["weather:uv", "chrome:add"], SIX.slice(0, 5)];
+      for (const missing of gone) {
+        const run = async (options) => {
+          const area = createMemoryStorageArea();
+          const items = SIX.filter((id) => !missing.includes(id)).map((id) => (id.startsWith("weather:") ? metric(id, { grid: atRow(4)[id] }) : chrome(id.slice(7), atRow(4)[id])));
+          await area.set({
+            [WIDGETS_META_KEY]: { version: 3, order: SIX, createdAt: NOW, updatedAt: NOW },
+            ...Object.fromEntries(items.map((i) => [widgetItemStorageKey(i.id), i]))
+          });
+          await ensureWidgetsLayout(area, { now: () => "2026-10-07T00:00:00.000Z", ...options });
+          return area.get(null);
+        };
+        assert.deepEqual(await run({ screen: { rows: 9, columns: 14 } }), await run({}), missing.join());
+      }
+    });
+    it("all six absent next to links: the block takes the nearest free row of the centered one (the engine's row search)", async () => {
+      const area = createMemoryStorageArea();
+      await seedV3(area, [fav("a", { grid: g(-2, 4) }), fav("b", { grid: g(2, 4) })]);
+      await ensureWidgetsLayout(area, { screen: { rows: 9, columns: 14 } });
+      const grids = await gridsOf(area);
+      assert.deepEqual(grids["weather:temperature"], g(-4, 3));
+      assert.deepEqual(grids.a, g(-2, 4));
+      assert.deepEqual(grids.b, g(2, 4));
+    });
+    it("a rejected write leaves storage as it was and the next call with another screen writes for that screen", async () => {
+      const area = createMemoryStorageArea();
+      const set = area.set.bind(area);
+      let fail = true;
+      area.set = async (payload) => {
+        if (fail) throw new Error("QUOTA_BYTES quota exceeded");
+        return set(payload);
+      };
+      await assert.rejects(ensureWidgetsLayout(area, { screen: { rows: 9, columns: 14 } }), /Chrome Sync/);
+      assert.deepEqual(await area.get(null), {});
+      fail = false;
+      await ensureWidgetsLayout(area, { screen: { rows: 7, columns: 14 } });
+      assert.deepEqual(await gridsOf(area), atRow(3));
+    });
+  });
   it("self-heals a missing chrome tile around existing widgets: the nearest free cell to the center", async () => {
     const area = createMemoryStorageArea();
     // reference columns 0..8 are taken (row 0), Add at (0,1); stored = reference - 6

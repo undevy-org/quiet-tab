@@ -79,6 +79,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The six starting tiles (the four weather tiles, Settings and Add) now appear in the
+  middle of the first screen, not at its top. This happens only at their first
+  appearance; moving them afterwards is unchanged, and a window of another height
+  opened later does not move them. E2E: `dg-59-vertically-centered-defaults.mjs`.
 - Dialogs and the city window share one footer: two buttons of equal width with icons
   (Cancel or Not now on the left, Add, Save, Delete or Hide on the right), 16px under the
   content, with no divider line above. Form rows have no divider lines and 10px padding;

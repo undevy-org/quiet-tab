@@ -16,7 +16,7 @@ forecast cache and a per-device "city prompt dismissed" flag persist to
 | File | Responsibility |
 | --- | --- |
 | `src/newtab.js` | Renders the desktop grid (links, weather tiles, the "Set a city" hint tile, the Settings and Add tiles), edit mode (jiggle, − badges, pointer drag with drop highlight and autoscroll), the desktop dialogs (add link, edit link without a Delete button, delete confirm, hide-weather confirm, weather edit), the Add menu, the page status line, the shared tooltip layer and the city modal, and wires them to the services. The only file that touches the DOM. |
-| `src/desktopLayout.js` | Pure grid engine: grid metrics and the (always even) column count for a viewport width, grid validation (`isValidGrid` with a signed `x`, `isValidGridV2` for the v1/v2 readers), the stored/displayed frame (`originColumn`, `toStored`, `toDisplayed`), the displayed layout (`displayLayout`, a stateless anchored repack of the stored grids for the current column count), placement rules (`canPlace`, `placeResized`, `placeNew` nearest to the center, `cellFromPoint`), the default block (`placeMissing`), the one-time v2 → v3 shift (`centerShift`) and the v1 → v2 packing (`migrateV1ToV2`). |
+| `src/desktopLayout.js` | Pure grid engine: grid metrics and the (always even) column count for a viewport width, grid validation (`isValidGrid` with a signed `x`, `isValidGridV2` for the v1/v2 readers), the stored/displayed frame (`originColumn`, `toStored`, `toDisplayed`), the displayed layout (`displayLayout`, a stateless anchored repack of the stored grids for the current column count), placement rules (`canPlace`, `placeResized`, `placeNew` nearest to the center, `cellFromPoint`), the default block (`placeMissing`, with the vertical centering of its first placement: `centeredDefaultRow`, `defaultBlockRows`), the one-time v2 → v3 shift (`centerShift`) and the v1 → v2 packing (`migrateV1ToV2`). |
 | `src/desktopUiState.js` | Pure UI state for edit mode, the Add menu, the open dialog and an active drag, and the Escape layering (`escapeLayer`). |
 | `src/widgetsStore.js` | Validates, reads, and writes persisted widgets state (links, weather metrics and chrome tiles, each with a `grid`), sharded across `chrome.storage.sync` keys; reads are lenient about a missing or malformed `grid`. Also holds the legacy favorites → widgets v1 migration, the v1 → v2 migration (`migrateWidgetsToV2`), the v2 → v3 migration (`migrateWidgetsToV3`), `ensureWidgetsLayout` (defaults and self-heal), `inspectWidgetsMeta` and the write guard (`assertWritable`) that refuses `newer`, `v2`, `v1`, and `invalid` metas (only `valid` and `missing` are writable). |
 | `src/widgetsService.js` | Add/update/delete for links, `updateWeatherMetric` (size, shown/hidden) and `moveWidget` (drop at a cell, `PlacementError` when the block is taken). Every mutation takes the current column count, runs under the mutation lock, checks `assertWritable` first, applies the action to the displayed layout of fresh storage and persists the displayed grid of every widget. |
@@ -96,7 +96,12 @@ scans its own row from its own column to the right, then the rows below. The
 defaults and the self-heal (`placeMissing`, stored frame in and out, over 12
 reference columns) lay the missing tiles out as one contiguous row block, in the
 default order, in the first row with a free run of that width, nearest to the
-center. The one-time v2 → v3 shift centers the bounding columns of the on-grid
+center. The first placement of the whole default block (all six absent) takes its
+row `Y0 = max(0, floor((R − blockRows) / 2))` from the first screen (`R` rows of
+`viewportRows`, `blockRows` the displayed height of the six tiles at the page's
+column count) instead of row 0, searching by distance from `Y0` (above first); the
+self-heal of 1..5 tiles and `placeNew` stay row-0 first, and a stored `y` is never
+recomputed. The one-time v2 → v3 shift centers the bounding columns of the on-grid
 items (`centerShift`).
 
 **Writes.** Every explicit action (drag, add, edit, resize, delete, hide,
@@ -144,8 +149,12 @@ lock as every mutation:
 4. `ensureWidgetsLayout()`: adds any missing weather metric and chrome tile as one
    block (see Placement) with the default sizes (temperature 1×1, precipitation
    2×1, air quality 2×1, UV 1×1, Settings and Add 1×1), item keys before the
-   meta; idempotent. On a fresh install this creates temperature (−4,0),
-   precipitation (−3,0), air quality (−1,0), UV (1,0), Settings (2,0), Add (3,0).
+   meta; idempotent. The call receives the first screen of this boot,
+   `ensureWidgetsLayout(sync, { screen })` with `screen = { rows, columns }` from
+   `firstScreen()` in `newtab.js`. On a fresh install this creates temperature
+   (−4,Y0), precipitation (−3,Y0), air quality (−1,Y0), UV (1,Y0), Settings
+   (2,Y0), Add (3,Y0), with `Y0` the centered row of the first screen (4 at
+   1280×800); without a valid `screen`, or for a partial self-heal, the row is 0.
    A legacy or v1 user's four metrics land as one block in the first row with room
    for all of them, which is below the links. It writes nothing for a newer, v2, v1
    or malformed meta. A write failure is non-fatal: the grid renders without the

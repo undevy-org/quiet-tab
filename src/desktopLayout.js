@@ -35,7 +35,8 @@ export function originColumn(columns) {
 export const toStored = (grid, columns) => ({ ...grid, x: grid.x - originColumn(columns) });
 export const toDisplayed = (grid, columns) => ({ ...grid, x: grid.x + originColumn(columns) });
 
-// Rows that fit the first screen: `height` is document.documentElement.clientHeight, `width` picks the metrics.
+// Rows that fit the first screen: `height` is document.documentElement.clientHeight, `width` picks the metrics. Also the `screen.rows`
+// of `placeMissing` (a NaN / Infinity height gives a non-integer, which `placeMissing` rejects: row 0 as before).
 export function viewportRows(height, width) {
   const { cell, gap, pad } = gridMetrics(width);
   return Math.max(1, Math.floor((height - 2 * pad + gap) / (cell + gap)));
@@ -95,17 +96,36 @@ const clampStart = (x, w, columns) => Math.min(Math.max(0, x), Math.max(0, colum
 function nearestFree(occupied, w, h, columns) {
   if (w > columns) throw new RangeError("Widget is wider than the grid");
   for (let y = 0; ; y += 1) {
-    let best = null;
-    let bestDistance = Infinity;
-    for (let x = 0; x + w <= columns; x += 1) {
-      if (!blockFree(occupied, x, y, w, h, columns)) continue;
-      const distance = Math.abs(2 * x + w - columns);
-      if (distance <= bestDistance) {
-        best = x;
-        bestDistance = distance;
-      }
+    const spot = nearestInRow(occupied, w, h, columns, y);
+    if (spot) return spot;
+  }
+}
+
+// The in-row rule of `nearestFree` for one row `y`: the free block nearest to the center line, ties to the right, or null.
+function nearestInRow(occupied, w, h, columns, y) {
+  let best = null;
+  let bestDistance = Infinity;
+  for (let x = 0; x + w <= columns; x += 1) {
+    if (!blockFree(occupied, x, y, w, h, columns)) continue;
+    const distance = Math.abs(2 * x + w - columns);
+    if (distance <= bestDistance) {
+      best = x;
+      bestDistance = distance;
     }
-    if (best !== null) return { x: best, y, w, h };
+  }
+  return best === null ? null : { x: best, y, w, h };
+}
+
+// Rows by distance from `target`: target, target - 1, target + 1, target - 2, ... (the nearer row above wins a tie, a row
+// below 0 is skipped). Unbounded downward, so the first row that has a free block always comes.
+function nearestFreeAround(occupied, w, h, columns, target) {
+  if (w > columns) throw new RangeError("Widget is wider than the grid");
+  for (let d = 0; ; d += 1) {
+    for (const y of d === 0 ? [target] : [target - d, target + d]) {
+      if (y < 0) continue;
+      const spot = nearestInRow(occupied, w, h, columns, y);
+      if (spot) return spot;
+    }
   }
 }
 
@@ -212,17 +232,49 @@ export function defaultSize(id) {
   return DEFAULT_METRIC_SIZES[id] ?? { w: 1, h: 1 };
 }
 
+// The row of the first placement of the whole default block (docs/vertically-centered-defaults.md decision 4): the free
+// rows of the first screen split equally, the extra one below; never above row 0.
+export function centeredDefaultRow(rows, blockRows) {
+  return Math.max(0, Math.floor((rows - blockRows) / 2));
+}
+
+// Displayed height of the six default tiles at `columns` (decision 3): taken from `displayLayout`, never from a table.
+export function defaultBlockRows(columns) {
+  let y = 0;
+  const items = DEFAULT_ENTRY_ORDER.map((id) => ({ id, grid: { x: 0, y: 0, ...defaultSize(id) } }));
+  // stored frame: lay the block out as placeMissing does (one row, nearest to the center of the 12 reference columns)
+  const width = items.reduce((sum, item) => sum + item.grid.w, 0);
+  let x = Math.floor((REFERENCE_COLUMNS - width) / 2) - originColumn(REFERENCE_COLUMNS);
+  for (const item of items) {
+    item.grid.x = x;
+    x += item.grid.w;
+  }
+  for (const grid of displayLayout(items, columns).values()) y = Math.max(y, grid.y + grid.h);
+  return y;
+}
+
+const validScreen = (screen) =>
+  screen !== null && typeof screen === "object" &&
+  Number.isInteger(screen.rows) && screen.rows >= 1 && Number.isInteger(screen.columns) && screen.columns >= MIN_COLUMNS;
+
 // Defaults / ensure (decision 6), in the STORED frame both ways: the missing ids (in DEFAULT_ENTRY_ORDER) are laid out as ONE
 // contiguous row block (so the weather tiles stay together and in order) in the first row from 0 with a free run of the
 // total width, at the position nearest to the center of the 12 reference columns (ties to the right). `existing` holds
 // items with their stored grids; only those on the grid with a valid grid occupy cells.
-export function placeMissing(missingIds, existing) {
+// Optional `screen` = { rows, columns } (integers, rows >= 1, columns >= 2): when ALL six default ids are requested, the row
+// search starts at the centered row of the first screen and goes by distance (above first) instead of from row 0. Without a
+// valid `screen`, or with 1..5 ids (self-heal), the result is exactly the row-0 rule.
+export function placeMissing(missingIds, existing, screen) {
   const ids = DEFAULT_ENTRY_ORDER.filter((entry) => missingIds.includes(entry));
   const out = new Map();
   if (ids.length === 0) return out;
   const occupied = new Set();
   for (const item of existing) if (isOnGrid(item) && isValidGrid(item.grid)) mark(occupied, toDisplayed(item.grid, REFERENCE_COLUMNS));
-  const block = nearestFree(occupied, ids.reduce((sum, id) => sum + defaultSize(id).w, 0), 1, REFERENCE_COLUMNS);
+  const width = ids.reduce((sum, id) => sum + defaultSize(id).w, 0);
+  const centered = ids.length === DEFAULT_ENTRY_ORDER.length && validScreen(screen);
+  const block = centered
+    ? nearestFreeAround(occupied, width, 1, REFERENCE_COLUMNS, centeredDefaultRow(screen.rows, defaultBlockRows(screen.columns)))
+    : nearestFree(occupied, width, 1, REFERENCE_COLUMNS);
   let x = block.x;
   for (const id of ids) {
     const { w, h } = defaultSize(id);

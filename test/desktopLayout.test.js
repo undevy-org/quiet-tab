@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   CHROME_IDS, canPlace, cellFromPoint, displayLayout, effectiveColumns, gridMetrics, isValidGrid,
-  migrateV1ToV2, placeMissing, placeNew, placeResized
+  migrateV1ToV2, placeMissing, placeNew, placeResized, viewportRows
 } from "../src/desktopLayout.js";
 import * as engine from "../src/desktopLayout.js"; // the whole-window drag helpers (AS-DL-01..06, 11)
 
@@ -577,5 +577,97 @@ describe("migrateV1ToV2 (spec AS-12, AS-12b)", () => {
   it("resume keeps an existing chrome grid", () => {
     const items = [{ id: "a", type: "favorite", tileSize: "square", grid: g(0, 0) }, { id: "chrome:settings", type: "chrome", grid: g(5, 0) }];
     assert.deepEqual(migrateV1ToV2(items, 6).get("chrome:settings"), g(5, 0));
+  });
+});
+
+describe("vertically centered defaults (docs/vertically-centered-defaults.md; AS-VC-13)", () => {
+  const six = ["weather:temperature", "weather:precipitation", "weather:airQuality", "weather:uv", CHROME_IDS.settings, CHROME_IDS.add];
+  const SIX_X = [-4, -3, -1, 1, 2, 3];
+  const ys = (map) => six.map((id) => map.get(id).y);
+  const xs = (map) => six.map((id) => map.get(id).x);
+  const link = (refColumn, y, w = 1, h = 1) => fav(`l${refColumn}-${y}`, g(refColumn - 6, y, w, h)); // reference column -> stored
+
+  it("centeredDefaultRow(R, b) = max(0, floor((R - b) / 2)): tables", () => {
+    const one = [0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6];
+    one.forEach((y, i) => assert.equal(engine.centeredDefaultRow(i + 1, 1), y, `R=${i + 1}, b=1`));
+    const two = [0, 0, 0, 1, 1, 2, 2, 3, 3, 4];
+    two.forEach((y, i) => assert.equal(engine.centeredDefaultRow(i + 1, 2), y, `R=${i + 1}, b=2`));
+  });
+  it("centeredDefaultRow: R < b, R = b and the spec examples", () => {
+    assert.equal(engine.centeredDefaultRow(1, 4), 0);
+    assert.equal(engine.centeredDefaultRow(3, 4), 0);
+    assert.equal(engine.centeredDefaultRow(2, 2), 0);
+    assert.equal(engine.centeredDefaultRow(4, 4), 0);
+    for (const [R, b, y] of [[9, 1, 4], [8, 1, 3], [7, 1, 3], [5, 1, 2], [4, 1, 1], [3, 1, 1], [2, 1, 0], [1, 1, 0], [13, 1, 6], [17, 1, 8], [26, 1, 12], [10, 2, 4], [9, 2, 3]]) {
+      assert.equal(engine.centeredDefaultRow(R, b), y, `(${R}, ${b})`);
+    }
+  });
+  it("defaultBlockRows(C) is the displayed height of the six tiles (decision 3)", () => {
+    for (const C of [8, 10, 14, 22, 30]) assert.equal(engine.defaultBlockRows(C), 1, `C=${C}`);
+    assert.equal(engine.defaultBlockRows(4), 2);
+    assert.equal(engine.defaultBlockRows(6), 2);
+    assert.equal(engine.defaultBlockRows(2), 4);
+  });
+  it("placeMissing with a screen: run 15 x, centered y", () => {
+    const m = placeMissing(six, [], { rows: 9, columns: 14 });
+    assert.deepEqual(xs(m), SIX_X);
+    assert.deepEqual(six.map((id) => [m.get(id).w, m.get(id).h]), [[1, 1], [2, 1], [2, 1], [1, 1], [1, 1], [1, 1]]);
+    assert.deepEqual(ys(m), [4, 4, 4, 4, 4, 4]);
+    assert.deepEqual(ys(placeMissing(six, [], { rows: 10, columns: 6 })), Array(6).fill(4));
+    assert.deepEqual(ys(placeMissing(six, [], { rows: 9, columns: 4 })), Array(6).fill(3));
+    assert.deepEqual(ys(placeMissing(six, [], { rows: 1, columns: 14 })), Array(6).fill(0));
+  });
+  it("no screen and invalid screens give exactly today's result (row 0)", () => {
+    const today = plain(placeMissing(six, []));
+    assert.deepEqual(Object.values(today).map((x) => x.y), Array(6).fill(0));
+    const bad = [
+      { rows: 0, columns: 14 }, { rows: 1.5, columns: 14 }, { rows: NaN, columns: 14 }, { rows: Infinity, columns: 14 }, { rows: "9", columns: 14 },
+      { rows: 9, columns: 1 }, { rows: 9 }, { rows: 9, columns: null }, {}, null, undefined, 9
+    ];
+    for (const screen of bad) assert.deepEqual(plain(placeMissing(six, [], screen)), today, JSON.stringify(screen));
+  });
+  it("the measurement: viewportRows of a broken clientHeight (decision 2)", () => {
+    for (const h of [0, -5]) assert.deepEqual(ys(placeMissing(six, [], { rows: viewportRows(h, 1280), columns: 14 })), Array(6).fill(0));
+    const today = plain(placeMissing(six, []));
+    for (const h of [NaN, undefined, Infinity]) assert.deepEqual(plain(placeMissing(six, [], { rows: viewportRows(h, 1280), columns: 14 })), today);
+  });
+  it("1..5 ids with a valid screen equal the same call with no screen (decision 1)", () => {
+    const screen = { rows: 9, columns: 14 };
+    const subsets = [[CHROME_IDS.settings], [CHROME_IDS.add], six.slice(0, 4), six.slice(0, 5), [...six.slice(0, 4), CHROME_IDS.settings], [CHROME_IDS.settings, CHROME_IDS.add]];
+    const existingSets = [[], [fav("a", g(-5, 0)), fav("b", g(4, 0))], [fav("tall", g(-1, 0, 2, 2))]];
+    for (const ids of subsets) for (const existing of existingSets) {
+      assert.deepEqual(plain(placeMissing(ids, existing, screen)), plain(placeMissing(ids, existing)), ids.join());
+    }
+  });
+  describe("a target row that is not free (decision 5; AS-VC-10)", () => {
+    const screen = { rows: 9, columns: 14 }; // Y0 = 4
+    const run = (existing, s = screen) => placeMissing(six, existing, s);
+    it("links at reference 4 and 8 in the target row: the row above", () => {
+      const m = run([link(4, 4), link(8, 4)]);
+      assert.deepEqual(ys(m), Array(6).fill(3));
+      assert.deepEqual(xs(m), SIX_X);
+    });
+    it("rows 4 and 3 blocked: the row below (distance 1, above first, then below)", () => {
+      assert.deepEqual(ys(run([link(4, 4), link(8, 4), link(4, 3), link(8, 3)])), Array(6).fill(5));
+    });
+    it("a block in row 0 only does not matter", () => {
+      assert.deepEqual(ys(run([link(4, 0), link(8, 0)])), Array(6).fill(4));
+    });
+    it("Y0 = 0 with row 0 blocked: row 1 (row -1 is skipped)", () => {
+      assert.deepEqual(ys(run([link(4, 0), link(8, 0)], { rows: 1, columns: 14 })), Array(6).fill(1));
+    });
+    it("144 one-cell links fill rows 0..11: row 12", () => {
+      const links = [];
+      for (let y = 0; y < 12; y += 1) for (let c = 0; c < 12; c += 1) links.push(link(c, y));
+      assert.deepEqual(ys(run(links)), Array(6).fill(12));
+    });
+    it("a 2x2 item covers rows 4 and 5, a link blocks row 3: the first free row by distance is row 2", () => {
+      const existing = [fav("tall", g(4 - 6, 4, 2, 2)), link(6, 3)];
+      assert.deepEqual(ys(run(existing)), Array(6).fill(2));
+    });
+    it("hidden metrics occupy nothing; items far outside the 12 columns do not block", () => {
+      const existing = [metricItem("weather:uv", g(-2, 4), false), fav("far", g(40, 4)), fav("farLeft", g(-40, 4))];
+      assert.deepEqual(ys(run(existing)), Array(6).fill(4));
+    });
   });
 });

@@ -678,10 +678,13 @@ export function migrateWidgetsToV3(storageArea, { now = () => new Date().toISOSt
 // Lays out any missing weather metric and chrome tile as one contiguous block nearest the center of 12 reference columns.
 // Writes only for a `valid` (v3) or `missing` meta; `newer`, `invalid` and un-migrated `v1` / `v2` are left alone.
 // Item keys are written before the meta; idempotent.
+// Optional `screen` = { rows, columns } (the first screen of this boot, `newtab.js` `firstScreen()`): when ALL six system items are
+// absent (the first appearance), the block is centered vertically in it (docs/vertically-centered-defaults.md); `placeMissing`
+// validates it. A partial self-heal, or no / an invalid `screen`, keeps the row-0 rule. `y` is never recomputed later.
 // ---------------------------------------------------------------------------
 const ENSURED_IDS = [...WEATHER_METRIC_IDS, CHROME_IDS.settings, CHROME_IDS.add];
 
-export function ensureWidgetsLayout(storageArea, { now = () => new Date().toISOString() } = {}) {
+export function ensureWidgetsLayout(storageArea, { now = () => new Date().toISOString(), screen } = {}) {
   return withWidgetsMutationLock(async () => {
     const metaResult = await storageArea.get(WIDGETS_META_KEY);
     const kind = inspectWidgetsMeta(metaResult);
@@ -707,7 +710,7 @@ export function ensureWidgetsLayout(storageArea, { now = () => new Date().toISOS
       return { changed: false, meta: kind };
     }
 
-    const spots = placeMissing(absent, existing);
+    const spots = placeMissing(absent, existing, screen);
     const itemWrites = {};
     for (const id of absent) {
       const grid = spots.get(id);

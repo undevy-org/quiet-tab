@@ -1736,6 +1736,12 @@ function currentColumns() {
   return effectiveColumns(viewportWidth());
 }
 
+// The first screen of this boot (docs/vertically-centered-defaults.md decision 2): the same rows the drag uses for its drop area
+// (`viewportRows` of the same two inputs) and the page's column count. Read once, right before `ensureWidgetsLayout`; never again.
+function firstScreen() {
+  return { rows: viewportRows(document.documentElement.clientHeight, viewportWidth()), columns: currentColumns() };
+}
+
 // R4: metrics come from JS so the column count and the cell size can never disagree at a breakpoint.
 function applyGridMetrics() {
   const metrics = gridMetrics(viewportWidth());
@@ -2242,7 +2248,7 @@ if (favoritesRoot) {
 
     if (hasStorageArea(syncStorageArea)) {
       try {
-        await ensureWidgetsLayout(syncStorageArea);
+        await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });
       } catch {
         widgetsEnsureFailed = true;
       }

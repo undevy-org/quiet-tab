@@ -348,9 +348,9 @@ describe("newtab favorites source", () => {
     assert.ok(code.indexOf("if (widgetsNewer)") < code.indexOf("if (widgetsMigrationFailed) {\n    favoritesRoot"));
     assert.match(code, /inspectWidgetsMeta\(rawMeta\) === "newer"/);
     assert.match(code, /const migration = await migrateToWidgets\(localStorageArea, syncStorageArea\);\s*if \(migration\?\.newer\) \{\s*widgetsNewer = true;/);
-    assert.match(code, /await ensureWidgetsLayout\(syncStorageArea\)/);
+    assert.match(code, /await ensureWidgetsLayout\(syncStorageArea, \{ screen: firstScreen\(\) \}\)/);
     assert.match(code, /widgetsEnsureFailed = true;/);
-    const order = ['inspectWidgetsMeta(rawMeta) === "newer"', "await migrateToWidgets(", "await migrateWidgetsToV2(syncStorageArea);", "await ensureWidgetsLayout(syncStorageArea);", "widgetsState = await widgetsService.getState();"].map((n) => code.indexOf(n));
+    const order = ['inspectWidgetsMeta(rawMeta) === "newer"', "await migrateToWidgets(", "await migrateWidgetsToV2(syncStorageArea);", "await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });", "widgetsState = await widgetsService.getState();"].map((n) => code.indexOf(n));
     assert.ok(order.every((i) => i >= 0), order.join());
     assert.deepEqual([...order].sort((a, b) => a - b), order);
   });
@@ -949,16 +949,34 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     assert.match(code, /if \(hasStorageArea\(localStorageArea\) && hasStorageArea\(syncStorageArea\)\) \{\s*const migration = await migrateToWidgets\(localStorageArea, syncStorageArea\);[\s\S]*?\n      \}\n      if \(hasStorageArea\(syncStorageArea\)\) \{/);
     assert.match(code, /const v2 = await migrateWidgetsToV2\(syncStorageArea\);\s*if \(v2\?\.meta === "newer"\) \{\s*widgetsNewer = true;\s*renderFavorites\(\);\s*return;/);
     // R7 order: legacy chain, v1 -> v2, ensure, first read.
-    const order = ["await migrateToWidgets(", "await migrateWidgetsToV2(", "await ensureWidgetsLayout(", "await widgetsService.getState()"].map((m) => code.indexOf(m));
+    const order = ["await migrateToWidgets(", "await migrateWidgetsToV2(", "await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });", "await widgetsService.getState()"].map((m) => code.indexOf(m));
     assert.ok(order.every((at, i) => at > 0 && (i === 0 || at > order[i - 1])), JSON.stringify(order));
   });
 
+  it("run 17 (AS-VC-01): the first screen is measured once, right before ensureWidgetsLayout, with the drag's own definition of the first screen", async () => {
+    const code = await source();
+    const def = code.slice(code.indexOf("function firstScreen() {"));
+    const body = def.slice(0, def.indexOf("\n}\n"));
+    assert.ok(body.includes("document.documentElement.clientHeight"), "reads the viewport height");
+    assert.match(body, /rows: viewportRows\(document\.documentElement\.clientHeight, viewportWidth\(\)\)/);
+    assert.match(body, /columns: currentColumns\(\)/);
+    // the same call and the same two inputs as the drag (docs/widget-drag-limits.md)
+    assert.match(code, /const screenRows = viewportRows\(document\.documentElement\.clientHeight, viewportWidth\(\)\);/);
+    // exactly one definition and one call: nothing re-reads the first screen later (no resize hook, no re-render)
+    assert.equal(code.split("firstScreen(").length - 1, 2);
+    const call = code.indexOf("await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });");
+    assert.ok(call > code.indexOf("await migrateWidgetsToV3(") && call < code.indexOf("widgetsState = await widgetsService.getState();"));
+    // evaluated before the first render of the desk: after the locking catch (which returns) nothing renders before the call
+    const betweenCatchAndCall = code.slice(code.indexOf("widgetsMigrationFailed = true;", code.indexOf("await migrateWidgetsToV3(")), call);
+    assert.ok(betweenCatchAndCall.indexOf("return;") < betweenCatchAndCall.indexOf("if (hasStorageArea(syncStorageArea))"), "the locking catch returns before the ensure");
+    assert.equal((betweenCatchAndCall.match(/renderFavorites\(\)/g) ?? []).length, 1, "only the locking catch renders before the call (it returns)");
+  });
   it("run 15: the bootstrap runs the v2 -> v3 step after the v2 step, inside the locking try, and locks on a newer result", async () => {
     const code = await source();
     assert.match(code, /import \{[^}]*\bmigrateWidgetsToV3\b[^}]*\} from "\.\/widgetsStore\.js"/);
     assert.match(code, /const v3 = await migrateWidgetsToV3\(syncStorageArea\);\s*if \(v3\?\.meta === "newer"\) \{\s*widgetsNewer = true;\s*renderFavorites\(\);\s*return;/);
     // R7 order: legacy chain, v1 -> v2, v2 -> v3, ensure, first read.
-    const order = ["await migrateToWidgets(", "await migrateWidgetsToV2(", "await migrateWidgetsToV3(", "await ensureWidgetsLayout(", "await widgetsService.getState()"].map((m) => code.indexOf(m));
+    const order = ["await migrateToWidgets(", "await migrateWidgetsToV2(", "await migrateWidgetsToV3(", "await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });", "await widgetsService.getState()"].map((m) => code.indexOf(m));
     assert.ok(order.every((at, i) => at > 0 && (i === 0 || at > order[i - 1])), JSON.stringify(order));
     // a failure of the v3 step goes through the same catch as the v2 step: the grid is locked with the migration-failure text
     const boot = code.slice(code.indexOf("if (favoritesRoot) {\n  void (async () => {"));
