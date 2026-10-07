@@ -399,7 +399,7 @@ describe("newtab city modal source", () => {
   it("renders the modal as its own dialog root under body, present only while open", async () => {
     const code = await source();
     assert.match(code, /function showCityModal\(mode, openerSelector\)/);
-    assert.match(code, /function hideCityModal\(\{ dismiss = false \} = \{\}\)/);
+    assert.match(code, /function hideCityModal\(\)/);
     assert.match(code, /function syncCityModal\(\)/);
     assert.match(code, /function attachCityModalListeners\(root\)/);
     assert.match(code, /root\.id = "city-modal";/);
@@ -414,7 +414,7 @@ describe("newtab city modal source", () => {
   it("makes the desktop inert while the modal is open and restores it on close", async () => {
     const code = await source();
     const show = between(code, "function showCityModal(", "function hideCityModal(");
-    const hide = between(code, "function hideCityModal(", "function onFirstRunDismissed(");
+    const hide = between(code, "function hideCityModal(", "function revealDesk(");
     assert.match(show, /favoritesRoot\.inert = true;/);
     assert.match(show, /hideTooltip\(\);/);
     assert.match(hide, /favoritesRoot\.inert = false;/);
@@ -448,7 +448,7 @@ describe("newtab city modal source", () => {
     ].map((n) => handler.indexOf(n));
     assert.ok(order.every((i) => i >= 0), order.join());
     assert.deepEqual([...order].sort((a, b) => a - b), order);
-    assert.match(handler, /layer === "cityModal"\) \{[^}]*if \(!weatherBusy\) hideCityModal\(\{ dismiss: true \}\);/);
+    assert.match(handler, /layer === "cityModal"\) \{[^}]*if \(!weatherBusy\) hideCityModal\(\);/);
   });
   it("traps Tab inside the modal; open list items are part of the cycle, hidden controls are not", async () => {
     const code = await source();
@@ -493,7 +493,7 @@ describe("newtab city modal source", () => {
     assert.match(auto, /if \(onboardingWizardRoot \|\| cityModalRoot \|\| desktopDialogRoot \|\| onboardingWizardShownThisLoad\) return;/);
     const show = between(code, "function showOnboardingWizard(", "\n}\n");
     assert.match(show, /onboardingWizardShownThisLoad = true;/);
-    const cityShow = between(code, "function showCityModal(", "// `dismiss` is set");
+    const cityShow = between(code, "function showCityModal(", "function hideCityModal(");
     assert.match(cityShow, /cityModalShownThisLoad = true;/);
   });
 
@@ -631,8 +631,8 @@ describe("newtab onboarding wizard boot source", () => {
     assert.match(code, /import \{ onboardingWizardPossible, shouldShowOnboardingWizard \} from "\.\/cityPrompt\.js";/);
     assert.match(code, /const weatherPromptStore = hasStorageArea\(localStorageArea\) \? createWeatherPromptStore\(localStorageArea\) : null;/);
     assert.match(code, /const onboardingStore = hasStorageArea\(localStorageArea\) \? createOnboardingStore\(localStorageArea\) : null;/);
-    assert.match(code, /weatherPromptStore\.dismiss\(\)\.catch\(/);
-    assert.doesNotMatch(code, /onFirstRunDismissed\(\) \{\}/);
+    assert.doesNotMatch(code, /onFirstRunDismissed/);
+    assert.doesNotMatch(code, /weatherPromptStore\.dismiss/);
   });
 
   it("feeds the pure rules with live state and never replaces an open modal", async () => {

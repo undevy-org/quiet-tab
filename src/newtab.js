@@ -987,11 +987,11 @@ function attachCityModalListeners(root) {
     }
     // A drag from the field that ends over the backdrop targets the modal root, not the backdrop: ignored.
     if (target.matches("[data-city-modal-backdrop]")) {
-      if (performance.now() - cityModalOpenedAt >= CITY_MODAL_BACKDROP_GUARD_MS) hideCityModal({ dismiss: true });
+      if (performance.now() - cityModalOpenedAt >= CITY_MODAL_BACKDROP_GUARD_MS) hideCityModal();
       return;
     }
     if (target.closest("[data-city-modal-action]")) {
-      hideCityModal({ dismiss: true });
+      hideCityModal();
       return;
     }
     const suggestion = target.closest('[data-weather-action="select-city"]');
@@ -1086,11 +1086,9 @@ function showCityModal(mode, openerSelector) {
   return true;
 }
 
-// `dismiss` is set by Escape/backdrop/"Not now"/"Cancel"; only a first-run dismissal writes the flag (Task 3).
-function hideCityModal({ dismiss = false } = {}) {
+function hideCityModal() {
   if (!cityModalRoot) return;
   const mode = cityModalMode(weatherUi);
-  const focusWasInside = cityModalHadFocus || cityModalRoot.contains(document.activeElement); // D14: a running request or a backdrop click may already have moved focus to body
   activeCityForm?.cancelPending();
   activeCityForm?.dispose?.();
   activeCityForm = null;
@@ -1109,16 +1107,8 @@ function hideCityModal({ dismiss = false } = {}) {
   if (mode === "change") {
     pendingFocus = [cityModalOpener, SETTINGS_TILE_SELECTOR].filter(Boolean);
     applyPendingFocus();
-  } else if (focusWasInside) {
-    pendingFocus = [SETTINGS_TILE_SELECTOR];
-    applyPendingFocus();
   }
   cityModalOpener = null;
-}
-
-// D3/D5: any close of the automatic modal records the dismissal; a failed write is silent (the modal shows again next time).
-function onFirstRunDismissed() {
-  if (weatherPromptStore) void weatherPromptStore.dismiss().catch(() => {});
 }
 
 // Reveal (docs/first-run-empty-desk.md, decision 4): the veil goes away, and unless motion is reduced the whole desk fades in
@@ -1147,7 +1137,7 @@ if (favoritesRoot) {
   });
 }
 
-// The live-state inputs of the first-run rule, except the dismissal flag (read separately, capped).
+// Live-state inputs for onboardingWizardPossible / shouldShowOnboardingWizard (dismissal flag read separately, capped).
 function promptLiveState() {
   const items = widgetsState?.items ?? [];
   return {
@@ -2811,7 +2801,7 @@ if (favoritesRoot) {
       void finishOnboardingWizard();
     } else if (layer === "cityModal") {
       // While a city request runs Escape does nothing at all (I1).
-      if (!weatherBusy) hideCityModal({ dismiss: true });
+      if (!weatherBusy) hideCityModal();
     } else if (layer === "dialog") {
       if (!favoritesBusy) closeDesktopDialog();
     } else if (layer === "menu") {
