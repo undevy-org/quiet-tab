@@ -36,7 +36,7 @@ import { placeTooltip } from "./widgetsLayout.js";
 import { NEWER_WIDGETS_MESSAGE, weatherMetricKey } from "./widgetsShared.js";
 import { searchCities, WeatherApiError, weatherErrorMessage } from "./weatherApi.js";
 import { createWeatherService } from "./weatherService.js";
-import { feedbackReserve, firstRunPromptPossible, shouldAutoShowCityPrompt } from "./cityPrompt.js";
+import { firstRunPromptPossible, shouldAutoShowCityPrompt } from "./cityPrompt.js";
 import { createWeatherCacheStore, createWeatherLocationStore, createWeatherPromptStore } from "./weatherStore.js";
 import { describeWeatherMetric } from "./weatherTiles.js";
 import {
@@ -246,7 +246,7 @@ let weatherRetryToken = 0; // a retry result applies only while this and weather
 let weatherRetryTimer = 0; // the end of the cooldown (updates the existing retry nodes in place)
 let widgetsEnsureFailed = false;
 let widgetsNewer = false;
-let activeCityForm = null; // { cancelPending, renderSuggestions, refresh, place, focusField, dispose, choose, chosen, recentlyChosen } of the mounted city form
+let activeCityForm = null; // { cancelPending, renderSuggestions, refresh, place, focusField, caretToEnd, dispose, choose, chosen, recentlyChosen } of the mounted city form
 let weatherUi = createInitialWeatherUiState();
 let weatherBusy = false;
 let weatherFormGeneration = 0;
@@ -354,6 +354,13 @@ function createFormRow(labelText, control) {
   labelSpan.id = `favorite-form-row-label-${formRowIdSeq++}`;
   row.append(labelSpan, control);
 
+  if (control.tagName === "BUTTON") {
+    // A button's visible text belongs to its name (WCAG 2.5.3): the row label plus every part of the control that carries an id.
+    const parts = [labelSpan.id, ...[...control.querySelectorAll("[id]")].map((part) => part.id)];
+    control.setAttribute("aria-labelledby", parts.join(" "));
+    return row;
+  }
+
   const labelTarget =
     control.tagName === "INPUT" || control.getAttribute("role") === "radiogroup"
       ? control
@@ -434,15 +441,6 @@ function createFavoriteForm(item) {
   const footer = createNode("div", "favorite-form__footer");
   const rows = [createFormRow("Link", url), createFormRow("Name", label), createFormRow("Icon", iconMode), customIconRow, colorRow];
   if (isEdit) rows.push(createFormRow("Size", createSizeControl(displayedSize(item)))); // the add dialog adds 1×1 (spec § Placement rules)
-
-  if (isEdit) {
-    const remove = createIconButton("button button--danger", "Delete", "trash2");
-    remove.type = "button";
-    remove.dataset.favoriteAction = "delete";
-    remove.dataset.favoriteId = item.id;
-    remove.disabled = favoritesBusy;
-    footer.appendChild(remove);
-  }
 
   const cancel = createIconButton("button", "Cancel", "x");
   cancel.type = "button";
@@ -588,6 +586,13 @@ async function refreshAutoAccent(id) {
 }
 
 const METRIC_LABELS = { temperature: "Temperature", precipitation: "Precipitation", airQuality: "Air quality", uv: "UV index" };
+// Hide-confirm copy per metric: the lower-case name inside the title (UV stays an acronym) and the polite announcement after the write.
+const HIDE_COPY = {
+  temperature: { title: "Hide temperature?", done: "Temperature hidden" },
+  precipitation: { title: "Hide precipitation?", done: "Precipitation hidden" },
+  airQuality: { title: "Hide air quality?", done: "Air quality hidden" },
+  uv: { title: "Hide UV index?", done: "UV index hidden" }
+};
 const METRIC_GLYPHS = { temperature: "thermometer", precipitation: "droplet", airQuality: "wind", uv: "sun" };
 
 const POPOVER_MAX_HEIGHT = 240;
@@ -595,7 +600,12 @@ const POPOVER_MIN_FREE = 96;
 const POPOVER_GAP = 6;
 const VIEWPORT_MARGIN = 16;
 
-function createCityForm(mode) {
+// The stored city as the user reads it: `name, country`, or just `name` when the country is empty (admin1 is not stored).
+function cityDisplayLabel(location) {
+  return [location.name, location.country].filter((part) => part).join(", ");
+}
+
+function createCityForm(mode, location) {
   weatherFormGeneration += 1;
   const formGeneration = weatherFormGeneration;
   weatherUi = hideSuggestions(weatherUi);
@@ -612,7 +622,8 @@ function createCityForm(mode) {
   input.id = "weather-city-input";
   input.placeholder = "Search for a city";
   input.setAttribute("aria-label", "City");
-  input.value = "";
+  const storedCity = mode === "change" && location ? location : null; // change mode prefills the stored city; first-run and "Set a city" start empty
+  input.value = storedCity ? cityDisplayLabel(storedCity) : "";
   input.autocomplete = "off";
   input.disabled = weatherBusy;
 
@@ -640,7 +651,7 @@ function createCityForm(mode) {
   save.type = "submit";
   actions.append(dismiss, save);
 
-  // Always two lines tall, so the buttons do not move when an error appears or goes (the dialog is centered).
+  // No reserved room: the slot is empty (height 0) until an error shows; the dialog may grow then.
   const feedback = createNode("div", "city-modal__feedback");
   feedback.append(errorNode);
 
@@ -660,28 +671,12 @@ function createCityForm(mode) {
   // dialog's scroll position and the mode cannot flip back and forth. It is measured from the INPUT's bottom edge, not from
   // the field wrapper, because the wrapper contains the list while it is docked. A dialog that does not fit the viewport on
   // its own (a very low window, large zoom) scrolls in every mode, also before the first suggestion appears.
-  // The room kept for an error (the feedback block's min-height) is given up only as far as the window needs: a dialog clamped to the
-  // viewport has no slack to move in, and a full reserve would push the buttons out of view. The kept room shrinks with the window
-  // (`feedbackReserve`: full where the dialog fits with it, 0 where it fits only without it), so the dialog never jumps at one
-  // height; the custom property carries the value and `compact` marks "below the full reserve". It is decided on the height the dialog
-  // has without error text (the current feedback height out), so showing or clearing an error never changes it. The order matters:
-  // the property must be removed before the reserve (the computed min-height, now the fallback) and the base are read, so the result
-  // depends on the window and not on the history, and the dialog is centered, so the reserve moves the input: `free` / `tooTall` must
-  // see that layout.
   function placePopover() {
     const dialog = field.closest(".city-modal__dialog");
     if (!dialog) return;
     const scrollTop = dialog.scrollTop;
     suggestionsList.classList.remove("weather-form__suggestions--docked");
-    dialog.classList.remove("city-modal__dialog--scroll", "city-modal__dialog--compact");
-    dialog.style.removeProperty("--city-feedback-reserve");
-    const reserve = Number.parseFloat(getComputedStyle(feedback).minHeight) || 0;
-    const base = dialog.getBoundingClientRect().height - feedback.getBoundingClientRect().height;
-    const kept = feedbackReserve({ viewportHeight: window.innerHeight, baseHeight: base, fullReserve: reserve, margin: VIEWPORT_MARGIN });
-    if (kept < reserve) {
-      dialog.style.setProperty("--city-feedback-reserve", `${kept}px`);
-      dialog.classList.add("city-modal__dialog--compact");
-    }
+    dialog.classList.remove("city-modal__dialog--scroll");
     const free = window.innerHeight - input.getBoundingClientRect().bottom - POPOVER_GAP - VIEWPORT_MARGIN;
     const tooTall = dialog.getBoundingClientRect().height > window.innerHeight - 2 * VIEWPORT_MARGIN;
     const docked = free < POPOVER_MIN_FREE;
@@ -780,7 +775,10 @@ function createCityForm(mode) {
     }, 250);
   });
 
-  let chosenCity = null;
+  // The stored city counts as chosen while its label is untouched: Save without editing re-selects it (no geocoding).
+  let chosenCity = storedCity
+    ? { name: storedCity.name, country: storedCity.country, latitude: storedCity.latitude, longitude: storedCity.longitude, label: input.value }
+    : null;
   let chosenAt = -Infinity; // performance.now() of the last choose()
   let pressing = false; // a pointer press that began inside the dialog and has not been released yet
 
@@ -836,6 +834,7 @@ function createCityForm(mode) {
     cityModalError = "";
     errorNode.textContent = "";
     errorNode.hidden = true;
+    placePopover();
   }
 
   input.addEventListener("input", () => {
@@ -883,6 +882,7 @@ function createCityForm(mode) {
     refresh,
     place: placePopover,
     focusField: () => input.focus(),
+    caretToEnd: () => input.setSelectionRange(input.value.length, input.value.length),
     dispose: () => {
       window.removeEventListener("resize", onResize);
       document.removeEventListener("pointerdown", onPointerDown, true);
@@ -927,13 +927,9 @@ function buildCityModal(mode, location) {
     description.id = "city-modal-description";
     dialog.setAttribute("aria-describedby", description.id);
     dialog.appendChild(description);
-  } else if (location) {
-    const current = createNode("p", "city-modal__current", `Current: ${location.name}`);
-    current.dataset.cityModalCurrent = "";
-    dialog.appendChild(current);
   }
 
-  dialog.appendChild(createCityForm(mode));
+  dialog.appendChild(createCityForm(mode, location));
   root.append(backdrop, dialog);
   return root;
 }
@@ -1050,6 +1046,7 @@ function showCityModal(mode, openerSelector) {
     cityModalRoot.classList.add("city-modal--stacked");
   }
   if (mode === "change") cityModalRoot.querySelector(CITY_INPUT_SELECTOR)?.focus(); // first-run never steals focus
+  if (mode === "change") activeCityForm?.caretToEnd(); // the prefilled text is not selected
   return true;
 }
 
@@ -1324,13 +1321,6 @@ function buildDialogContent(root, dialog) {
           }
         });
       });
-      // Delete inside the edit dialog swaps it for the delete confirmation (one dialog at a time, same opener).
-      form.querySelector('[data-favorite-action="delete"]')?.addEventListener("click", () => {
-        if (favoritesBusy) return;
-        const opener = desktopDialogOpener;
-        closeDesktopDialog({ restoreFocusTo: null });
-        openDesktopDialog({ kind: "confirm-delete", id: item.id }, { opener });
-      });
       root.append(title, form);
       break;
     }
@@ -1348,22 +1338,37 @@ function buildDialogContent(root, dialog) {
       root.append(title, body, createDialogErrorSlot(), createDialogFooter(createDialogCancel(), remove));
       break;
     }
+    case "confirm-hide-weather": {
+      const item = itemById(dialog.id);
+      if (item?.type !== "weather-metric" || item.enabled !== true) throw new Error("Weather tile not found");
+      title.textContent = HIDE_COPY[weatherMetricKey(item.id)].title;
+      const body = createNode("p", "desktop-dialog__body", "This hides the tile from your grid. You can add it again from Add.");
+      body.id = "desktop-dialog-body";
+      root.setAttribute("aria-describedby", body.id);
+      const hide = createIconButton("button button--primary", "Hide", "eyeOff");
+      hide.type = "button";
+      hide.dataset.dialogAction = "hide";
+      hide.addEventListener("click", () => void hideWeatherMetric(item.id));
+      root.append(title, body, createDialogErrorSlot(), createDialogFooter(createDialogCancel(), hide));
+      break;
+    }
     case "edit-weather": {
       const item = itemById(dialog.id);
       if (item?.type !== "weather-metric" || item.enabled !== true) throw new Error("Weather tile not found");
       title.textContent = metricName(item.id);
       // City row: the city change commits on its own in the city modal, stacked on top of this dialog.
-      const cityRow = createNode("div", "desktop-dialog__city");
-      const cityName = createNode("span", "desktop-dialog__city-name");
-      cityName.dataset.weatherDialogCity = "";
-      const cityButton = createNode("button", "text-button");
-      cityButton.type = "button";
-      cityButton.dataset.weatherAction = "open-city-modal";
-      cityButton.disabled = !weatherService;
-      cityButton.addEventListener("click", () => {
+      const cityField = createNode("button", "city-field");
+      cityField.type = "button";
+      cityField.dataset.weatherAction = "open-city-modal";
+      const cityValue = createNode("span", null);
+      cityValue.dataset.weatherDialogCity = "";
+      cityValue.id = `city-field-value-${formRowIdSeq}`;
+      const cityHint = createNode("span", "city-field__hint");
+      cityHint.id = `city-field-hint-${formRowIdSeq}`;
+      cityField.append(cityValue, cityHint);
+      cityField.addEventListener("click", () => {
         if (!weatherBusy && !favoritesBusy) showCityModal("change", WEATHER_DIALOG_CITY_SELECTOR);
       });
-      cityRow.append(cityName, cityButton);
 
       const form = createNode("form", "favorite-form");
       form.dataset.weatherSizeForm = "";
@@ -1388,8 +1393,8 @@ function buildDialogContent(root, dialog) {
           if (ok) closeDesktopDialog();
         });
       });
-      form.append(createFormRow("Size", createSizeControl(size)), createDialogErrorSlot(), createDialogFooter(createDialogCancel(), save));
-      root.append(title, cityRow, form);
+      form.append(createFormRow("City", cityField), createFormRow("Size", createSizeControl(size)), createDialogErrorSlot(), createDialogFooter(createDialogCancel(), save));
+      root.append(title, form);
       syncWeatherDialogCity(root);
       break;
     }
@@ -1402,8 +1407,13 @@ function buildDialogContent(root, dialog) {
 function syncWeatherDialogCity(root = desktopDialogRoot) {
   if (root?.dataset.dialog !== "edit-weather") return;
   const location = weatherLocationError ? null : currentLocation();
-  root.querySelector("[data-weather-dialog-city]").textContent = location?.name ?? "No city set";
-  root.querySelector('[data-weather-action="open-city-modal"]').textContent = location ? "Change city" : "Set a city";
+  const field = root.querySelector('[data-weather-action="open-city-modal"]');
+  const label = location ? cityDisplayLabel(location) : "";
+  root.querySelector("[data-weather-dialog-city]").textContent = label || "No city set";
+  field.querySelector(".city-field__hint").textContent = location ? "Change" : "Set a city";
+  if (label) field.title = label; // the full label whenever a city is stored; the accessible name comes from aria-labelledby
+  else field.removeAttribute("title");
+  field.disabled = !weatherService;
 }
 
 // `opener`: { id, badge } of the control to refocus at close (a tile or its − badge), looked up again at close time.
@@ -1438,7 +1448,7 @@ function openDesktopDialog(dialog, { opener = focusedWidgetId() } = {}) {
   hideTooltip();
   favoritesRoot.inert = true;
   document.body.append(backdrop, root);
-  root.querySelector("input, button")?.focus();
+  root.querySelector("input:not(:disabled), button:not(:disabled)")?.focus(); // the first enabled control (a disabled city-field is skipped)
   return true;
 }
 
@@ -1492,11 +1502,17 @@ async function confirmDeleteFavorite(id) {
   if (ok) announce("Link deleted");
 }
 
-// − on a weather tile (or on the hint, which stands for its metric): hide it, no dialog.
-async function hideWeatherMetric(metricId, domId) {
-  const next = neighborTargets(domId);
+// Hide confirm (spec § Hide confirm contract): the − on a weather tile (or on the hint, which stands for its metric) opens the
+// dialog; Hide runs this. The neighbour is read when Hide is pressed, from the opener's − badge (for the hint it is the hint tile).
+async function hideWeatherMetric(metricId) {
+  if (favoritesBusy) return;
+  const badge = favoritesRoot?.querySelector(`[data-remove-for="${CSS.escape(metricId)}"]`);
+  const next = neighborTargets(badge?.previousElementSibling?.dataset.widgetId ?? metricId);
+  const opener = desktopDialogOpener;
   const ok = await runDesktopMutation((columns) => widgetsService.updateWeatherMetric(metricId, { enabled: false }, { columns }));
-  focusWidgetTarget(ok ? next : [{ id: metricId, badge: true }, domId]);
+  if (!desktopDialogRoot) return; // closed meanwhile
+  closeDesktopDialog({ restoreFocusTo: ok ? next : opener });
+  if (ok) announce(HIDE_COPY[weatherMetricKey(metricId)].done);
 }
 
 // Add menu → a hidden metric: restored at the first free block for its size, then focused (or the hint standing for it).
@@ -1516,7 +1532,7 @@ function handleEditModeClick(target) {
     if (item?.type === "favorite") {
       openDesktopDialog({ kind: "confirm-delete", id: item.id }, { opener: { id: item.id, badge: true } });
     } else if (item?.type === "weather-metric" && item.enabled === true) {
-      void hideWeatherMetric(item.id, badge.previousElementSibling?.dataset.widgetId ?? item.id);
+      openDesktopDialog({ kind: "confirm-hide-weather", id: item.id }, { opener: { id: item.id, badge: true } });
     }
     return;
   }

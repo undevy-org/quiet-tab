@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
-  closeDialog, closeMenu, createDesktopUiState, endDrag, enterEditMode, escapeLayer, exitEditMode, openDialog,
+  DIALOG_KINDS, closeDialog, closeMenu, createDesktopUiState, endDrag, enterEditMode, escapeLayer, exitEditMode, openDialog,
   openMenu, startDrag, toggleEditMode, updateDrag
 } from "../src/desktopUiState.js";
 
@@ -51,6 +51,12 @@ describe("menu and dialog", () => {
   it("rejects unknown kinds", () => {
     assert.throws(() => openMenu(edit(), "x"));
     assert.throws(() => openDialog(edit(), { kind: "x" }));
+  });
+  it("AS-MO-15: confirm-hide-weather is a dialog kind next to the existing four, and opens with a metric id", () => {
+    assert.ok(DIALOG_KINDS.has("confirm-hide-weather"));
+    for (const kind of ["add-link", "edit-link", "edit-weather", "confirm-delete"]) assert.ok(DIALOG_KINDS.has(kind), kind);
+    const s = openDialog(edit(), { kind: "confirm-hide-weather", id: "weather:uv" });
+    assert.deepEqual(s.dialog, { kind: "confirm-hide-weather", id: "weather:uv" });
   });
   it("opening a dialog closes the menu", () => {
     const s = openDialog(openMenu(edit(), "add"), { kind: "add-link" });

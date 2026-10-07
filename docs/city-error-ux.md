@@ -2,6 +2,8 @@
 
 ## Status
 
+**Superseded in part by `docs/modal-overlay-design.md`** (permanent feedback reserve removed; AS-MO-13/14/17). AS-CE-04 (no shift) and AS-CE-05 (reserved room, 0px gap, 39.2px block) are retired; the error now moves the field and the buttons (8px above, 16px below the text). AS-CE-01, 02, 03 stay; AS-CE-02 loses "at rest, with the reserve".
+
 `implemented` (merged in `20970a4`; independent review 1 applied and re-review passed; see `city-error-ux-spec-review.md`). Amended by `docs/dialog-threshold-jump.md`: the reserve is full wherever the dialog fits with it, partial down to the dialog's height without it, and zero below; 400×300 first-run is now an overlay list (flip 298 on the reference machine).
 
 ## Intake log

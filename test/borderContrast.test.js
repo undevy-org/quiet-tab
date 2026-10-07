@@ -79,7 +79,9 @@ describe("AS-CT-05: only the six control-boundary rules use --border-control", (
     const users = all.filter((r) => /var\(--border-control\)/.test(r.body)).map((r) => r.selector);
     // A hover STATE of the weather retry tile (docs/weather-tile-retry.md decision 2) is not a control boundary rule.
     const hoverStates = ['.weather-tile--retry[data-retry="ready"]:hover'];
-    assert.deepEqual(users.filter((s) => !six.includes(s) && !hoverStates.includes(s)), []);
+    // docs/modal-overlay-design.md: the city-field is a bordered control (Direction D); the selected dialog segment draws an inset 1px ring.
+    const modalOverlay = [".city-field", ".desktop-dialog .segmented__option:has(input:checked)"];
+    assert.deepEqual(users.filter((s) => !six.includes(s) && !hoverStates.includes(s) && !modalOverlay.includes(s)), []);
   });
   it(".segmented__option keeps the decorative divider", () => {
     const option = all.find((r) => r.selector === ".segmented__option");
