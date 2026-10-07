@@ -36,7 +36,8 @@ import { placeTooltip } from "./widgetsLayout.js";
 import { NEWER_WIDGETS_MESSAGE, weatherMetricKey } from "./widgetsShared.js";
 import { searchCities, WeatherApiError, weatherErrorMessage } from "./weatherApi.js";
 import { createWeatherService } from "./weatherService.js";
-import { firstRunPromptPossible, shouldAutoShowCityPrompt } from "./cityPrompt.js";
+import { onboardingWizardPossible, shouldShowOnboardingWizard } from "./cityPrompt.js";
+import { createOnboardingStore, readOnboardingLocalFlags } from "./onboardingStore.js";
 import { createWeatherCacheStore, createWeatherLocationStore, createWeatherPromptStore } from "./weatherStore.js";
 import { describeWeatherMetric } from "./weatherTiles.js";
 import {
@@ -215,6 +216,7 @@ const weatherCacheStore = hasStorageArea(localStorageArea)
   ? createWeatherCacheStore(localStorageArea)
   : null;
 const weatherPromptStore = hasStorageArea(localStorageArea) ? createWeatherPromptStore(localStorageArea) : null;
+const onboardingStore = hasStorageArea(localStorageArea) ? createOnboardingStore(localStorageArea) : null;
 const weatherService =
   weatherLocationStore && weatherCacheStore
     ? createWeatherService({
@@ -1011,6 +1013,8 @@ function attachCityModalListeners(root) {
 }
 
 let cityModalShownThisLoad = false; // the automatic prompt never reopens a modal that was already shown this page load
+let onboardingWizardShownThisLoad = false;
+let onboardingWizardRoot = null;
 
 function showCityModal(mode, openerSelector) {
   // One modal at a time; the only stacking is the change-mode city modal over the weather edit dialog (spec § Weather
@@ -1119,35 +1123,28 @@ function promptLiveState() {
     locationRead: weatherLocationKnown && !weatherLocationError,
     hasLocation: Boolean(weatherLocation),
     anyMetricEnabled: items.some((item) => item.type === "weather-metric" && item.enabled === true),
-    weatherAvailable: Boolean(weatherService && weatherPromptStore),
+    weatherAvailable: Boolean(weatherService && weatherPromptStore && onboardingStore),
     gridLocked: widgetsNewer || widgetsMigrationFailed
   };
 }
 
-// The dismissal flag, read once before the first render and capped: a read that fails or takes longer than the cap is unknown
-// (fail closed: no modal this load, the flag is not written) and a late result is ignored.
-const FLAG_READ_CAP_MS = 250;
-
-async function readDismissalFlag() {
-  const unknown = { flagRead: false, dismissed: false };
-  let timer = 0;
-  const cap = new Promise((resolve) => {
-    timer = setTimeout(() => resolve(unknown), FLAG_READ_CAP_MS);
+// The one decision point of the page load, taken before the first grid render (docs/onboarding-wizard.md decision 1).
+function maybeShowOnboardingWizard({ flagRead, dismissed, completeRead, complete }) {
+  if (onboardingWizardRoot || cityModalRoot || desktopDialogRoot || onboardingWizardShownThisLoad) return;
+  const show = shouldShowOnboardingWizard({
+    ...promptLiveState(),
+    flagRead,
+    dismissed,
+    completeRead,
+    complete,
+    wizardShownThisLoad: onboardingWizardShownThisLoad
   });
-  const read = weatherPromptStore.isDismissed().then((dismissed) => ({ flagRead: true, dismissed }), () => unknown);
-  try {
-    return await Promise.race([read, cap]);
-  } finally {
-    clearTimeout(timer);
-  }
+  if (show) showOnboardingWizard();
 }
 
-// The one decision point of the page load, taken before the first grid render (spec § Default decisions 3).
-// First-run open never moves focus (D2): showCityModal only focuses in change mode.
-function maybeAutoShowCityPrompt({ flagRead, dismissed }) {
-  if (cityModalRoot || desktopDialogRoot || cityModalShownThisLoad) return; // a modal was opened meanwhile (or already shown and closed): never replace, duplicate or reopen it
-  const show = shouldAutoShowCityPrompt({ ...promptLiveState(), flagRead, dismissed });
-  if (show) showCityModal("first-run", null);
+// Task 2+: build and mount #onboarding-wizard. Boot only calls this when shouldShowOnboardingWizard is true.
+function showOnboardingWizard() {
+  onboardingWizardShownThisLoad = true;
 }
 
 // R6: a 2-wide tile uses the `wide` model; a 2-high tile gets larger type (CSS keys off data-h="2") and the city name.
@@ -2271,15 +2268,15 @@ if (favoritesRoot) {
       weatherLocationKnown = true;
     }
 
-    // One decision point, before the first render: no tile is ever painted before the modal (docs/first-run-empty-desk.md). The
-    // flag is read only when every other input already allows the modal; an exception here means no modal and no veil.
+    // One decision point, before the first render: no tile is painted before the wizard when it opens (docs/onboarding-wizard.md).
+    // Local flags are read only when every other input already allows the wizard; an exception here means no wizard and no veil.
     try {
-      if (firstRunPromptPossible(promptLiveState())) {
-        const { flagRead, dismissed } = await readDismissalFlag();
-        maybeAutoShowCityPrompt({ flagRead, dismissed });
+      if (onboardingWizardPossible(promptLiveState()) && localStorageArea) {
+        const flags = await readOnboardingLocalFlags(localStorageArea);
+        maybeShowOnboardingWizard(flags);
       }
     } catch {
-      // the automatic prompt is best-effort; a failure must not surface as an unhandled rejection or block the render
+      // the automatic wizard is best-effort; a failure must not surface as an unhandled rejection or block the render
     }
 
     renderFavorites();

@@ -134,7 +134,7 @@ describe("newtab favorites source", () => {
     // The only stacking: the change-mode city modal over the weather edit dialog; first-run never opens over a dialog.
     assert.match(code, /const overWeatherDialog = mode === "change" && desktopDialogRoot !== null && desktopUi\.dialog\?\.kind === "edit-weather";/);
     assert.match(code, /if \(cityModalRoot \|\| \(desktopDialogRoot && !overWeatherDialog\) \|\| isCityModalOpen\(weatherUi\)/);
-    assert.match(code, /if \(cityModalRoot \|\| desktopDialogRoot \|\| cityModalShownThisLoad\) return;/);
+    assert.match(code, /if \(onboardingWizardRoot \|\| cityModalRoot \|\| desktopDialogRoot \|\| onboardingWizardShownThisLoad\) return;/);
     assert.match(code, /\[data-favorite-action="cancel"\]'\)\?\.addEventListener\("click", \(\) => \{\s+if \(!favoritesBusy\) closeDesktopDialog\(\);/);
   });
   it("renders everything into the one desktop root; the settings panel root is gone", async () => {
@@ -472,13 +472,15 @@ describe("newtab city modal source", () => {
     assert.match(trap, /if \(controls\.length === 0\) \{\s*event\.preventDefault\(\);[^\n]*\s*return;\s*\}/);
   });
 
-  it("the automatic prompt never reopens a modal already shown this page load", async () => {
+  it("the automatic wizard never reopens after it was already shown this page load", async () => {
     const code = await source();
-    assert.match(code, /let cityModalShownThisLoad = false;/);
-    const auto = between(code, "function maybeAutoShowCityPrompt(", "\n}\n");
-    assert.match(auto, /if \(cityModalRoot \|\| desktopDialogRoot \|\| cityModalShownThisLoad\) return;/);
-    const show = between(code, "function showCityModal(", "// `dismiss` is set");
-    assert.match(show, /cityModalShownThisLoad = true;/);
+    assert.match(code, /let onboardingWizardShownThisLoad = false;/);
+    const auto = between(code, "function maybeShowOnboardingWizard(", "\n}\n");
+    assert.match(auto, /if \(onboardingWizardRoot \|\| cityModalRoot \|\| desktopDialogRoot \|\| onboardingWizardShownThisLoad\) return;/);
+    const show = between(code, "function showOnboardingWizard(", "\n}\n");
+    assert.match(show, /onboardingWizardShownThisLoad = true;/);
+    const cityShow = between(code, "function showCityModal(", "// `dismiss` is set");
+    assert.match(cityShow, /cityModalShownThisLoad = true;/);
   });
 
   it("ignores backdrop clicks right after opening and remembers focus inside the modal", async () => {
@@ -556,14 +558,14 @@ describe("newtab city modal source", () => {
   });
 });
 
-describe("newtab first-run city prompt source", () => {
+describe("newtab onboarding wizard boot source", () => {
   function bootstrap(code) {
     const start = code.indexOf("if (favoritesRoot) {\n  void (async () => {");
     assert.ok(start >= 0, "bootstrap start");
     return code.slice(start, code.indexOf("})();", start));
   }
 
-  // docs/first-run-empty-desk.md decision 3: ONE decision point, before the first render.
+  // docs/onboarding-wizard.md decision 1: ONE decision point, before the first render.
   const betweenIn = (code, from, to) => {
     const start = code.indexOf(from);
     assert.ok(start > -1, from);
@@ -573,60 +575,64 @@ describe("newtab first-run city prompt source", () => {
   };
   const functionBody = (code, name) => betweenIn(code, `function ${name}(`, "\n}\n");
 
-  it("takes the prompt decision once, in the bootstrap, BEFORE the first render: early check, capped flag read, modal, render, status, weather", async () => {
+  it("takes the wizard decision once, in the bootstrap, BEFORE the first render: early check, capped local read, wizard, render, status, weather", async () => {
     const code = await source();
-    assert.equal(code.match(/maybeAutoShowCityPrompt\(\{ flagRead, dismissed \}\);/g)?.length, 1); // the one call (the definition has no semicolon)
-    assert.equal(code.match(/maybeAutoShowCityPrompt\(/g)?.length, 2); // definition + one call
+    assert.equal(code.match(/maybeShowOnboardingWizard\(flags\);/g)?.length, 1);
+    assert.equal(code.match(/maybeShowOnboardingWizard\(/g)?.length, 2);
     const boot = bootstrap(code);
     const stateRead = boot.indexOf("widgetsState = await widgetsService.getState();");
     const location = boot.indexOf("weatherLocationKnown = true;");
-    const early = boot.indexOf("firstRunPromptPossible(promptLiveState())");
-    const flag = boot.indexOf("await readDismissalFlag()");
-    const call = boot.indexOf("maybeAutoShowCityPrompt({ flagRead, dismissed });");
-    const firstRender = boot.indexOf("\n    renderFavorites();\n", call); // the first render of the normal path (4-space indent; the error paths are nested deeper)
+    const early = boot.indexOf("onboardingWizardPossible(promptLiveState())");
+    const flag = boot.indexOf("await readOnboardingLocalFlags(localStorageArea)");
+    const call = boot.indexOf("maybeShowOnboardingWizard(flags);");
+    const firstRender = boot.indexOf("\n    renderFavorites();\n", call);
     const status = boot.indexOf("if (widgetsEnsureFailed) showDesktopStatus(ENSURE_FAILED_MESSAGE, { persist: true });", firstRender);
     const startWeather = boot.indexOf("void startWeather();", firstRender);
     assert.ok(stateRead > 0 && location > stateRead, "state and city are read first");
     assert.ok(early > location, "the early check follows the city read");
-    assert.ok(flag > early && call > flag, "early check, then the flag read, then the decision");
+    assert.ok(flag > early && call > flag, "early check, then the local read, then the decision");
     assert.ok(firstRender > call, "the first render comes after the decision");
-    assert.ok(status > firstRender && startWeather > status, "render, then the ensure-failure status, then weather (today's order)");
-    assert.equal(boot.indexOf("isDismissed", firstRender), -1, "no flag read after the first render");
-    assert.equal(code.match(/\.isDismissed\(\)/g)?.length, 1, "the flag is read in exactly one place");
-    // the flag is read only when the early check passes; an exception before the modal is inserted never blocks the render
-    assert.match(boot.slice(0, firstRender), /try \{\s*if \(firstRunPromptPossible\(promptLiveState\(\)\)\) \{\s*const \{ flagRead, dismissed \} = await readDismissalFlag\(\);\s*maybeAutoShowCityPrompt\(\{ flagRead, dismissed \}\);\s*\}\s*\} catch \{/);
+    assert.ok(status > firstRender && startWeather > status, "render, then the ensure-failure status, then weather");
+    assert.equal(boot.indexOf("readOnboardingLocalFlags", firstRender), -1, "no local boot read after the first render");
+    assert.doesNotMatch(code, /\.isDismissed\(\)/);
+    assert.match(
+      boot.slice(0, firstRender),
+      /try \{\s*if \(onboardingWizardPossible\(promptLiveState\(\)\) && localStorageArea\) \{\s*const flags = await readOnboardingLocalFlags\(localStorageArea\);\s*maybeShowOnboardingWizard\(flags\);\s*\}\s*\} catch \{/
+    );
   });
 
-  it("reads the flag with a 250 ms cap, fails closed on error or timeout and ignores a late result", async () => {
+  it("reads onboarding local flags through onboardingStore (capped, one get)", async () => {
     const code = await source();
-    assert.match(code, /const FLAG_READ_CAP_MS = 250;/);
-    const read = functionBody(code, "readDismissalFlag");
-    assert.match(read, /Promise\.race\(/);
-    assert.match(read, /setTimeout\([^;]*FLAG_READ_CAP_MS\)/);
-    assert.match(read, /clearTimeout\(/);
-    assert.match(read, /const unknown = \{ flagRead: false, dismissed: false \};/);
-    assert.match(read, /weatherPromptStore\.isDismissed\(\)\.then\(\(dismissed\) => \(\{ flagRead: true, dismissed \}\), \(\) => unknown\)/); // a rejection is unknown too; the late settle is a no-op
+    assert.match(code, /import \{ createOnboardingStore, readOnboardingLocalFlags \} from "\.\/onboardingStore\.js";/);
+    const storeModule = await readFile(new URL("../src/onboardingStore.js", import.meta.url), "utf8");
+    assert.match(storeModule, /export async function readOnboardingLocalFlags/);
+    assert.match(storeModule, /Promise\.race\(/);
+    assert.match(storeModule, /LOCAL_BOOT_KEYS/);
   });
 
-  it("builds the prompt store only with local storage and writes the flag silently", async () => {
+  it("builds onboarding and prompt stores on local storage", async () => {
     const code = await source();
-    assert.match(code, /import \{ firstRunPromptPossible, shouldAutoShowCityPrompt \} from "\.\/cityPrompt\.js";/);
+    assert.match(code, /import \{ onboardingWizardPossible, shouldShowOnboardingWizard \} from "\.\/cityPrompt\.js";/);
     assert.match(code, /const weatherPromptStore = hasStorageArea\(localStorageArea\) \? createWeatherPromptStore\(localStorageArea\) : null;/);
+    assert.match(code, /const onboardingStore = hasStorageArea\(localStorageArea\) \? createOnboardingStore\(localStorageArea\) : null;/);
     assert.match(code, /weatherPromptStore\.dismiss\(\)\.catch\(/);
     assert.doesNotMatch(code, /onFirstRunDismissed\(\) \{\}/);
   });
 
   it("feeds the pure rules with live state and never replaces an open modal", async () => {
     const code = await source();
-    const auto = functionBody(code, "maybeAutoShowCityPrompt");
-    assert.match(auto, /^function maybeAutoShowCityPrompt\(\{ flagRead, dismissed \}\) \{\s*if \(cityModalRoot \|\| desktopDialogRoot \|\| cityModalShownThisLoad\) return;/);
-    assert.match(auto, /shouldAutoShowCityPrompt\(\{ \.\.\.promptLiveState\(\), flagRead, dismissed \}\)/);
+    const auto = functionBody(code, "maybeShowOnboardingWizard");
+    assert.match(
+      auto,
+      /^function maybeShowOnboardingWizard\(\{ flagRead, dismissed, completeRead, complete \}\) \{\s*if \(onboardingWizardRoot \|\| cityModalRoot \|\| desktopDialogRoot \|\| onboardingWizardShownThisLoad\) return;/
+    );
+    assert.match(auto, /shouldShowOnboardingWizard\(\{/);
     const live = functionBody(code, "promptLiveState");
     for (const part of [
       "locationRead: weatherLocationKnown && !weatherLocationError",
       "hasLocation: Boolean(weatherLocation)",
       'item.type === "weather-metric" && item.enabled === true',
-      "weatherAvailable: Boolean(weatherService && weatherPromptStore)",
+      "weatherAvailable: Boolean(weatherService && weatherPromptStore && onboardingStore)",
       "gridLocked: widgetsNewer || widgetsMigrationFailed"
     ]) {
       assert.ok(live.includes(part), part);
@@ -684,14 +690,15 @@ describe("newtab first-run city prompt source", () => {
     assert.ok(reduced, "reduced motion: no reveal animation");
   });
 
-  it("opens the first-run modal from one place and never calls focus() on that path", async () => {
+  it("opens the onboarding wizard from one boot path (shell built in a later task)", async () => {
     const code = await source();
-    assert.equal(code.match(/showCityModal\("first-run"/g)?.length, 1);
-    assert.match(code, /if \(show\) showCityModal\("first-run", null\);/);
+    assert.equal(code.match(/showOnboardingWizard\(/g)?.length, 2); // definition + maybeShowOnboardingWizard call
+    assert.match(code, /if \(show\) showOnboardingWizard\(\);/);
+    assert.doesNotMatch(code, /showCityModal\("first-run"/);
     const start = code.indexOf("function showCityModal(");
     const guard = code.indexOf('if (mode === "change")', start);
     assert.ok(start >= 0 && guard > start);
-    assert.doesNotMatch(code.slice(start, guard), /\.focus\(/); // no focus() call before the change-mode guard
+    assert.doesNotMatch(code.slice(start, guard), /\.focus\(/);
     const guardLine = code.slice(guard, code.indexOf("\n", guard));
     assert.match(guardLine, /\.focus\(\)/);
   });
