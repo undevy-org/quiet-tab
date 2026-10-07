@@ -83,7 +83,8 @@ describe("AS-CT-05: only the six control-boundary rules use --border-control", (
     const modalOverlay = [
       ".city-field",
       ".desktop-dialog .segmented__option:has(input:checked)",
-      ".onboarding-wizard__pill--active"
+      ".onboarding-wizard__pill--active",
+      '.onboarding-wizard__row input[type="checkbox"]'
     ];
     assert.deepEqual(users.filter((s) => !six.includes(s) && !hoverStates.includes(s) && !modalOverlay.includes(s)), []);
   });

@@ -41,6 +41,7 @@ import {
   ONBOARDING_FINISH_ERRORS,
   checkedStarterInputs,
   defaultStarterChecks,
+  onboardingFinishErrorForAddFailure,
   progressPillCount,
   step2GuardActive
 } from "./onboardingWizard.js";
@@ -1198,6 +1199,13 @@ function syncOnboardingWizardUi() {
   }
   const finishBtn = onboardingWizardRoot.querySelector('[data-onboarding-action="finish"]');
   if (finishBtn) finishBtn.disabled = favoritesBusy;
+  const backBtn = onboardingWizardRoot.querySelector('[data-onboarding-action="back"]');
+  if (backBtn instanceof HTMLButtonElement) backBtn.disabled = favoritesBusy;
+  const busyOnStep2 = favoritesBusy && onboardingStep === 2;
+  onboardingWizardRoot.querySelectorAll('[data-onboarding-step="2"] input[type="checkbox"]').forEach((box) => {
+    if (box instanceof HTMLInputElement) box.disabled = busyOnStep2;
+  });
+  if (dialog) dialog.setAttribute("aria-busy", busyOnStep2 ? "true" : "false");
   syncCityModal();
 }
 
@@ -1324,6 +1332,10 @@ function attachOnboardingWizardListeners(root) {
     const index = Number(target.dataset.onboardingStarterIndex);
     if (!Number.isInteger(index)) return;
     onboardingStarterChecks[index] = target.checked;
+    if (onboardingFinishError) {
+      onboardingFinishError = "";
+      syncOnboardingWizardUi();
+    }
   });
   root.addEventListener("click", (event) => {
     const target = event.target instanceof Element ? event.target : null;
@@ -1426,6 +1438,7 @@ async function finishOnboardingWizard() {
   }
   const inputs = checkedStarterInputs(onboardingStarterChecks);
   const generation = startFavoritesAction({ render: false });
+  syncOnboardingWizardUi();
   try {
     if (!onboardingStartersCommitted && inputs.length > 0 && widgetsService) {
       const addedIds = await widgetsService.addFavorites(inputs, { columns: currentColumns() });
@@ -1460,10 +1473,7 @@ async function finishOnboardingWizard() {
     renderFavorites();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    onboardingFinishError =
-      message.includes(String(MAX_FAVORITE_WIDGETS)) || message.includes("favorites")
-        ? ONBOARDING_FINISH_ERRORS.limit
-        : ONBOARDING_FINISH_ERRORS.batch;
+    onboardingFinishError = onboardingFinishErrorForAddFailure(message);
     finishFavoritesAction(generation, () => {});
     syncOnboardingWizardUi();
     renderFavorites();
@@ -2488,6 +2498,17 @@ function cancelDrag() {
   renderFavorites();
 }
 
+function tabTrapFocusables(trapRoot) {
+  return [...trapRoot.querySelectorAll("input, button")].filter((el) => {
+    if (el.disabled || el.hidden) return false;
+    for (let node = el; node !== trapRoot; node = node.parentElement) {
+      if (!node) return false;
+      if (node.inert || node.hidden) return false;
+    }
+    return true;
+  });
+}
+
 function applyPendingFocus() {
   if (!pendingFocus || favoritesBusy) {
     return;
@@ -2804,7 +2825,7 @@ if (favoritesRoot) {
   document.addEventListener("keydown", (event) => {
     const trapRoot = onboardingWizardRoot ?? cityModalRoot ?? desktopDialogRoot;
     if (event.key !== "Tab" || !trapRoot) return;
-    const controls = [...trapRoot.querySelectorAll("input, button")].filter((el) => !el.disabled && !el.hidden);
+    const controls = tabTrapFocusables(trapRoot);
     if (controls.length === 0) {
       event.preventDefault(); // busy: nothing to enter, focus stays on body and never leaves the page
       return;

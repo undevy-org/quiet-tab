@@ -454,7 +454,8 @@ describe("newtab city modal source", () => {
     const code = await source();
     const trap = between(code, 'if (event.key !== "Tab" || !trapRoot) return;', "});");
     assert.doesNotMatch(trap, /select-city/);
-    assert.match(trap, /trapRoot\.querySelectorAll\("input, button"\)\]\.filter\(\(el\) => !el\.disabled && !el\.hidden\)/);
+    assert.match(trap, /const controls = tabTrapFocusables\(trapRoot\)/);
+    assert.match(code, /function tabTrapFocusables\(trapRoot\)[\s\S]*node\.inert \|\| node\.hidden/);
   });
 
   it("modal controls get a transparent 2px outline only while focused, plus the soft ring", async () => {

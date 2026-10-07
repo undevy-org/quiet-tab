@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  ONBOARDING_FINISH_ERRORS,
   checkedStarterInputs,
   defaultStarterChecks,
+  onboardingFinishErrorForAddFailure,
   progressPillCount,
   step2GuardActive
 } from "../src/onboardingWizard.js";
+import { MAX_FAVORITE_WIDGETS } from "../src/widgetsShared.js";
 
 describe("onboardingWizard helpers", () => {
   it("defaults three starter checkboxes", () => {
@@ -39,5 +42,15 @@ describe("onboardingWizard helpers", () => {
     const entered = 1000;
     assert.equal(step2GuardActive(entered, 1100), true);
     assert.equal(step2GuardActive(entered, 1300), false);
+  });
+
+  it("maps add failures to batch vs limit copy", () => {
+    const syncError =
+      "Couldn't save this change to Chrome Sync — it may be full, offline, or temporarily unavailable. Try removing a few favorites or try again shortly.";
+    assert.equal(onboardingFinishErrorForAddFailure(syncError), ONBOARDING_FINISH_ERRORS.batch);
+    assert.equal(
+      onboardingFinishErrorForAddFailure(`You can save up to ${MAX_FAVORITE_WIDGETS} favorites`),
+      ONBOARDING_FINISH_ERRORS.limit
+    );
   });
 });

@@ -1,6 +1,7 @@
 // Pure onboarding wizard helpers (no DOM, no I/O). docs/onboarding-wizard.md
 
 import { ONBOARDING_STARTER_LINKS } from "./onboardingStarters.js";
+import { MAX_FAVORITE_WIDGETS } from "./widgetsShared.js";
 
 export const ONBOARDING_STEP2_GUARD_MS = 300;
 
@@ -41,4 +42,13 @@ export function step2GuardActive(enteredAt, now = performance.now()) {
 
 export function progressPillCount(step) {
   return step >= 2 ? 2 : 1;
+}
+
+/** Maps addFavorites failure to step-2 inline copy (AS-OB-19 vs AS-OB-28). */
+export function onboardingFinishErrorForAddFailure(message) {
+  const text = typeof message === "string" ? message : String(message);
+  if (text.includes(`up to ${MAX_FAVORITE_WIDGETS}`)) {
+    return ONBOARDING_FINISH_ERRORS.limit;
+  }
+  return ONBOARDING_FINISH_ERRORS.batch;
 }
