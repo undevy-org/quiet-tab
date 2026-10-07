@@ -8,7 +8,7 @@
 
 | Date | Raw note (owner) | Verdict | Reference |
 |------|------------------|---------|-----------|
-| 2026-10-06 | Unify modal footers (50/50, icons), Direction B/D for desktop dialogs, city modal without feedback reserve and without "Current:", hide-weather confirm with distinct icon from delete; visual canon = right column of `approved-target-comparison.html` §4–12. | `confirmed` | Commit `429b7bd`, mockups under `docs/superpowers/mockups/2026-10-06-overlay-modals/` |
+| 2026-10-06 | Unify modal footers (50/50, icons), Direction B/D for desktop dialogs, city modal without feedback reserve and without "Current:", hide-weather confirm with distinct icon from delete; visual canon = right column of `approved-target-comparison.html` §4–12. | `confirmed` | Commit `429b7bd`, mockups in quiet-tab-notes `superpowers/mockups/2026-10-06-overlay-modals/` (private notes repo; were `docs/superpowers/` until 2026-10-07) |
 
 ## Current behaviour (`main` at `429b7bd`)
 
@@ -23,7 +23,7 @@
 
 1. **One pipeline run (#16), one implementation PR** — styles/DOM and flows ship together so the final gate can match mock §4–12 including hide confirm and city prefill.
 2. **Supersede the city feedback reserve** — remove permanent `min-height`, `--city-feedback-reserve`, `city-modal__dialog--compact` and `feedbackReserve` (`src/cityPrompt.js:35`) with its tests; errors may move the field and the buttons (accepted). `placePopover` keeps docked/overlay list logic only.
-3. **Canonical pixels** — right column of [`approved-target-comparison.html`](superpowers/mockups/2026-10-06-overlay-modals/approved-target-comparison.html) at modal width 420px, light theme; §1–3 unchanged. Where this spec and the mock disagree, the mock wins and its CSS is the check (its lines 40–54). Known gap: the mock's `css/` folder has no `surfaces.css`, so text-to-buttons spacing in confirm dialogs (body margin) cannot be read from it; the spacing contract below governs there.
+3. **Canonical pixels** — right column of `approved-target-comparison.html` (quiet-tab-notes `superpowers/mockups/2026-10-06-overlay-modals/`) at modal width 420px, light theme; §1–3 unchanged. Where this spec and the mock disagree, the mock wins and its CSS is the check (its lines 40–54). Known gap: the mock's `css/` folder has no `surfaces.css`, so text-to-buttons spacing in confirm dialogs (body margin) cannot be read from it; the spacing contract below governs there.
 4. **Tokens follow the mock** (reason: the approved visual is what the owner signed off) — dialog form-row padding **10px** (token `--form-row-padding-y` changes 12px → 10px; its only consumer is the dialog row, `controls.css:38`), icon–label gap in modal action buttons **8px** (= `--form-footer-gap`; `--control-gap-icon` stays 6px for every other button and segmented), `--modal-actions-margin-top` **16px**. `--form-footer-padding-y` has no consumer after the footer padding goes (`grep` over `src/`: `controls.css:97` only), so it is deleted.
 5. **Error spacing follows the mock** (reason: mock line 51 `margin: 8px 0 0`): **8px** from the city input (city modal) or from the border box of the last row (dialogs) to the error text, **16px** from the error text to the buttons. Mock line 51 draws this only for the city modal; dialog rows keep their 10px padding, so in a desktop dialog the visible distance from the control to the error text is 18px (accepted, § Accepted exceptions). `.desktop-dialog__error` becomes `margin: 8px 0 0` (today `12px 0`, `surfaces.css:221`); the confirm body loses its `4px` bottom margin so text → buttons is exactly 16px.
 6. **Hide confirm title** — `Hide ${metric}?` with the metric name in lower case, except the acronym: `Hide temperature?`, `Hide precipitation?`, `Hide air quality?`, `Hide UV index?` (implemented as an explicit four-entry map next to `METRIC_LABELS`, `newtab.js:590`). A hint tile (`weather:hint`) stands for the first enabled metric, so its − opens the confirm for that metric (its badge carries `data-remove-for` = that metric id, `newtab.js:1246-1250`, `1519`).
@@ -41,8 +41,8 @@
 
 | Reference | Path |
 |-----------|------|
-| Production baseline (audit) | [`docs/superpowers/mockups/2026-10-06-overlay-modals/baseline-production-catalog.html`](superpowers/mockups/2026-10-06-overlay-modals/baseline-production-catalog.html) |
-| **Development target** | [`docs/superpowers/mockups/2026-10-06-overlay-modals/approved-target-comparison.html`](superpowers/mockups/2026-10-06-overlay-modals/approved-target-comparison.html) |
+| Production baseline (audit) | quiet-tab-notes `superpowers/mockups/2026-10-06-overlay-modals/baseline-production-catalog.html` |
+| **Development target** | quiet-tab-notes `superpowers/mockups/2026-10-06-overlay-modals/approved-target-comparison.html` |
 
 Mock sections **4–12** (target column) = mandatory visual acceptance. Sections **1–3** = no change.
 
@@ -447,8 +447,9 @@ Unresolved: none. Open for the next round: the measured flip heights (AS-MO-14) 
 
 | Version | Date | Note |
 |---------|------|------|
-| v0.1–v0.3 | 2026-10-06 | Brainstorming in `docs/superpowers/specs/` |
+| v0.1–v0.3 | 2026-10-06 | Brainstorming in `docs/superpowers/specs/` (moved to quiet-tab-notes `superpowers/specs/` 2026-10-07) |
 | final (product) | 2026-10-06 | Owner-approved target; mockups archived |
 | draft (pipeline) | 2026-10-06 | Run #16: `AS-MO-*`, Scope, supersession of city reserve docs |
 | draft r2 | 2026-10-06 | Review round 1 applied (§ Changes after review) |
 | draft r3 | 2026-10-06 | Review round 2 applied (§ Changes after review) |
+| moved refs | 2026-10-07 | Mockups and brainstorm stubs moved from the public `docs/superpowers/` to quiet-tab-notes `superpowers/` (notes backlog 38); behaviour unchanged |
