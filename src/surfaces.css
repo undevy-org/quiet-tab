@@ -151,6 +151,112 @@
   z-index: 102;
 }
 
+/* First-run onboarding wizard reuses the city modal shell (docs/onboarding-wizard.md). */
+.onboarding-wizard.city-modal {
+  z-index: 100;
+}
+
+.onboarding-wizard__progress {
+  display: flex;
+  gap: 6px;
+  margin: 0 0 16px;
+}
+
+.onboarding-wizard__pill {
+  flex: 1;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--soft-fill);
+}
+
+.onboarding-wizard__pill--active {
+  background: var(--border-control);
+}
+
+.onboarding-wizard__step-title {
+  margin: 0 0 var(--title-margin-bottom);
+  font-size: var(--font-size-title);
+}
+
+.onboarding-wizard__step-description {
+  margin: 0 0 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.onboarding-wizard__starters {
+  display: flex;
+  flex-direction: column;
+  gap: var(--grid-gap);
+  max-height: calc(var(--cell-size) * 3.5 + var(--grid-gap) * 3);
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.onboarding-wizard__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.onboarding-wizard__row input[type="checkbox"] {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+.onboarding-wizard__row-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.onboarding-wizard__preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  pointer-events: none;
+}
+
+.onboarding-wizard__preview-tile {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  width: calc(var(--cell-size) * 2 + var(--grid-gap));
+  height: var(--cell-size);
+  padding: 0 10px;
+  border: var(--control-border-width) solid var(--border);
+  border-radius: var(--radius-tile);
+  background: var(--panel-elevated, var(--panel));
+}
+
+.onboarding-wizard__row:not(:has(input:checked)) .onboarding-wizard__preview {
+  opacity: 0.4;
+  filter: grayscale(1);
+}
+
+.onboarding-wizard__preview-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  object-fit: contain;
+}
+
+.onboarding-wizard__preview-icon--letter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--soft-fill);
+}
+
 /* Desktop dialogs (add / edit / confirm): a fixed card over a backdrop, above the grid and the status line, below the
    tooltip layer. No transitions. */
 .desktop-backdrop {

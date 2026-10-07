@@ -23,7 +23,7 @@ export function isSuggestionsOpen(state) {
   return state.suggestionsOpen === true;
 }
 
-const CITY_MODAL_MODES = new Set(["first-run", "change"]);
+const CITY_MODAL_MODES = new Set(["change", "onboarding"]);
 
 export function openCityModal(state, mode) {
   if (!CITY_MODAL_MODES.has(mode)) {
