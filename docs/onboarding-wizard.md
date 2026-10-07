@@ -32,7 +32,7 @@ When `shouldAutoShowCityPrompt` allows, boot opens `showCityModal("first-run", n
 
 ## Default decisions (owner can override)
 
-1. **Trigger and veil.** Replace the first-run city modal only. Boot calls `showOnboardingWizard()` at the same point as today's `showCityModal("first-run")` (`docs/first-run-empty-desk.md`). **`onboardingWizardPossible(input)`** (new, unit-tested) uses the same inputs as `firstRunPromptPossible` **except** it does **not** require `hasLocation === false` (`src/cityPrompt.js` today gates on location at line 23). **`shouldShowOnboardingWizard()`** is true when: `onboardingWizardPossible`; `quietTabOnboardingWizardComplete` is false; `quietTabWeatherPromptDismissed` is false; local flags were read successfully within the 250 ms cap (fail closed on error/timeout, same as today); wizard not already shown this load (`cityModalShownThisLoad` equivalent for onboarding). A profile that saved a city on step 1 but did not finish step 2 still reopens the wizard (decision 9). Remove dead `shouldAutoShowCityPrompt` / `maybeAutoShowCityPrompt` first-run path and update `test/cityPrompt.test.js`. First-run still veils `#favorites` and uses the same reveal on close. Change-mode never veils.
+1. **Trigger and veil.** Replace the first-run city modal only. Boot calls `showOnboardingWizard()` at the same point as today's `showCityModal("first-run")` (`docs/first-run-empty-desk.md`). **`onboardingWizardPossible(input)`** (new, unit-tested) mirrors today's first-run gates **except** it does **not** require `hasLocation === false` (`src/cityPrompt.js:23`). **`shouldShowOnboardingWizard()`** is true when: `onboardingWizardPossible`; `quietTabOnboardingWizardComplete` is false; `quietTabWeatherPromptDismissed` is false; both local keys read in **one** `chrome.storage.local.get` within the 250 ms cap (fail closed on error/timeout); wizard not already shown this load. A profile that saved a city on step 1 but did not finish step 2 still reopens the wizard (decision 9). **Remove** `shouldAutoShowCityPrompt`, `firstRunPromptPossible`, `maybeAutoShowCityPrompt`, `showCityModal("first-run")`, `onFirstRunDismissed`, first-run **Not now**, and the `first-run` entry in `CITY_MODAL_MODES` (`src/weatherUiState.js`); update `test/cityPrompt.test.js` and `test/newtabSource.test.js` pins. First-run veils `#favorites` via wizard show/hide. Change-mode never veils.
 2. **One modal shell, two steps.** Implement as **`#onboarding-wizard`** with `CITY_MODAL_MODES` entry **`onboarding`** so `isCityModalOpen`, escape layer, and tab-trap reuse today's modal stack (`src/newtab.js` escape/tab paths). Root: `role="dialog"`, `aria-modal="true"`. **`aria-labelledby`** points at the **active** step title id (update when step changes). Step index `1 | 2` in JS only; no header toolbar. Hidden step panel is `inert` (tab trap must ignore inert descendants). Veil invariant from `docs/first-run-empty-desk.md` decision 2 moves to onboarding show/hide (not `showCityModal("first-run")`).
 3. **Progress indicator (variant D).** Inset row at the top of the dialog panel (same horizontal padding as modal content): two pills, height **5px**, gap **6px**, border-radius full. Inactive: `--soft-fill`. Active: `--border-control` (not `--primary`). Step 1: left pill active. Step 2: both pills active (completed + current). No numeric "Step 1 of 2" text.
 4. **Step 1 — City.** Title: "Where should we show weather?" Subtitle: "Enter a city, or skip for now." Body: reuse city field, suggestions popover, busy/save validation and error slot from today's first-run city modal (no "Current:" line; no focus steal on open). Reload before complete: field shows stored location (`chosenCity`) like change-mode prefill. Footer **50/50**: **Skip** | **Continue** (`arrowRight` after label). **Skip** → step 2 without geocode, without `quietTabWeatherPromptDismissed`. **Continue** disabled while step 1 **busy**; enabled when the city field is non-empty (same as today's Save, `newtab.js:661-665`). On success `changeCity` runs with **`onSuccess` → advance to step 2** (must not call `hideCityModal()`). On failure stay on step 1 with error. While busy, **Skip**, Escape, and backdrop are ignored (match today's busy city modal). Escape with an open suggestions list: first Escape closes the list (`escapeLayer`), second behaves like Skip (AS-OB-11). Popover placement: on low windows use the same docked/scroll dialog behaviour as first-run city modal when needed (AS-OB-16); step-1 shell must not clip the popover.
@@ -49,7 +49,7 @@ When `shouldAutoShowCityPrompt` allows, boot opens `showCityModal("first-run", n
 | 7 | Reddit | `reddit.com` | `https://www.reddit.com/` | auto |
 | 8 | Amazon | `amazon.com` | `https://www.amazon.com/` | auto |
 
-Favicons via `/_favicon/`. On **Finish**, call new **`widgetsService.addFavorites(inputs, { columns })`**: one `mutate` under the lock, `placeNew` for each checked row in table order, single `MAX_FAVORITE_WIDGETS` check for the batch (all-or-nothing). Each input: `w: 2`, `h: 1`, url, label, `backgroundColor` / `backgroundColorSource` (`manual` + `#1a73e8` for Gmail). After successful persist, run **`refreshAutoAccent`** for rows with `auto` accent (same as Add link). Then write `quietTabOnboardingWizardComplete` and close. If the batch fails, stay on step 2 with error, **Finish** re-enabled, flag false. If the batch succeeded but flag write fails, set in-memory **`startersCommitted`** so a retry only writes the flag (no duplicate favorites). Footer **50/50**: **Back** (`arrowLeft`) | **Finish** (`check`). **Step-2 entry guard:** for **300 ms** after entering step 2, ignore Finish, Back, Escape, and backdrop (prevents Continue double-click landing on Finish). **Finish** disabled while finish runs (`favoritesBusy` / `runDesktopMutation` pattern).
+Favicons via `/_favicon/`. On **Finish**, call **`widgetsService.addFavorites(inputs, { columns })`**: one `mutate`, `placeNew` per checked row in table order, single `MAX_FAVORITE_WIDGETS` check, **skip URLs already present** among favorites (normalized URL dedup). Returns added widget ids. Each input: `w: 2`, `h: 1`, url, label, `backgroundColor` / `backgroundColorSource` (`manual` + `#1a73e8` for Gmail). Then write `quietTabOnboardingWizardComplete` and close the wizard; **`refreshAutoAccent`** for `auto` rows runs **`void` after close** (same as Add link, do not block UI). If the batch fails, stay on step 2 with error, **Finish** re-enabled, flag false. If the batch succeeded but flag write fails: show error, allow one retry; after a second flag failure **close the wizard** (best-effort, like `onFirstRunDismissed`); in-memory **`startersCommitted`** prevents duplicate adds on retry in the same session. Footer **50/50**: **Back** (`arrowLeft`) | **Finish** (`check`). **Step-2 entry guard:** for **300 ms** after entering step 2, ignore Finish, Back, Escape, and backdrop. **Finish** disabled while finish runs (`favoritesBusy` / `runDesktopMutation` pattern).
 6. **Dismissal semantics.** No **Not now**, no `quietTabWeatherPromptDismissed`. **Step 1:** Escape (ignore `keydown.repeat`) and backdrop (300 ms after wizard open) like **Skip** when not busy. **Step 2:** Escape (ignore repeat) and backdrop like **Finish** when not busy and outside the step-2 entry guard. **Back** only return to step 1. Tab trap on active step.
 7. **Focus.** Step 1: same as today's first-run city modal (no auto-focus steal). On entering step 2, focus moves to the first checkbox (or the list container if empty). Tab order: all checkboxes, then **Back**, then **Finish**. On close after successful completion, focus rules match today's first-run close (`docs/first-run-empty-desk.md` decision 5) adapted to `#onboarding-wizard`.
 8. **Completion flag.** `chrome.storage.local` key `quietTabOnboardingWizardComplete` = `true` only after decision 5 succeeds (including zero links). Boot uses decision 1; the wizard does not write `quietTabWeatherPromptDismissed`. Completing without a city leaves the hint tile as today.
@@ -63,10 +63,11 @@ Favicons via `/_favicon/`. On **Finish**, call new **`widgetsService.addFavorite
 - `src/widgetsService.js`: **`addFavorites`** batch API (decision 5).
 - `src/newtab.js`: boot calls wizard instead of `showCityModal("first-run")`; veil/reveal hooks on the wizard show/hide paths; remove or guard dead first-run city path.
 - `src/newtab.css`, `src/surfaces.css` / `src/controls.css`: wizard layout, progress pills, scroll body, list row checkbox, muted unchecked state.
-- `src/cityPrompt.js`: share city helpers; new `shouldShowOnboardingWizard` (decision 1); keep `shouldAutoShowCityPrompt` for change-mode paths (unit tests).
+- `src/cityPrompt.js`: `onboardingWizardPossible` / `shouldShowOnboardingWizard`; remove first-run prompt predicates (decision 1).
+- `src/weatherUiState.js`: drop `first-run` mode; add `onboarding` if not folded into wizard root only.
 - `src/icons.js`: ensure `arrowLeft`, `arrowRight`, `check` exist (or add) for footer buttons.
 - Unit tests: wizard step transitions (Skip → 2, Continue with mock weather), Finish adds N favorites, flag written; boot order pins in `test/newtabSource.test.js` updated.
-- E2E: new `dg-60-onboarding-wizard.mjs` (AS-OB-01..19). **Rewrite every scenario** that uses `autoPrompt: true` or first-run city copy: `13-city-modal`, `14-*`, `15-*`, `dg-14`, `dg-15`, `dg-45`, `dg-47`, `dg-48`, `dg-49`, `dg-50`, `dg-51`, `dg-52`, `dg-53`, `dg-56`, `dg-58`, `dg-59`, plus `lib/cityModalSweep.mjs` and `dg-46` where they assert first-run modal; grep `Show weather on your new tab`, `Not now`, `first-run` in `.private/e2e/scenarios/`.
+- E2E: new `dg-60-onboarding-wizard.mjs` (AS-OB-01..22). **Rewrite every scenario** that uses `autoPrompt: true` or first-run city copy: `13-city-modal`, `14-*`, `15-*`, `dg-14`, `dg-15`, `dg-45`, `dg-47`, `dg-48`, `dg-49`, `dg-50`, `dg-51`, `dg-52`, `dg-53`, `dg-56`, `dg-58`, `dg-59`, plus `lib/cityModalSweep.mjs` and `dg-46` where they assert first-run modal; grep `Show weather on your new tab`, `Not now`, `first-run` in `.private/e2e/scenarios/`.
 - Docs: `docs/architecture.md` (city / first-run paragraph), `docs/first-run-empty-desk.md` (wizard instead of city modal), `CHANGELOG.md` `[Unreleased]`; private `agent-config/CLAUDE.md` first-run bullet.
 
 ## Process
@@ -166,8 +167,8 @@ Common setup: E2E harness 1280×800, fresh profile, `autoPrompt: true`, weather 
 - Verified by: E2E `dg-60` group 11.
 
 ### AS-OB-13 Escape on step 2 finishes like Finish
-- Given: step 2, two starters checked.
-- When: Escape pressed once (or backdrop after guard).
+- Given: step 2, two starters checked, ≥ **300 ms** after entering step 2.
+- When: Escape pressed once (or backdrop after wizard open guard).
 - Then: same storage outcome as Finish (two favorites, complete flag true, wizard closed); `quietTabWeatherPromptDismissed` unset.
 - Verified by: E2E `dg-60` group 12.
 
@@ -202,10 +203,28 @@ Common setup: E2E harness 1280×800, fresh profile, `autoPrompt: true`, weather 
 - Verified by: E2E `dg-60` group 17; unit pin in `test/newtabSource.test.js`.
 
 ### AS-OB-19 Finish storage failure stays on step 2
-- Given: step 2, `failStorageInit` on sync widget write.
+- Given: step 2, `failStorageInit` on sync write to `quietTabWidgetsMeta`.
 - When: Finish is clicked.
-- Then: error shown; complete flag false; no partial favorites left on grid (batch all-or-nothing).
+- Then: error shown; complete flag false; no partial favorites on grid (batch all-or-nothing).
 - Verified by: E2E `dg-60` group 18.
+
+### AS-OB-20 Flag write failure after successful adds
+- Given: step 2, adds succeed, `failStorageInit` on `quietTabOnboardingWizardComplete` set.
+- When: Finish is clicked, then retried once.
+- Then: after retry still failing, wizard closes without duplicate favorites; next load does not re-add the same URLs (dedup).
+- Verified by: E2E `dg-60` group 19.
+
+### AS-OB-21 Continue double-click stays on step 2
+- Given: step 1, valid city, fast double-click Continue.
+- When: step 2 appears.
+- Then: wizard open; complete flag false; no accidental Finish; no favorites yet.
+- Verified by: E2E `dg-60` group 20.
+
+### AS-OB-22 Held Escape on step 1 does not finish
+- Given: step 1.
+- When: Escape keydown with `repeat` fires through step 2 entry.
+- Then: user remains on step 2 only; complete flag false until explicit Finish.
+- Verified by: E2E `dg-60` group 21.
 
 ## Review focus
 
