@@ -36,7 +36,7 @@ When `shouldAutoShowCityPrompt` allows, boot opens `showCityModal("first-run", n
 2. **One modal shell, two steps.** Implement as **`#onboarding-wizard`** with `CITY_MODAL_MODES` entry **`onboarding`** so `isCityModalOpen`, escape layer, and tab-trap reuse today's modal stack (`src/newtab.js` escape/tab paths). Root: `role="dialog"`, `aria-modal="true"`. **`aria-labelledby`** points at the **active** step title id (update when step changes). Step index `1 | 2` in JS only; no header toolbar. Hidden step panel is `inert` (tab trap must ignore inert descendants). Veil invariant from `docs/first-run-empty-desk.md` decision 2 moves to onboarding show/hide (not `showCityModal("first-run")`).
 3. **Progress indicator (variant D).** Inset row at the top of the dialog panel (same horizontal padding as modal content): two pills, height **5px**, gap **6px**, border-radius full. Inactive: `--soft-fill`. Active: `--border-control` (not `--primary`). Step 1: left pill active. Step 2: both pills active (completed + current). No numeric "Step 1 of 2" text.
 4. **Step 1 — City.** Title: "Where should we show weather?" Subtitle: "Enter a city, or skip for now." Body: reuse city field, suggestions popover, busy/save validation and error slot from today's first-run city modal (no "Current:" line; no focus steal on open). Reload before complete: field shows stored location (`chosenCity`) like change-mode prefill. Footer **50/50**: **Skip** | **Continue** (`arrowRight` after label). **Skip** → step 2 without geocode, without `quietTabWeatherPromptDismissed`. **Continue** disabled while step 1 **busy**; enabled when the city field is non-empty (same as today's Save, `newtab.js:661-665`). On success `changeCity` runs with **`onSuccess` → advance to step 2** (must not call `hideCityModal()`). On failure stay on step 1 with error. While busy, **Skip**, Escape, and backdrop are ignored (match today's busy city modal). Escape with an open suggestions list: first Escape closes the list (`escapeLayer`), second behaves like Skip (AS-OB-11). Popover placement: on low windows use the same docked/scroll dialog behaviour as first-run city modal when needed (AS-OB-16); step-1 shell must not clip the popover.
-5. **Step 2 — Starter links.** Title: "Add starter links". Subtitle: "Keep the ones you want on your grid." Body: a scrollable list only (title, subtitle, progress, footer fixed). Each row: native checkbox (min **44×44 px** hit target, visible `:focus-visible` ring on the control), full-width **2×1** preview (`div`, not `button`); unchecked **preview tile and favicon only** ~**0.4** opacity + **grayscale** — **label text always full opacity** (≥ 4.5:1). Scroll: **~3.5 rows** visible when space allows; list region `flex: 1 1 auto; min-height: 0` with `overflow-y: auto`; below ~490 px viewport height the **whole dialog** may use `.city-modal__dialog--scroll` so **Back** and **Finish** stay reachable. Dialog shell: **no `overflow: hidden`** (popover on step 1 must not clip). Default **checked** (3): ChatGPT, YouTube, X. Starters (order, url, label, domain, defaultChecked, optional accent hex):
+5. **Step 2 — Starter links.** Title: "Add starter links". Subtitle: "Keep the ones you want on your grid." Body: a scrollable list only (title, subtitle, progress, footer fixed). Each row: native checkbox (min **44×44 px** hit target, visible `:focus-visible` ring on the control), full-width **2×1** preview (`div`, not `button`); unchecked **preview tile and favicon only** ~**0.4** opacity + **grayscale** — **label text always full opacity** (≥ 4.5:1). Scroll: list region `max-height: calc(var(--cell-size) * 3.5 + var(--grid-gap) * 3)` (same formula as mockup, AS-OB-04) and `overflow-y: auto`; do **not** use `flex: 1 1 auto` on the list (prevents 7+ visible rows). When `100vh − 32px` is less than the fixed chrome + capped list, the **dialog panel** uses `.city-modal__dialog--scroll` so **Back** and **Finish** stay reachable down to **320×200** (list keeps the cap and scrolls inside). Dialog shell: **no `overflow: hidden`** (popover on step 1 must not clip). Default **checked** (3): ChatGPT, YouTube, X. Starters (order, url, label, domain, defaultChecked, optional accent hex):
 
 | # | Label | Domain | URL | Accent |
 |---|-------|--------|-----|--------|
@@ -230,9 +230,19 @@ Common setup: E2E harness 1280×800, fresh profile, `autoPrompt: true`, weather 
 
 Boot predicate vs stored city (decision 1); finish sequencing and failure (decision 5); step transition/double-click guards; list a11y hit targets and contrast; overflow/suggestions on step 1; E2E sweep breadth (Scope).
 
+## Copy (user-visible)
+
+| Situation | Text |
+|-----------|------|
+| Step 2 batch write failure | Couldn't add links. Try again. |
+| Step 2 flag write failure (retry) | Couldn't save setup. Try again. |
+| Step 2 at favorite limit (200) | Too many links on your grid. Uncheck some starters. |
+
+City step 1 errors reuse today's first-run city modal strings (`docs/city-error-ux.md`).
+
 ## Visual reference
 
 | Reference | Path |
 |-----------|------|
-| **Development target** | notes `superpowers/mockups/2026-10-07-onboarding-wizard/onboarding-mockup-final.html` |
+| **Development target** | notes `superpowers/mockups/2026-10-07-onboarding-wizard/onboarding-mockup-final.html` — **normative text is this spec**; mockup CSS may lag (overflow, row hit targets, preview `div` vs `button`) and is aligned at design-review checkpoint |
 | Progress variants (chosen D) | notes `superpowers/mockups/2026-10-07-onboarding-wizard/onboarding-progress-variants.html` |
