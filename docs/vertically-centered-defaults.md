@@ -2,7 +2,7 @@
 
 ## Status
 
-`draft`
+`implemented`
 
 Decision: **do it**. Owner request 2026-10-06 (run organisation session, after run 15): after the first city choice the six system tiles appear (four weather metrics, Settings, Add). Horizontally the block is already centered (`docs/centered-grid.md`). Center the same default block **vertically in the first screen**, at the **very first** appearance of the grid after install. Owner decisions (2026-10-06):
 
