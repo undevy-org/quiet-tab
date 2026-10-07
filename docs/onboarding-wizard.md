@@ -36,7 +36,7 @@ When `shouldAutoShowCityPrompt` allows, boot opens `showCityModal("first-run", n
 2. **One modal shell, two steps.** Implement as **`#onboarding-wizard`** with `CITY_MODAL_MODES` entry **`onboarding`** so `isCityModalOpen`, escape layer, and tab-trap reuse today's modal stack (`src/newtab.js` escape/tab paths). Root: `role="dialog"`, `aria-modal="true"`. **`aria-labelledby`** points at the **active** step title id (update when step changes). Step index `1 | 2` in JS only; no header toolbar. Hidden step panel is `inert` (tab trap must ignore inert descendants). Veil invariant from `docs/first-run-empty-desk.md` decision 2 moves to onboarding show/hide (not `showCityModal("first-run")`).
 3. **Progress indicator (variant D).** Inset row at the top of the dialog panel (same horizontal padding as modal content): two pills, height **5px**, gap **6px**, border-radius full. Inactive: `--soft-fill`. Active: `--border-control` (not `--primary`). Step 1: left pill active. Step 2: both pills active (completed + current). No numeric "Step 1 of 2" text.
 4. **Step 1 — City.** Title: "Where should we show weather?" Subtitle: "Enter a city, or skip for now." Body: reuse city field, suggestions popover, busy/save validation and error slot from today's first-run city modal (no "Current:" line; no focus steal on open). Reload before complete: field shows stored location (`chosenCity`) like change-mode prefill. Footer **50/50**: **Skip** | **Continue** (`arrowRight` after label). **Skip** → step 2 without geocode, without `quietTabWeatherPromptDismissed`. **Continue** disabled while step 1 **busy**; enabled when the city field is non-empty (same as today's Save, `newtab.js:661-665`). On success `changeCity` runs with **`onSuccess` → advance to step 2** (must not call `hideCityModal()`). On failure stay on step 1 with error. While busy, **Skip**, Escape, and backdrop are ignored (match today's busy city modal). Escape with an open suggestions list: first Escape closes the list (`escapeLayer`), second behaves like Skip (AS-OB-11). Popover placement: on low windows use the same docked/scroll dialog behaviour as first-run city modal when needed (AS-OB-16); step-1 shell must not clip the popover.
-5. **Step 2 — Starter links.** Title: "Add starter links". Subtitle: "Keep the ones you want on your grid." Body: a scrollable list only (title, subtitle, progress, footer fixed). Each row: native checkbox (min **44×44 px** hit target, visible `:focus-visible` ring on the control), full-width **2×1** preview (`div`, not `button`); unchecked **preview tile and favicon only** ~**0.4** opacity + **grayscale** — **label text always full opacity** (≥ 4.5:1). Scroll: list region `max-height: calc(var(--cell-size) * 3.5 + var(--grid-gap) * 3)` (same formula as mockup, AS-OB-04) and `overflow-y: auto`; do **not** use `flex: 1 1 auto` on the list (prevents 7+ visible rows). When `100vh − 32px` is less than the fixed chrome + capped list, the **dialog panel** uses `.city-modal__dialog--scroll` so **Back** and **Finish** stay reachable down to **320×200** (list keeps the cap and scrolls inside). Dialog shell: **no `overflow: hidden`** (popover on step 1 must not clip). Default **checked** (3): ChatGPT, YouTube, X. Starters (order, url, label, domain, defaultChecked, optional accent hex):
+5. **Step 2 — Starter links.** Title: "Add starter links". Subtitle: "Keep the ones you want on your grid." Body: a scrollable list only (title, subtitle, progress, footer fixed). Each row is one **`<label>`** wrapping the native checkbox and a non-interactive **2×1** preview (`div`, not `button`). **Click anywhere on the row** or **Space** while focus is on the row toggles the checkbox (same as a native label). Min **44×44 px** row height, visible `:focus-visible` on the checkbox control. Unchecked **preview tile and favicon only** ~**0.4** opacity + **grayscale** — **label text always full opacity** (≥ 4.5:1). Scroll: list region `max-height: calc(var(--cell-size) * 3.5 + var(--grid-gap) * 3)` (same formula as mockup, AS-OB-04) and `overflow-y: auto`; do **not** use `flex: 1 1 auto` on the list (prevents 7+ visible rows). When `100vh − 32px` is less than the fixed chrome + capped list, the **dialog panel** uses `.city-modal__dialog--scroll` so **Back** and **Finish** stay reachable down to **320×200** (list keeps the cap and scrolls inside). Dialog shell: **no `overflow: hidden`** (popover on step 1 must not clip). Default **checked** (3): ChatGPT, YouTube, X. Starters (order, url, label, domain, defaultChecked, optional accent hex):
 
 | # | Label | Domain | URL | Accent |
 |---|-------|--------|-----|--------|
@@ -67,7 +67,7 @@ Favicons via `/_favicon/`. On **Finish**, call **`widgetsService.addFavorites(in
 - `src/weatherUiState.js`: drop `first-run` mode; add `onboarding` if not folded into wizard root only.
 - `src/icons.js`: ensure `arrowLeft`, `arrowRight`, `check` exist (or add) for footer buttons.
 - Unit tests: wizard step transitions (Skip → 2, Continue with mock weather), Finish adds N favorites, flag written; boot order pins in `test/newtabSource.test.js` updated.
-- E2E: new `dg-60-onboarding-wizard.mjs` (AS-OB-01..22). **Rewrite every scenario** that uses `autoPrompt: true` or first-run city copy: `13-city-modal`, `14-*`, `15-*`, `dg-14`, `dg-15`, `dg-45`, `dg-47`, `dg-48`, `dg-49`, `dg-50`, `dg-51`, `dg-52`, `dg-53`, `dg-56`, `dg-58`, `dg-59`, plus `lib/cityModalSweep.mjs` and `dg-46` where they assert first-run modal; grep `Show weather on your new tab`, `Not now`, `first-run` in `.private/e2e/scenarios/`.
+- E2E: new `dg-60-onboarding-wizard.mjs` (AS-OB-01..31). **Rewrite every scenario** that uses `autoPrompt: true` or first-run city copy: `13-city-modal`, `14-*`, `15-*`, `dg-14`, `dg-15`, `dg-45`, `dg-47`, `dg-48`, `dg-49`, `dg-50`, `dg-51`, `dg-52`, `dg-53`, `dg-56`, `dg-58`, `dg-59`, plus `lib/cityModalSweep.mjs` and `dg-46` where they assert first-run modal; grep `Show weather on your new tab`, `Not now`, `first-run` in `.private/e2e/scenarios/`.
 - Docs: `docs/architecture.md` (city / first-run paragraph), `docs/first-run-empty-desk.md` (wizard instead of city modal), `CHANGELOG.md` `[Unreleased]`; private `agent-config/CLAUDE.md` first-run bullet.
 
 ## Process
@@ -89,6 +89,7 @@ Full UI pipeline: spec review, spec gate, plan in notes, E2E-first implementatio
 - **Zero links on Finish** leaves only system tiles (owner approved).
 - **Escape on step 2 = Finish** (owner approved): no separate cancel on step 2.
 - **Continue/Finish icons** (`arrowRight`, `check`, `arrowLeft`) are new footer chrome for this wizard only.
+- **Starter row click target:** implementation uses a wrapping `<label>` (whole row toggles). The development mockup uses a `button` preview where only the 22×22 checkbox toggles; **ship label semantics**, mock aligned at checkpoint.
 
 ## Acceptance scenarios
 
@@ -185,10 +186,10 @@ Common setup: E2E harness 1280×800, fresh profile, `autoPrompt: true`, weather 
 - Verified by: E2E `dg-60` group 14.
 
 ### AS-OB-16 Narrow and low viewport
-- Given: harness resize.
-- When: step 1 at **320×400** and step 2 at **500×600**, **500×420**, and **320×320**.
-- Then: step 1 city field and suggestions usable (popover not clipped); step 2 list scrolls or dialog scrolls as a whole; footer **Back** and **Finish** always reachable (no clipped footer).
-- Verified by: E2E `dg-60` group 15.
+- Given: harness resize (same fixtures as `dg-48` / `15-city-modal-layout` / `dg-53` where only viewport differs).
+- When: step 1 at **320×400**; step 2 at **500×600**, **500×420**, **320×320**, and **320×200**.
+- Then: step 1 city field and suggestions usable (popover not clipped; docked list behaviour per `docs/city-modal-low-window.md` when applicable); step 2 list keeps **max-height** cap (~3.5 rows); when content exceeds viewport the wizard panel has **`.city-modal__dialog--scroll`** (same rule as city modal `placePopover` / `tooTall`); footer **Back** and **Finish** reachable without clipping.
+- Verified by: E2E `dg-60` group 15; regressions may reuse resized groups from `dg-48`, `dg-53`, `15-city-modal-layout` adapted to wizard step 1.
 
 ### AS-OB-17 Tab order and focus on step 2
 - Given: step 2.
@@ -225,6 +226,60 @@ Common setup: E2E harness 1280×800, fresh profile, `autoPrompt: true`, weather 
 - When: Escape keydown with `repeat` fires through step 2 entry.
 - Then: user remains on step 2 only; complete flag false until explicit Finish.
 - Verified by: E2E `dg-60` group 21.
+
+### AS-OB-23 Step 1 busy ignores Skip, Escape, and backdrop
+- Given: step 1, Continue in flight (`delayStorageInit` or network fixture as in `dg-45` / `dg-47`).
+- When: user presses Skip, Escape, or backdrop click.
+- Then: wizard stays on step 1 busy; no step 2; city unchanged.
+- Verified by: E2E `dg-60` group 22.
+
+### AS-OB-24 Escape with city suggestions open on step 1
+- Given: step 1, suggestions list open (same interaction as `13-city-modal` / `dg-15` first-run suggestion flow, wizard copy).
+- When: Escape once, then Escape again.
+- Then: first Escape closes suggestions only; second advances like **Skip** (step 2, no city write).
+- Verified by: E2E `dg-60` group 23.
+
+### AS-OB-25 Backdrop after guards matches Skip or Finish
+- Given: wizard open ≥ **300 ms**; step 1 then step 2.
+- When: backdrop click on each step.
+- Then: step 1 → step 2 without city; step 2 → same outcome as **Finish** for current checkbox selection.
+- Verified by: E2E `dg-60` group 24.
+
+### AS-OB-26 Starter row toggles by click and Space
+- Given: step 2, one row focused.
+- When: click on preview/label area (not only the 22×22 box); Space key.
+- Then: checkbox toggles; accessible name includes link label.
+- Verified by: E2E `dg-60` group 25.
+
+### AS-OB-27 Finish dedupes URLs already on the grid
+- Given: step 2, profile already has ChatGPT favorite; ChatGPT row checked.
+- When: Finish.
+- Then: no duplicate ChatGPT tile; complete flag true; other checked starters still added.
+- Verified by: E2E `dg-60` group 26; related harness `dg-26-two-tabs` optional stress.
+
+### AS-OB-28 Favorite limit blocks Finish with Copy message
+- Given: step 2, grid at **200** favorites (`dg-24` seed), at least one starter checked.
+- When: Finish.
+- Then: error **Too many links on your grid. Uncheck some starters.**; wizard stays open; complete flag false.
+- Verified by: E2E `dg-60` group 27.
+
+### AS-OB-29 Skip then Finish without city leaves hint tile
+- Given: step 1, Skip to step 2; all starters unchecked.
+- When: Finish.
+- Then: complete flag true; hint weather tile still shown (no city); desk revealed per `docs/first-run-empty-desk.md`.
+- Verified by: E2E `dg-60` group 28.
+
+### AS-OB-30 New starters land as valid 2×1 without overlap
+- Given: step 2, default three checked, harness **1280×800** and **500×500**.
+- When: Finish.
+- Then: three new **2×1** favorites inside grid bounds; no overlap with chrome tiles; `placeNew` positions documented in run record.
+- Verified by: E2E `dg-60` group 29.
+
+### AS-OB-31 Focus after wizard close matches first-run reveal
+- Given: wizard completes with city saved on step 1.
+- When: veil reveals desk.
+- Then: focus target matches `docs/first-run-empty-desk.md` decision 5 (adapted to wizard root, not `body` without destination).
+- Verified by: E2E `dg-60` group 30 or `dg-56` adapted.
 
 ## Review focus
 
