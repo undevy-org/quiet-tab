@@ -34,7 +34,7 @@ Add the link **use your location** to the subtitle of the first-run wizard step 
 
 - Wizard step 1 description becomes: `Enter a city, use your location, or skip for now.` with the words **use your location** as the link.
 - Change-mode city modal gets a new description between the title and the form: `Search for a city or use your location.` with the same link. It uses the existing `.city-modal__description` rule; the change dialog still gets no `aria-describedby`.
-- The link is a native `<button type="button" class="city-location-link" data-weather-action="use-location">` inside the paragraph, styled as an inline link (underlined, inherits the description color and size, `font-weight` 600). Its visible text is `use your location` and that text is its accessible name (no `aria-label`). It sits before the form in DOM order, so Tab order is: link, field, Clear (when visible), footer buttons.
+- The link is a native `<button type="button" class="city-location-link" data-weather-action="use-location">` inside the paragraph, styled as an inline link (underlined, inherits the description color and size, `font-weight: var(--font-weight-control)`). Its visible text is `use your location` and that text is its accessible name (no `aria-label`). It sits before the form in DOM order, so Tab order is: link, field, Clear (when visible), footer buttons.
 - The link is always present (also when `navigator.geolocation` is missing); a missing API is reported through the error slot on activation.
 
 ### Flow (one function in `newtab.js`, `useMyLocation(variant)`)
@@ -74,18 +74,18 @@ Each message is `<reason> <tail>`. Tail by surface: wizard `Enter a city or skip
 
 | Failure | Reason |
 |---------|--------|
-| Position denied, unavailable, API missing or an unexpected exception | `Couldn't get your location.` |
+| Position denied, unavailable, API missing, or an unexpected exception before the reverse step or while filling the field | `Couldn't get your location.` |
 | Position deadline (15 s) or the browser's own timeout (code 3) | `Finding your location took too long.` |
 | Reverse found no city name | `Couldn't find a city for your location.` |
 | Reverse network failure or 8 s abort | `Couldn't look up your city. Check your connection.` |
-| Reverse HTTP error (incl. 429), invalid JSON | `The location service isn't responding.` |
+| Reverse HTTP error (incl. 429), invalid JSON, or an unexpected exception during the reverse step | `The location service isn't responding.` |
 
 The messages go through the existing error slot (`role="alert"`, 0 height at rest). The existing slot rules apply (cleared by the next input, submit or locate).
 
 ### Privacy, permissions, store
 
 - `manifest.json`: add `https://nominatim.openstreetmap.org/*` to `host_permissions`. No `geolocation` permission is declared: Chrome prompts per origin for an extension page. **Expected, to be confirmed by the owner on an unpacked build (AS-UL-16; not a merge condition):** the prompt appears on the new tab page. If the owner finds that Chrome denies silently without the manifest permission, the fix is a follow-up run (the executor does not wait for it): declaring `geolocation` adds an install-time warning and is a product decision.
-- `docs/privacy.md` and `store/privacy-disclosure.md`: browser location used only when the user activates the link; the rounded coordinates are sent to Nominatim once per activation to get a city name; only the chosen city (name, country, rounded coordinates) is stored, as before; weather requests still go to Open-Meteo with the stored coordinates; no location is sold or used for advertising; OpenStreetMap contributors / Nominatim named as the data source. Places that become false and must change (the stored/synced coordinates are now the user's rounded position (also `docs/privacy.md` "Data Stored"), and Nominatim sees the request IP like Open-Meteo does; both are said in the texts): `docs/privacy.md` (opening "sends requests only to Open-Meteo", the URL list, "No other request is made"), `store/privacy-disclosure.md` (Location block that says no geolocation is used, the permission justification, the remote-code host list; the stored coordinates are now the user's rounded position, not a city centre), `docs/architecture.md` (security boundaries: three hosts), `README.md` (host access), `SECURITY.md:25`, `docs/architecture.md:28` and `:213`, `docs/onboarding-wizard.md:38` (step 1 subtitle), the module list in `agent-config/CLAUDE.md` (add `browserGeolocation.js`, `cityLocation.js`), `agent-config/CLAUDE.md` ("Host permissions are limited to Open-Meteo's three endpoints"), `CHANGELOG.md` `[Unreleased]`.
+- `docs/privacy.md` and `store/privacy-disclosure.md`: browser location used only when the user activates the link; the rounded coordinates are sent to Nominatim once per activation to get a city name; only the chosen city (name, country, rounded coordinates) is stored, as before; weather requests still go to Open-Meteo with the stored coordinates; no location is sold or used for advertising; OpenStreetMap contributors / Nominatim named as the data source. Places that become false and must change (the stored/synced coordinates are now the user's rounded position (also `docs/privacy.md` "Data Stored"), and Nominatim sees the request IP like Open-Meteo does; both are said in the texts): `docs/privacy.md` (opening "sends requests only to Open-Meteo", the URL list, "No other request is made"), `store/privacy-disclosure.md` (Location block that says no geolocation is used, the permission justification, the remote-code host list; the stored coordinates are now the user's rounded position, not a city centre), `docs/architecture.md` (security boundaries: three hosts), `README.md` (host access and OpenStreetMap attribution line), `SECURITY.md:25`, `docs/architecture.md:28` and `:213`, `docs/onboarding-wizard.md:38` (step 1 subtitle), the module list in `agent-config/CLAUDE.md` (add `browserGeolocation.js`, `cityLocation.js`), `agent-config/CLAUDE.md` ("Host permissions are limited to Open-Meteo's three endpoints"), `CHANGELOG.md` `[Unreleased]`.
 - Chrome Web Store dashboard (owner task at publication, not part of the PR): update the Privacy practices tab (Location data), the permission justification for the new host, and the privacy policy URL text. Listed in the backlog by the run; not a merge condition.
 
 ### Architecture
@@ -94,7 +94,7 @@ The messages go through the existing error slot (`role="alert"`, 0 height at res
 - `src/cityLocation.js` (new, pure): `roundCoordinate` (never returns `-0`), `locationErrorMessage(variant, failure)` where `failure` is `{ source: "position", code }` or `{ source: "reverse", kind }` (mapping: position `denied|unavailable|unsupported` → "Couldn't get your location.", position `timeout` → "took too long", reverse `notFound` → "find a city", reverse `network|timeout` → "look up your city", reverse `http|unknown` → "isn't responding"), the copy constants.
 - `src/weatherApi.js`: `reverseGeocodeCoordinates(lat, lon, { fetchImpl, signal })`; the private `request()` gains an optional `init` argument (headers, signal) while existing callers keep passing only the URL.
 - `src/newtab.js`: description builders (`createCityLocationDescription(variant)`), `useMyLocation(variant)`, click wiring in the wizard and city modal listeners, the `syncCityModal` exclusion. No new store, service or UI-state module: nothing is persisted and the busy state already lives in `weatherBusy`.
-- CSS: the change-mode description reuses the existing `.city-modal__description` rule (`src/surfaces.css`, currently unused); the wizard keeps `.onboarding-wizard__step-description`; one new `.city-location-link` rule (inline link look, busy look, focus ring) and the status node reuses the existing `.sr-only` class (`src/newtab.css:402`), existing tokens only.
+- CSS: the change-mode description reuses the existing `.city-modal__description` rule (`src/surfaces.css`, currently unused); the wizard keeps `.onboarding-wizard__step-description`; one new `.city-location-link` rule in `src/surfaces.css` next to `.city-modal__description` (disabled look as other disabled controls, `--control-disabled-opacity`) (inline link look, busy look, focus ring) and the status node reuses the existing `.sr-only` class (`src/newtab.css:402`), existing tokens only.
 
 ## Acceptance scenarios
 
@@ -175,7 +175,7 @@ Scenarios marked E2E run in `dg-62-use-my-location.mjs` with `navigator.geolocat
 ### AS-UL-13 Network request content
 - Given: a lookup in progress
 - When: the request to Nominatim is observed
-- Then: exactly one request goes to `https://nominatim.openstreetmap.org/reverse` with `lat=41.72&lon=44.83` (two decimals), `format=jsonv2`, `addressdetails=1`, `zoom=10`, `accept-language=en`, and the identifying `User-Agent`; nothing else carries the position
+- Then: exactly one request goes to `https://nominatim.openstreetmap.org/reverse` with `lat=41.72&lon=44.83` (two decimals), `format=jsonv2`, `addressdetails=1`, `zoom=10`, `accept-language=en`, and the identifying `User-Agent`; before Save, no request other than the Nominatim one carries the position (after Save the Open-Meteo forecast request uses the stored rounded coordinates, as before)
 - Verified by: E2E `dg-62-use-my-location.mjs` (route handler asserts the URL; the header too if the harness can observe it, otherwise the header is verified by the first implementation step (the spike) and a unit test of the request `init`)
 
 ### AS-UL-14 Rapid and repeated activation
@@ -232,10 +232,16 @@ Scenarios marked E2E run in `dg-62-use-my-location.mjs` with `navigator.geolocat
 - Then: the link is disabled and not focusable like the other controls, Tab/Shift+Tab leave focus where the existing busy contract puts it, and nothing about the locating state is visible
 - Verified by: E2E `dg-62-use-my-location.mjs` plus the unchanged `13-city-modal` busy scenario
 
+### AS-UL-23 Low windows keep the buttons reachable
+- Given: widths 320 and 360 px, heights from the `dg-48` pairs and 50 px below the new measured thresholds (wizard step 1 and the change modal)
+- When: the dialog is open at rest, then the field is focused
+- Then: down to the new measured threshold the footer buttons are visible without scrolling; below it the dialog scrolls and the buttons are reachable by scrolling and by Tab; the threshold values are recorded in `docs/city-modal-low-window.md` and the shift against the old thresholds is at most the height of the added description
+- Verified by: E2E `dg-48-city-modal-low-window.mjs` (pairs updated intentionally) and `dg-62-use-my-location.mjs`
+
 ## Review focus
 
 - **Scenarios/states:** the busy lock (what exactly is disabled, that the link keeps focus, that Escape and backdrop are ignored for up to 23 s), the stale-result rule, error recovery (retry works), overwriting a prefilled city, and the unanswered permission prompt.
-- **Visual/layout:** the new description line in the change modal (height change, popover placement, low window), the inline link look in light and dark, wrapping at 320 px, the busy text swap changing the height by whole lines only.
+- **Visual/layout:** the low-window thresholds that move because of the added description line (AS-UL-23), the new description line in the change modal (height change, popover placement, low window), the inline link look in light and dark, wrapping at 320 px, the busy text swap changing the height by whole lines only.
 - **Accessibility/texts:** link name equals visible text, status announcements, the five error messages with their per-surface tails, contrast and focus ring.
 - **Privacy:** what leaves the browser, when, and that the documents say so.
 
@@ -246,11 +252,23 @@ Scenarios marked E2E run in `dg-62-use-my-location.mjs` with `navigator.geolocat
 - The grid is not re-rendered during a lookup.
 - After Block, Chrome remembers the denial for the extension; the denied message does not explain how to re-enable the permission (Chrome settings). Accepted for this phase.
 - OpenStreetMap attribution is given in `docs/privacy.md` and the store text, not in the UI, because only a city name from the response is used.
+- A position that arrives after the 15 s deadline (a late "Allow") fills nothing; the next activation then answers at once from the browser.
+- Low windows (decision, owner can override): the added description line makes the wizard about one text line taller and the change modal about two lines plus a 12 px margin taller, so the idle-visible-buttons thresholds of `dg-48` (`docs/city-modal-low-window.md`) move by that amount. This is accepted as the price of the feature: the implementer MEASURES the new minimum heights, updates the `dg-48` pairs and the numbers in `docs/city-modal-low-window.md` deliberately, and keeps the existing contract that below the threshold the dialog scrolls and the buttons stay reachable (AS-UL-17). If the measured loss is larger than two text lines, stop and ask the owner.
 - The Chrome Web Store dashboard changes are made by the owner at publication, not in this PR.
 
 ## Process
 
-Full UI pipeline. Branches: quiet-tab `docs/use-my-location-spec` (spec), `feat/use-my-location` (implementation); notes `docs/use-my-location-spec-plan` (plan, kickoff, run files). E2E: new `dg-62-use-my-location.mjs`; existing scenarios that may need an intentional update because the change modal gains a description line: `13-city-modal`, `15-city-modal-layout`, `dg-15-city-first-run`, `dg-45`, `dg-47`, `dg-48`, `dg-49`, `dg-52`, `dg-53`, `dg-60-onboarding-wizard`, `dg-58-modal-overlay` (first-run description string), `dg-15-city-first-run`, `dg-56-first-run-empty-desk`, `dg-50-placeholder-contrast` (Tab now reaches the link first), `15-city-modal-layout`, `.private/e2e/lib/harness.mjs` (route Nominatim to `abort` by default so a forgotten mock never reaches the real service), scenarios that assert the first/last focusable target of a modal (`Tab`/`Shift+Tab` in `13-city-modal`, `dg-60`, `dg-52`, `dg-53`; the link is now the first target) or button metrics (`dg-41`, `dg-51`), and the shared helper `.private/e2e/lib/onboardingWizard.mjs` (`WIZARD_STEP1_DESCRIPTION`). `13-city-modal.mjs` asserts that the change modal has no description (line 164) and the wizard text (line 540): both change intentionally. Docs that become false also include `docs/city-modal-low-window.md:30` ("Change mode has no description … not affected") and the module table of `docs/architecture.md` (add `browserGeolocation.js`, `cityLocation.js`). E2E helpers that list dialog buttons or read the description: `.private/e2e/lib/cityModalSweep.mjs` (used by `dg-48`, `dg-49`, `dg-52`, `dg-53`, `dg-58`) and `modalInfo` in `13-city-modal.mjs` (`buttons` becomes link + Cancel + Save at line 164). In `dg-62` description text is compared in the idle state, without the status node. Unit tests that pin old facts: `test/manifest.test.js` (exact host list) and `test/newtabSource.test.js` (the step 1 sentence).
+Full UI pipeline. Branches: quiet-tab `docs/use-my-location-spec` (spec), `feat/use-my-location` (implementation); notes `docs/use-my-location-spec-plan` (plan, kickoff, run file). New E2E: `dg-62-use-my-location.mjs`.
+
+Existing E2E and helpers that may need an intentional update (each change with a recorded reason, never a loosened check):
+
+- Text of the step 1 / change-mode description: `13-city-modal.mjs` (line 164: the change modal had no description; line 540: wizard text), `dg-58-modal-overlay.mjs:36`, `.private/e2e/lib/onboardingWizard.mjs:16` (`WIZARD_STEP1_DESCRIPTION`), `test/newtabSource.test.js` (the step 1 sentence).
+- Tab order (the link is now the first focusable target): `13-city-modal`, `dg-15-city-first-run`, `dg-50-placeholder-contrast`, `dg-52`, `dg-53`, `dg-56-first-run-empty-desk`, `dg-60-onboarding-wizard`, `15-city-modal-layout`.
+- Geometry and low windows (AS-UL-23): `dg-45`, `dg-47`, `dg-48`, `dg-49`, `15-city-modal-layout`; `.private/e2e/lib/cityModalSweep.mjs`.
+- `modalInfo` in `.private/e2e/lib/harness.mjs` keeps the link out of `buttons` and returns it as a separate `link` field, so the button checks of `13-city-modal` (`:364` incl. the 24×24 check, `:590`, `:647`) stay. The busy contract `AS-14` of `13-city-modal` is unchanged (the link is disabled during an ordinary request).
+- `.private/e2e/lib/harness.mjs` routes Nominatim to `abort` by default, so a forgotten mock never reaches the real service.
+- Unit pins: `test/manifest.test.js` (exact host list); the flow pins of AS-UL-19/21 (`finally`, `cancelAnimationFrame`, both teardown branches).
+- Docs that become false: listed in § Privacy, permissions, store, plus `docs/city-modal-low-window.md:30` and the module table of `docs/architecture.md`.
 
 ## Non-goals
 
