@@ -2,7 +2,7 @@
 
 ## Status
 
-`draft`
+`implemented`
 
 Decision: **do it**. Owner request 2026-10-07 (pipeline stage 0, runs #18 / `dg-60`): replace the **first-run** `#city-modal` with a **two-step wizard** (city, then starter links). The **change-mode** city modal (`showCityModal("change", …)`) stays as today (`docs/modal-overlay-design.md`). Visual canon: notes `superpowers/mockups/2026-10-07-onboarding-wizard/onboarding-mockup-final.html` (progress indicator variant **D**, muted active pill).
 
