@@ -35,7 +35,7 @@ Baseline for this spec is the current `main` HEAD at stage 1 review (after onboa
 - `src/newtab.js`: `createFavoriteForm` add path; `add-link` submit handler.
 - `src/newtab.css`: 2×2 icon alignment (e.g. `align-self: center` on icon, or `align-items: center` on column with text `width: 100%`).
 - Unit tests: **required** update to `test/newtabSource.test.js` pin(s) so Add link includes the Size row (default 1×1) and add-link submit uses `readSize` like edit-link; additional DOM asserts optional if `dg-61` covers AS-LP-01/02.
-- E2E: new `dg-61-link-tile-polish.mjs` (AS-LP-01..03). Touch `dg-*` add-link scenarios only if they assert row count — list in run record if changed.
+- E2E: new `dg-61-link-tile-polish.mjs` (AS-LP-01..04). Touch `dg-*` add-link scenarios only if they assert row count — list in run record if changed.
 - Docs: `CHANGELOG.md` one line under `[Unreleased]`; no architecture change unless a one-sentence tile layout note is warranted.
 
 ## Process
@@ -47,6 +47,7 @@ Full UI pipeline (smaller scope; checkpoint may be lighter per plan). Branches: 
 - Default size for drag-add or other entry points.
 - Weather tile sizes or chrome tiles.
 - Changing 2×2 label typography or host line.
+- **Keyboard, focus trap, Escape, and narrow-viewport layout** for Add/Edit link modals: unchanged product contract; regressions are out of scope for this run and remain covered by existing modal E2E (`dg-58`, `15-city-modal-layout`, etc.), not new AS-LP rows.
 - **Data compatibility: not required.**
 
 ## Accepted exceptions
@@ -68,14 +69,25 @@ Full UI pipeline (smaller scope; checkpoint may be lighter per plan). Branches: 
 - Verified by: E2E `dg-61` group 2.
 
 ### AS-LP-03 2×2 favorite icon is horizontally centered
-- Given: a 2×2 favorite on the grid (E2E may seed one favorite with `grid: { w: 2, h: 2 }` in sync storage, or create via Add link with Size 2×2 after Task 1).
+- Given: a 2×2 favorite on the grid (E2E may seed one favorite with `grid: { w: 2, h: 2 }` in sync storage, or create via Add link with Size 2×2 — see AS-LP-04).
 - When: comparing icon center x to tile center x.
 - Then: within ±1 px; label block still left-aligned.
 - Verified by: E2E `dg-61` group 3.
 
+### AS-LP-04 Add link creates a 2×2 tile when Size is 2×2
+- Given: Add link, valid url, Size 2×2.
+- When: Save/submit.
+- Then: new favorite stored and drawn with `w: 2, h: 2`.
+- Verified by: E2E `dg-61` group 4.
+
 ## Review focus
 
-- None (owner confirmed defaults).
+- Add link Size row parity with Edit link (default 1×1, `readSize` on submit).
+- 2×2 CSS centering: icon/letter only; label/host block stays left-aligned; **no** change to 1×1 or 2×1 tile layout (checkpoint visual lens compares before/after on representative tiles).
+
+## Copy (user-visible)
+
+No new strings; reuses existing Add/Edit link and Size control labels.
 
 ## Visual reference
 
