@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Add link dialog includes a Size row (default 1×1); 2×2 link tiles center the favicon or letter
+  horizontally while labels stay left-aligned. E2E: `dg-61-link-tile-polish.mjs`.
 - First-run onboarding wizard: two steps (city, then starter links), progress pills, and
   `quietTabOnboardingWizardComplete` in local storage. The change-mode city modal is unchanged.
   E2E: `dg-60-onboarding-wizard.mjs`; existing first-run scenarios adapted.

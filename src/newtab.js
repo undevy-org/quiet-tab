@@ -451,7 +451,9 @@ function createFavoriteForm(item) {
 
   const footer = createNode("div", "favorite-form__footer");
   const rows = [createFormRow("Link", url), createFormRow("Name", label), createFormRow("Icon", iconMode), customIconRow, colorRow];
-  if (isEdit) rows.push(createFormRow("Size", createSizeControl(displayedSize(item)))); // the add dialog adds 1×1 (spec § Placement rules)
+  rows.push(
+    createFormRow("Size", createSizeControl(isEdit ? displayedSize(item) : { w: 1, h: 1 }))
+  );
 
   const cancel = createIconButton("button", "Cancel", "x");
   cancel.type = "button";
@@ -1660,7 +1662,8 @@ function buildDialogContent(root, dialog) {
       const form = createFavoriteForm(null);
       form.addEventListener("submit", (event) => {
         event.preventDefault();
-        const payload = readFavoriteFormPayload(new FormData(form));
+        const data = new FormData(form);
+        const payload = { ...readFavoriteFormPayload(data), ...readSize(data.get("size")) };
         const previousIds = new Set((widgetsState?.items ?? []).map((entry) => entry.id));
         void runDesktopMutation(
           (columns) => widgetsService.addFavorite(payload, { columns }),
