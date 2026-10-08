@@ -1,8 +1,8 @@
-# First run: an empty desk under the city modal
+# First run: an empty desk under the onboarding wizard
 
 ## Status
 
-**Note:** `feedbackReserve` was removed from `src/cityPrompt.js` by `docs/modal-overlay-design.md`; the import pin quoted in the unit-test list below now reads `import { shouldAutoShowCityPrompt, … }`.
+**Implementation note (2026-10-07):** First run now uses the two-step onboarding wizard (`#onboarding-wizard`, spec `docs/onboarding-wizard.md`) instead of the legacy first-run `#city-modal`. The veil/reveal behaviour in this document applies to the wizard show/hide paths.
 
 `implemented`
 

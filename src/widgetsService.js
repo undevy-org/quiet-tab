@@ -221,6 +221,63 @@ export function createWidgetsService({
     },
 
     // input.w / input.h (1 or 2, default 1×1). The new link takes the free block nearest to the center line.
+    // One mutate: placeNew per row in order; skip URLs already on the grid (normalized); one MAX_FAVORITE_WIDGETS check.
+    async addFavorites(inputs, options) {
+      const list = Array.isArray(inputs) ? inputs : [];
+      const addedIds = [];
+      await mutate(options, ({ base, columns, updatedAt }) => {
+        const existingUrls = new Set(
+          base.items
+            .filter((item) => item.type === "favorite")
+            .map((item) => normalizeFavoriteUrl(item.url).url)
+        );
+        const pending = [];
+        for (const raw of list) {
+          const payload = inputObject(raw);
+          const normalizedUrl = normalizeFavoriteUrl(payload.url);
+          if (existingUrls.has(normalizedUrl.url)) continue;
+          existingUrls.add(normalizedUrl.url);
+          pending.push({ payload, normalizedUrl });
+        }
+        const favoriteCount = base.items.filter((item) => item.type === "favorite").length;
+        if (favoriteCount + pending.length > MAX_FAVORITE_WIDGETS) {
+          throw new Error(`You can save up to ${MAX_FAVORITE_WIDGETS} favorites`);
+        }
+        let items = base.items;
+        let layout = displayLayout(items, columns);
+        for (const { payload, normalizedUrl } of pending) {
+          const size = {
+            w: normalizeSpan(payload.w ?? 2, "width"),
+            h: normalizeSpan(payload.h ?? 1, "height")
+          };
+          const id = createId();
+          const item = {
+            id,
+            type: "favorite",
+            url: normalizedUrl.url,
+            label: normalizeLabel(payload.label, normalizedUrl.domain),
+            domain: normalizedUrl.domain,
+            iconMode: normalizeIconMode(payload.iconMode ?? "favicon"),
+            customIconUrl: normalizeNullableImageUrl(payload.customIconUrl),
+            backgroundColor: normalizeBackgroundColor(
+              payload.backgroundColor,
+              normalizedUrl.domain,
+              defaultBackgroundColor
+            ),
+            backgroundColorSource: deriveBackgroundColorSource(payload, "auto"),
+            grid: toStored(placeNew(layout, size, columns), columns),
+            createdAt: updatedAt,
+            updatedAt
+          };
+          items = [...items, item];
+          layout = displayLayout(items, columns);
+          addedIds.push(id);
+        }
+        return items;
+      });
+      return addedIds;
+    },
+
     addFavorite(input, options) {
       const payload = inputObject(input);
       return mutate(options, ({ base, columns, updatedAt }) => {

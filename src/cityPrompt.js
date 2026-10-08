@@ -1,28 +1,25 @@
-// Whether the first-run city modal opens by itself on this page load. Every input must be
+// Whether the first-run onboarding wizard may open on this page load. Every input must be
 // known and favourable; unknown (a read that failed or has not finished) never shows it.
-export function shouldAutoShowCityPrompt(input) {
+
+// Mirrors the former first-run gates except the user may already have a city (decision 1).
+export function onboardingWizardPossible(input) {
   const state = input ?? {};
   return (
     state.locationRead === true &&
-    state.hasLocation === false &&
-    state.flagRead === true &&
-    state.dismissed === false &&
     state.anyMetricEnabled === true &&
     state.weatherAvailable === true &&
     state.gridLocked === false
   );
 }
 
-// The early check that runs BEFORE the dismissal flag is read (docs/first-run-empty-desk.md, decision 3a): every input of
-// shouldAutoShowCityPrompt except the flag, with the same fail-closed semantics. The flag is only read when this passes, and
-// shouldAutoShowCityPrompt stays the final rule. Pure.
-export function firstRunPromptPossible(input) {
+export function shouldShowOnboardingWizard(input) {
   const state = input ?? {};
   return (
-    state.locationRead === true &&
-    state.hasLocation === false &&
-    state.anyMetricEnabled === true &&
-    state.weatherAvailable === true &&
-    state.gridLocked === false
+    onboardingWizardPossible(state) &&
+    state.flagRead === true &&
+    state.dismissed === false &&
+    state.completeRead === true &&
+    state.complete === false &&
+    state.wizardShownThisLoad === false
   );
 }

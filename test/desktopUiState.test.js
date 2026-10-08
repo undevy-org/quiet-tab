@@ -70,7 +70,8 @@ describe("escapeLayer (AS-11)", () => {
   it("returns the topmost layer first", () => {
     let s = openDialog(edit(), { kind: "edit-weather", id: "weather:uv" });
     assert.equal(escapeLayer(s, { tooltip: true, cityModal: true }), "tooltip");
-    assert.equal(escapeLayer(s, { citySuggestions: true, cityModal: true }), "citySuggestions");
+    assert.equal(escapeLayer(s, { citySuggestions: true, onboardingWizard: true, cityModal: true }), "citySuggestions");
+    assert.equal(escapeLayer(s, { onboardingWizard: true, cityModal: true }), "onboardingWizard");
     assert.equal(escapeLayer(s, { cityModal: true }), "cityModal");
     assert.equal(escapeLayer(s), "dialog");
     s = closeDialog(s);

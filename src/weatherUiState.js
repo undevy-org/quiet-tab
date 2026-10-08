@@ -1,5 +1,5 @@
-// Pure UI-state machine for the city modal: whether it is open (in "first-run"
-// or "change" mode), and the live city-suggestion list of its form (candidate
+// Pure UI-state machine for the city modal: whether it is open ("change" mode, or
+// "onboarding" while the wizard city field is active), and the live city-suggestion list
 // list plus whether it's open). Opening or closing the modal drops the list.
 // It also holds the weather-tile retry sub-state (an attempt in flight, the earliest next attempt).
 
@@ -23,7 +23,7 @@ export function isSuggestionsOpen(state) {
   return state.suggestionsOpen === true;
 }
 
-const CITY_MODAL_MODES = new Set(["first-run", "change"]);
+const CITY_MODAL_MODES = new Set(["change", "onboarding"]);
 
 export function openCityModal(state, mode) {
   if (!CITY_MODAL_MODES.has(mode)) {

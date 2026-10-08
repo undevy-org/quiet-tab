@@ -54,7 +54,7 @@ describe("newtab weather source", () => {
 
   it("closes the city modal from its own dismiss button, with no editing state", async () => {
     const code = await source();
-    assert.match(code, /dataset\.cityModalAction = mode === "first-run" \? "dismiss" : "cancel"/);
+    assert.match(code, /dataset\.cityModalAction = "cancel"/);
     assert.doesNotMatch(code, /"edit-city"/);
     assert.doesNotMatch(code, /"cancel-edit-city"/);
     assert.doesNotMatch(code, /startEditingCity|stopEditingCity|isEditingCity/);
