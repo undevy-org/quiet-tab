@@ -33,10 +33,20 @@ import {
   migrateWidgetsToV3
 } from "./widgetsStore.js";
 import { placeTooltip } from "./widgetsLayout.js";
-import { NEWER_WIDGETS_MESSAGE, weatherMetricKey } from "./widgetsShared.js";
+import { MAX_FAVORITE_WIDGETS, NEWER_WIDGETS_MESSAGE, weatherMetricKey } from "./widgetsShared.js";
 import { searchCities, WeatherApiError, weatherErrorMessage } from "./weatherApi.js";
 import { createWeatherService } from "./weatherService.js";
-import { firstRunPromptPossible, shouldAutoShowCityPrompt } from "./cityPrompt.js";
+import { onboardingWizardPossible, shouldShowOnboardingWizard } from "./cityPrompt.js";
+import {
+  ONBOARDING_FINISH_ERRORS,
+  checkedStarterInputs,
+  defaultStarterChecks,
+  onboardingFinishErrorForAddFailure,
+  progressPillCount,
+  step2GuardActive
+} from "./onboardingWizard.js";
+import { ONBOARDING_STARTER_LINKS } from "./onboardingStarters.js";
+import { createOnboardingStore, readOnboardingLocalFlags } from "./onboardingStore.js";
 import { createWeatherCacheStore, createWeatherLocationStore, createWeatherPromptStore } from "./weatherStore.js";
 import { describeWeatherMetric } from "./weatherTiles.js";
 import {
@@ -215,6 +225,7 @@ const weatherCacheStore = hasStorageArea(localStorageArea)
   ? createWeatherCacheStore(localStorageArea)
   : null;
 const weatherPromptStore = hasStorageArea(localStorageArea) ? createWeatherPromptStore(localStorageArea) : null;
+const onboardingStore = hasStorageArea(localStorageArea) ? createOnboardingStore(localStorageArea) : null;
 const weatherService =
   weatherLocationStore && weatherCacheStore
     ? createWeatherService({
@@ -622,7 +633,7 @@ function createCityForm(mode, location) {
   input.id = "weather-city-input";
   input.placeholder = "Search for a city";
   input.setAttribute("aria-label", "City");
-  const storedCity = mode === "change" && location ? location : null; // change mode prefills the stored city; first-run and "Set a city" start empty
+  const storedCity = (mode === "change" || mode === "onboarding") && location ? location : null;
   input.value = storedCity ? cityDisplayLabel(storedCity) : "";
   input.autocomplete = "off";
   input.disabled = weatherBusy;
@@ -643,13 +654,24 @@ function createCityForm(mode, location) {
   errorNode.hidden = cityModalError === "";
 
   const actions = createNode("div", "city-modal__actions");
-  const dismiss = createIconButton("button", mode === "first-run" ? "Not now" : "Cancel", "x");
-  dismiss.type = "button";
-  dismiss.dataset.cityModalAction = mode === "first-run" ? "dismiss" : "cancel";
-  dismiss.disabled = weatherBusy;
-  const save = createIconButton("button button--primary", "Save", "check");
-  save.type = "submit";
-  actions.append(dismiss, save);
+  let submitButton = null;
+  if (mode === "onboarding") {
+    const skip = createIconButton("button", "Skip", "x");
+    skip.type = "button";
+    skip.dataset.onboardingAction = "skip";
+    skip.disabled = weatherBusy;
+    submitButton = createIconButton("button button--primary", "Continue", "arrowRight");
+    submitButton.type = "submit";
+    actions.append(skip, submitButton);
+  } else {
+    const dismiss = createIconButton("button", "Cancel", "x");
+    dismiss.type = "button";
+    dismiss.dataset.cityModalAction = "cancel";
+    dismiss.disabled = weatherBusy;
+    submitButton = createIconButton("button button--primary", "Save", "check");
+    submitButton.type = "submit";
+    actions.append(dismiss, submitButton);
+  }
 
   // No reserved room: the slot is empty (height 0) until an error shows; the dialog may grow then.
   const feedback = createNode("div", "city-modal__feedback");
@@ -660,7 +682,7 @@ function createCityForm(mode, location) {
   // Save needs text; Clear needs text and no running request.
   function refresh() {
     const empty = input.value.trim() === "";
-    save.disabled = weatherBusy || empty;
+    if (submitButton) submitButton.disabled = weatherBusy || empty;
     clear.hidden = weatherBusy || input.value === "";
     clear.disabled = weatherBusy;
   }
@@ -914,20 +936,9 @@ function buildCityModal(mode, location) {
   dialog.setAttribute("aria-modal", "true");
   dialog.setAttribute("aria-labelledby", "city-modal-title");
 
-  const title = createNode("h2", "city-modal__title", mode === "first-run" ? "Show weather on your new tab?" : location ? "Change city" : "Set a city");
+  const title = createNode("h2", "city-modal__title", location ? "Change city" : "Set a city");
   title.id = "city-modal-title";
   dialog.appendChild(title);
-
-  if (mode === "first-run") {
-    const description = createNode(
-      "p",
-      "city-modal__description",
-      "Pick a city to see local weather next to your links. Weather is optional: skip this and you can add a city later from a weather tile."
-    );
-    description.id = "city-modal-description";
-    dialog.setAttribute("aria-describedby", description.id);
-    dialog.appendChild(description);
-  }
 
   dialog.appendChild(createCityForm(mode, location));
   root.append(backdrop, dialog);
@@ -935,16 +946,38 @@ function buildCityModal(mode, location) {
 }
 
 // Disables the controls while a city request runs and mirrors the error slot; never rebuilds the form.
+function cityFormHostRoot() {
+  return cityModalRoot ?? onboardingWizardRoot;
+}
+
 function syncCityModal() {
-  if (!cityModalRoot) return;
-  for (const control of cityModalRoot.querySelectorAll("input, button")) {
+  const host = cityFormHostRoot();
+  if (!host) return;
+  for (const control of host.querySelectorAll("input, button")) {
     if (control.dataset.weatherAction !== "select-city") control.disabled = weatherBusy;
   }
   activeCityForm?.refresh();
-  cityModalRoot.querySelector('[role="dialog"]').setAttribute("aria-busy", String(weatherBusy)); // spec: aria-busy while a request runs
-  const errorNode = cityModalRoot.querySelector("[data-city-modal-error]");
-  errorNode.textContent = cityModalError;
-  errorNode.hidden = cityModalError === "";
+  if (!onboardingWizardRoot) {
+    host.querySelector('[role="dialog"]')?.setAttribute("aria-busy", String(weatherBusy));
+  }
+  if (weatherBusy && onboardingWizardRoot && onboardingStep === 1) {
+    const title = onboardingWizardRoot.querySelector("#onboarding-step1-title");
+    const active = document.activeElement;
+    const focusLeftWizard =
+      !active ||
+      active === document.body ||
+      !onboardingWizardRoot.contains(active) ||
+      (active instanceof HTMLElement && active.matches("input, button") && active.disabled);
+    if (title instanceof HTMLElement && focusLeftWizard) {
+      title.tabIndex = -1;
+      title.focus();
+    }
+  }
+  const errorNode = host.querySelector("[data-city-modal-error]");
+  if (errorNode) {
+    errorNode.textContent = cityModalError;
+    errorNode.hidden = cityModalError === "";
+  }
   activeCityForm?.place();
 }
 
@@ -969,11 +1002,11 @@ function attachCityModalListeners(root) {
     }
     // A drag from the field that ends over the backdrop targets the modal root, not the backdrop: ignored.
     if (target.matches("[data-city-modal-backdrop]")) {
-      if (performance.now() - cityModalOpenedAt >= CITY_MODAL_BACKDROP_GUARD_MS) hideCityModal({ dismiss: true });
+      if (performance.now() - cityModalOpenedAt >= CITY_MODAL_BACKDROP_GUARD_MS) hideCityModal();
       return;
     }
     if (target.closest("[data-city-modal-action]")) {
-      hideCityModal({ dismiss: true });
+      hideCityModal();
       return;
     }
     const suggestion = target.closest('[data-weather-action="select-city"]');
@@ -1011,12 +1044,31 @@ function attachCityModalListeners(root) {
 }
 
 let cityModalShownThisLoad = false; // the automatic prompt never reopens a modal that was already shown this page load
+let onboardingWizardShownThisLoad = false;
+let onboardingWizardRoot = null;
+let onboardingWizardHadFocus = false;
+let onboardingWizardOpenedAt = 0;
+let onboardingStep = 1;
+let onboardingStep2EnteredAt = 0;
+/** @type {boolean[]} */
+let onboardingStarterChecks = defaultStarterChecks();
+let onboardingFinishError = "";
+let onboardingStartersCommitted = false;
+let onboardingFlagWriteFailedOnce = false;
 
 function showCityModal(mode, openerSelector) {
   // One modal at a time; the only stacking is the change-mode city modal over the weather edit dialog (spec § Weather
   // edit modal). The first-run modal never opens over a desktop dialog.
   const overWeatherDialog = mode === "change" && desktopDialogRoot !== null && desktopUi.dialog?.kind === "edit-weather";
-  if (cityModalRoot || (desktopDialogRoot && !overWeatherDialog) || isCityModalOpen(weatherUi) || !weatherService || !document.body) return false;
+  if (
+    cityModalRoot ||
+    onboardingWizardRoot ||
+    (desktopDialogRoot && !overWeatherDialog) ||
+    isCityModalOpen(weatherUi) ||
+    !weatherService ||
+    !document.body
+  )
+    return false;
   cityModalError = "";
   let root = null;
   try {
@@ -1031,7 +1083,6 @@ function showCityModal(mode, openerSelector) {
     throw error;
   }
   cityModalRoot = root;
-  if (mode === "first-run" && favoritesRoot) favoritesRoot.dataset.veiled = "true"; // the desk stays empty under the first-run modal; hideCityModal is the only place that clears it
   activeCityForm?.place();
   cityModalShownThisLoad = true;
   weatherUi = openCityModalState(weatherUi, mode);
@@ -1050,11 +1101,9 @@ function showCityModal(mode, openerSelector) {
   return true;
 }
 
-// `dismiss` is set by Escape/backdrop/"Not now"/"Cancel"; only a first-run dismissal writes the flag (Task 3).
-function hideCityModal({ dismiss = false } = {}) {
+function hideCityModal() {
   if (!cityModalRoot) return;
   const mode = cityModalMode(weatherUi);
-  const focusWasInside = cityModalHadFocus || cityModalRoot.contains(document.activeElement); // D14: a running request or a backdrop click may already have moved focus to body
   activeCityForm?.cancelPending();
   activeCityForm?.dispose?.();
   activeCityForm = null;
@@ -1070,20 +1119,11 @@ function hideCityModal({ dismiss = false } = {}) {
     desktopDialogRoot.inert = false;
     syncWeatherDialogCity();
   } else if (favoritesRoot) favoritesRoot.inert = false;
-  if (dismiss && mode === "first-run") onFirstRunDismissed();
   if (mode === "change") {
     pendingFocus = [cityModalOpener, SETTINGS_TILE_SELECTOR].filter(Boolean);
     applyPendingFocus();
-  } else if (focusWasInside) {
-    pendingFocus = [SETTINGS_TILE_SELECTOR];
-    applyPendingFocus();
   }
   cityModalOpener = null;
-}
-
-// D3/D5: any close of the automatic modal records the dismissal; a failed write is silent (the modal shows again next time).
-function onFirstRunDismissed() {
-  if (weatherPromptStore) void weatherPromptStore.dismiss().catch(() => {});
 }
 
 // Reveal (docs/first-run-empty-desk.md, decision 4): the veil goes away, and unless motion is reduced the whole desk fades in
@@ -1112,42 +1152,379 @@ if (favoritesRoot) {
   });
 }
 
-// The live-state inputs of the first-run rule, except the dismissal flag (read separately, capped).
+// Live-state inputs for onboardingWizardPossible / shouldShowOnboardingWizard (dismissal flag read separately, capped).
 function promptLiveState() {
   const items = widgetsState?.items ?? [];
   return {
     locationRead: weatherLocationKnown && !weatherLocationError,
     hasLocation: Boolean(weatherLocation),
     anyMetricEnabled: items.some((item) => item.type === "weather-metric" && item.enabled === true),
-    weatherAvailable: Boolean(weatherService && weatherPromptStore),
+    weatherAvailable: Boolean(weatherService && weatherPromptStore && onboardingStore),
     gridLocked: widgetsNewer || widgetsMigrationFailed
   };
 }
 
-// The dismissal flag, read once before the first render and capped: a read that fails or takes longer than the cap is unknown
-// (fail closed: no modal this load, the flag is not written) and a late result is ignored.
-const FLAG_READ_CAP_MS = 250;
-
-async function readDismissalFlag() {
-  const unknown = { flagRead: false, dismissed: false };
-  let timer = 0;
-  const cap = new Promise((resolve) => {
-    timer = setTimeout(() => resolve(unknown), FLAG_READ_CAP_MS);
+// The one decision point of the page load, taken before the first grid render (docs/onboarding-wizard.md decision 1).
+function maybeShowOnboardingWizard({ flagRead, dismissed, completeRead, complete }) {
+  if (onboardingWizardRoot || cityModalRoot || desktopDialogRoot || onboardingWizardShownThisLoad) return;
+  const show = shouldShowOnboardingWizard({
+    ...promptLiveState(),
+    flagRead,
+    dismissed,
+    completeRead,
+    complete,
+    wizardShownThisLoad: onboardingWizardShownThisLoad
   });
-  const read = weatherPromptStore.isDismissed().then((dismissed) => ({ flagRead: true, dismissed }), () => unknown);
-  try {
-    return await Promise.race([read, cap]);
-  } finally {
-    clearTimeout(timer);
+  if (show) showOnboardingWizard();
+}
+
+function syncOnboardingWizardUi() {
+  if (!onboardingWizardRoot) return;
+  const dialog = onboardingWizardRoot.querySelector('[role="dialog"]');
+  const pills = onboardingWizardRoot.querySelectorAll(".onboarding-wizard__pill");
+  const activeCount = progressPillCount(onboardingStep);
+  pills.forEach((pill, index) => {
+    pill.classList.toggle("onboarding-wizard__pill--active", index < activeCount);
+  });
+  onboardingWizardRoot.dataset.onboardingStep = String(onboardingStep);
+  const step1 = onboardingWizardRoot.querySelector('[data-onboarding-step="1"]');
+  const step2 = onboardingWizardRoot.querySelector('[data-onboarding-step="2"]');
+  if (step1 && step2) {
+    const onStep1 = onboardingStep === 1;
+    step1.hidden = !onStep1;
+    step2.hidden = onStep1;
+    step1.inert = !onStep1;
+    step2.inert = onStep1;
+    dialog?.setAttribute("aria-labelledby", onStep1 ? "onboarding-step1-title" : "onboarding-step2-title");
+  }
+  const finishError = onboardingWizardRoot.querySelector("[data-onboarding-finish-error]");
+  if (finishError) {
+    finishError.textContent = onboardingFinishError;
+    finishError.hidden = onboardingFinishError === "";
+  }
+  syncCityModal();
+  const finishBusy = favoritesBusy && onboardingStep === 2;
+  const finishBtn = onboardingWizardRoot.querySelector('[data-onboarding-action="finish"]');
+  if (finishBtn instanceof HTMLButtonElement) finishBtn.disabled = finishBusy;
+  const backBtn = onboardingWizardRoot.querySelector('[data-onboarding-action="back"]');
+  if (backBtn instanceof HTMLButtonElement) backBtn.disabled = finishBusy;
+  onboardingWizardRoot.querySelectorAll('[data-onboarding-step="2"] input[type="checkbox"]').forEach((box) => {
+    if (box instanceof HTMLInputElement) box.disabled = finishBusy;
+  });
+  if (dialog) dialog.setAttribute("aria-busy", String(weatherBusy || finishBusy));
+}
+
+function onboardingBackdropAllowed() {
+  return performance.now() - onboardingWizardOpenedAt >= CITY_MODAL_BACKDROP_GUARD_MS;
+}
+
+function onboardingStep2ActionsAllowed() {
+  return onboardingStep !== 2 || !step2GuardActive(onboardingStep2EnteredAt);
+}
+
+function goToOnboardingStep2() {
+  onboardingStep = 2;
+  onboardingStep2EnteredAt = performance.now();
+  onboardingFinishError = "";
+  syncOnboardingWizardUi();
+  const firstBox = onboardingWizardRoot?.querySelector('[data-onboarding-step="2"] input[type="checkbox"]');
+  firstBox?.focus();
+}
+
+function goToOnboardingStep1({ focusTitle = false } = {}) {
+  onboardingStep = 1;
+  onboardingFinishError = "";
+  syncOnboardingWizardUi();
+  if (focusTitle) {
+    const title = onboardingWizardRoot?.querySelector("#onboarding-step1-title");
+    if (title instanceof HTMLElement) {
+      title.tabIndex = -1;
+      title.focus();
+    }
   }
 }
 
-// The one decision point of the page load, taken before the first grid render (spec § Default decisions 3).
-// First-run open never moves focus (D2): showCityModal only focuses in change mode.
-function maybeAutoShowCityPrompt({ flagRead, dismissed }) {
-  if (cityModalRoot || desktopDialogRoot || cityModalShownThisLoad) return; // a modal was opened meanwhile (or already shown and closed): never replace, duplicate or reopen it
-  const show = shouldAutoShowCityPrompt({ ...promptLiveState(), flagRead, dismissed });
-  if (show) showCityModal("first-run", null);
+function createOnboardingStarterPreview(row) {
+  const preview = createNode("div", "onboarding-wizard__preview");
+  const tile = createNode("div", "onboarding-wizard__preview-tile");
+  const letter = getFavoriteLetter({ label: row.label, domain: row.domain });
+  if (faviconBaseUrl) {
+    const icon = createNode("img", "onboarding-wizard__preview-icon");
+    icon.src = `${faviconBaseUrl}?pageUrl=${encodeURIComponent(row.url)}&size=32`;
+    icon.alt = "";
+    icon.addEventListener("error", () => {
+      icon.replaceWith(createNode("span", "onboarding-wizard__preview-icon onboarding-wizard__preview-icon--letter", letter));
+    });
+    tile.appendChild(icon);
+  } else {
+    tile.appendChild(createNode("span", "onboarding-wizard__preview-icon onboarding-wizard__preview-icon--letter", letter));
+  }
+  tile.appendChild(createNode("span", "favorite-tile__label", row.label));
+  preview.appendChild(tile);
+  return preview;
+}
+
+function buildOnboardingStep2() {
+  const panel = createNode("div", "onboarding-wizard__step");
+  panel.dataset.onboardingStep = "2";
+  const title = createNode("h2", "onboarding-wizard__step-title", "Add starter links");
+  title.id = "onboarding-step2-title";
+  title.dataset.onboardingStepTitle = "";
+  const description = createNode("p", "onboarding-wizard__step-description", "Keep the ones you want on your grid.");
+  const list = createNode("ul", "onboarding-wizard__starters");
+  for (let i = 0; i < ONBOARDING_STARTER_LINKS.length; i += 1) {
+    const row = ONBOARDING_STARTER_LINKS[i];
+    const item = createNode("li");
+    const label = createNode("label", "onboarding-wizard__row");
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.checked = onboardingStarterChecks[i] === true;
+    box.dataset.onboardingStarterIndex = String(i);
+    box.setAttribute("aria-label", `Add ${row.label} to your grid`);
+    label.append(box, createNode("span", "onboarding-wizard__row-label", row.label), createOnboardingStarterPreview(row));
+    item.appendChild(label);
+    list.appendChild(item);
+  }
+  const finishError = createNode("p", "status status--error status--full", onboardingFinishError);
+  finishError.dataset.onboardingFinishError = "";
+  finishError.setAttribute("role", "alert");
+  finishError.hidden = onboardingFinishError === "";
+  const actions = createNode("div", "city-modal__actions");
+  const back = createIconButton("button", "Back", "arrowLeft");
+  back.type = "button";
+  back.dataset.onboardingAction = "back";
+  const finish = createIconButton("button button--primary", "Finish", "check");
+  finish.type = "button";
+  finish.dataset.onboardingAction = "finish";
+  actions.append(back, finish);
+  panel.append(title, description, list, finishError, actions);
+  return panel;
+}
+
+function buildOnboardingWizard() {
+  const root = createNode("div", "onboarding-wizard city-modal");
+  root.id = "onboarding-wizard";
+  const backdrop = createNode("div", "city-modal__backdrop");
+  backdrop.dataset.onboardingBackdrop = "";
+  const dialog = createNode("div", "city-modal__dialog");
+  dialog.setAttribute("role", "dialog");
+  dialog.setAttribute("aria-modal", "true");
+  dialog.setAttribute("aria-labelledby", "onboarding-step1-title");
+  const progress = createNode("div", "onboarding-wizard__progress");
+  progress.setAttribute("aria-hidden", "true");
+  progress.append(createNode("span", "onboarding-wizard__pill onboarding-wizard__pill--active"), createNode("span", "onboarding-wizard__pill"));
+  const step1 = createNode("div", "onboarding-wizard__step");
+  step1.dataset.onboardingStep = "1";
+  const title1 = createNode("h2", "onboarding-wizard__step-title", "Where should we show weather?");
+  title1.id = "onboarding-step1-title";
+  title1.dataset.onboardingStepTitle = "";
+  title1.tabIndex = -1;
+  const description1 = createNode("p", "onboarding-wizard__step-description", "Enter a city, or skip for now.");
+  step1.append(title1, description1, createCityForm("onboarding", weatherLocationError ? null : currentLocation()));
+  const step2 = buildOnboardingStep2();
+  dialog.append(progress, step1, step2);
+  root.append(backdrop, dialog);
+  return root;
+}
+
+function attachOnboardingWizardListeners(root) {
+  root.addEventListener("focusin", () => {
+    onboardingWizardHadFocus = true;
+  });
+  root.addEventListener("change", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement) || target.type !== "checkbox") return;
+    const index = Number(target.dataset.onboardingStarterIndex);
+    if (!Number.isInteger(index)) return;
+    onboardingStarterChecks[index] = target.checked;
+    if (onboardingFinishError) {
+      onboardingFinishError = "";
+      syncOnboardingWizardUi();
+    }
+  });
+  root.addEventListener("click", (event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target) return;
+    if (
+      event.detail > 0 &&
+      activeCityForm?.recentlyChosen() &&
+      (target.matches("[data-onboarding-backdrop]") || target.closest('[data-onboarding-action], button[type="submit"]'))
+    ) {
+      event.preventDefault();
+      return;
+    }
+    if (target.closest('[data-onboarding-action="finish"]')) {
+      if (!onboardingStep2ActionsAllowed() || favoritesBusy) return;
+      void finishOnboardingWizard();
+      return;
+    }
+    if (target.closest('[data-onboarding-action="back"]')) {
+      if (!onboardingStep2ActionsAllowed() || favoritesBusy) return;
+      goToOnboardingStep1({ focusTitle: true });
+      return;
+    }
+    if (target.closest('[data-onboarding-action="skip"]')) {
+      if (onboardingStep !== 1 || weatherBusy) return;
+      goToOnboardingStep2();
+      return;
+    }
+    if (target.matches("[data-onboarding-backdrop]")) {
+      if (!onboardingBackdropAllowed() || weatherBusy || favoritesBusy) return;
+      if (!onboardingStep2ActionsAllowed()) return;
+      if (onboardingStep === 1) goToOnboardingStep2();
+      else void finishOnboardingWizard();
+      return;
+    }
+    if (weatherBusy) return;
+    const suggestion = target.closest('[data-weather-action="select-city"]');
+    if (suggestion instanceof HTMLElement) {
+      activeCityForm?.choose({
+        name: suggestion.dataset.cityName,
+        country: suggestion.dataset.cityCountry ?? "",
+        latitude: Number(suggestion.dataset.cityLatitude),
+        longitude: Number(suggestion.dataset.cityLongitude),
+        label: suggestion.textContent
+      });
+    }
+  });
+  root.addEventListener("submit", (event) => {
+    const form = event.target;
+    if (!(form instanceof HTMLFormElement) || form.dataset.weatherForm !== "city" || onboardingStep !== 1) return;
+    event.preventDefault();
+    if (weatherBusy || !weatherService) return;
+    const cityName = String(new FormData(form).get("city") ?? "").trim();
+    if (!cityName) {
+      cityModalError = "Enter a city name";
+      syncCityModal();
+      form.querySelector(CITY_INPUT_SELECTOR)?.focus();
+      return;
+    }
+    const picked = activeCityForm?.chosen();
+    if (picked) {
+      changeCity(
+        () =>
+          weatherService.selectLocation({
+            name: picked.name,
+            country: picked.country,
+            latitude: picked.latitude,
+            longitude: picked.longitude
+          }),
+        { onSuccess: goToOnboardingStep2 }
+      );
+      return;
+    }
+    changeCity(() => weatherService.setCity(cityName), { onSuccess: goToOnboardingStep2 });
+  });
+}
+
+function hideOnboardingWizard({ completed = false } = {}) {
+  if (!onboardingWizardRoot) return;
+  const focusWasInside = onboardingWizardHadFocus || onboardingWizardRoot.contains(document.activeElement);
+  activeCityForm?.cancelPending();
+  activeCityForm?.dispose?.();
+  activeCityForm = null;
+  weatherFormGeneration += 1;
+  onboardingWizardRoot.remove();
+  onboardingWizardRoot = null;
+  onboardingStep = 1;
+  onboardingStep2EnteredAt = 0;
+  onboardingStarterChecks = defaultStarterChecks();
+  onboardingFinishError = "";
+  onboardingWizardHadFocus = false;
+  revealDesk();
+  weatherUi = closeCityModalState(weatherUi);
+  cityModalError = "";
+  if (favoritesRoot) favoritesRoot.inert = false;
+  if (focusWasInside || completed) {
+    pendingFocus = [SETTINGS_TILE_SELECTOR];
+    applyPendingFocus();
+  }
+}
+
+async function finishOnboardingWizard() {
+  if (!onboardingWizardRoot || onboardingStep !== 2 || favoritesBusy) return;
+  onboardingFinishError = "";
+  const checks = onboardingWizardRoot.querySelectorAll('[data-onboarding-step="2"] input[type="checkbox"]');
+  for (let i = 0; i < checks.length; i += 1) {
+    const box = checks[i];
+    if (box instanceof HTMLInputElement) onboardingStarterChecks[i] = box.checked;
+  }
+  const inputs = checkedStarterInputs(onboardingStarterChecks);
+  const generation = startFavoritesAction({ render: false });
+  syncOnboardingWizardUi();
+  try {
+    if (!onboardingStartersCommitted && inputs.length > 0 && widgetsService) {
+      const addedIds = await widgetsService.addFavorites(inputs, { columns: currentColumns() });
+      widgetsState = await widgetsService.getState();
+      onboardingStartersCommitted = true;
+      for (const id of addedIds) {
+        const item = widgetsState.items.find((row) => row.id === id);
+        if (item?.backgroundColorSource === "auto") void refreshAutoAccent(id);
+      }
+    }
+    if (onboardingStore) {
+      try {
+        await onboardingStore.markComplete();
+        onboardingFlagWriteFailedOnce = false;
+      } catch {
+        if (onboardingFlagWriteFailedOnce) {
+          hideOnboardingWizard({ completed: true });
+          finishFavoritesAction(generation, () => {});
+          renderFavorites();
+          return;
+        }
+        onboardingFlagWriteFailedOnce = true;
+        onboardingFinishError = ONBOARDING_FINISH_ERRORS.flag;
+        finishFavoritesAction(generation, () => {});
+        syncOnboardingWizardUi();
+        renderFavorites();
+        return;
+      }
+    }
+    hideOnboardingWizard({ completed: true });
+    finishFavoritesAction(generation, () => {});
+    renderFavorites();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    onboardingFinishError = onboardingFinishErrorForAddFailure(message);
+    finishFavoritesAction(generation, () => {});
+    syncOnboardingWizardUi();
+    renderFavorites();
+  }
+}
+
+function showOnboardingWizard() {
+  if (onboardingWizardRoot || cityModalRoot || desktopDialogRoot || !document.body) return false;
+  onboardingWizardShownThisLoad = true;
+  onboardingStep = 1;
+  onboardingStep2EnteredAt = 0;
+  onboardingStarterChecks = defaultStarterChecks();
+  onboardingFinishError = "";
+  onboardingStartersCommitted = false;
+  onboardingFlagWriteFailedOnce = false;
+  cityModalError = "";
+  let root = null;
+  try {
+    root = buildOnboardingWizard();
+    attachOnboardingWizardListeners(root);
+    document.body.appendChild(root);
+  } catch (error) {
+    root?.remove();
+    activeCityForm?.dispose?.();
+    activeCityForm = null;
+    throw error;
+  }
+  onboardingWizardRoot = root;
+  if (favoritesRoot) favoritesRoot.dataset.veiled = "true";
+  activeCityForm?.place();
+  weatherUi = openCityModalState(weatherUi, "onboarding");
+  onboardingWizardHadFocus = false;
+  onboardingWizardOpenedAt = performance.now();
+  hideTooltip();
+  closeAddMenu();
+  if (favoritesRoot) favoritesRoot.inert = true;
+  syncOnboardingWizardUi();
+  return true;
 }
 
 // R6: a 2-wide tile uses the `wide` model; a 2-high tile gets larger type (CSS keys off data-h="2") and the city name.
@@ -1882,7 +2259,7 @@ const dragGridOf = () => favoritesRoot?.querySelector(".desktop-grid") ?? null;
 
 function beginPointerDrag(event, tile) {
   if (!desktopUi.editMode || event.button !== 0 || !event.isPrimary || dragSession || dropReturnTimer) return;
-  if (favoritesBusy || desktopDialogRoot || cityModalRoot || !widgetsState) return;
+  if (favoritesBusy || desktopDialogRoot || cityModalRoot || onboardingWizardRoot || !widgetsState) return;
   const grid = dragGridOf();
   if (!grid || tile.parentElement !== grid) return;
   hideTooltip();
@@ -2134,6 +2511,30 @@ function cancelDrag() {
   renderFavorites();
 }
 
+function tabTrapFocusables(trapRoot) {
+  const controls = [...trapRoot.querySelectorAll("input, button")].filter((el) => {
+    if (el.disabled || el.hidden) return false;
+    for (let node = el; node !== trapRoot; node = node.parentElement) {
+      if (!node) return false;
+      if (node.inert || node.hidden) return false;
+    }
+    return true;
+  });
+  if (
+    controls.length === 0 &&
+    trapRoot === onboardingWizardRoot &&
+    weatherBusy &&
+    onboardingStep === 1
+  ) {
+    const title = trapRoot.querySelector("#onboarding-step1-title");
+    if (title instanceof HTMLElement) {
+      title.tabIndex = -1;
+      return [title];
+    }
+  }
+  return controls;
+}
+
 function applyPendingFocus() {
   if (!pendingFocus || favoritesBusy) {
     return;
@@ -2271,15 +2672,15 @@ if (favoritesRoot) {
       weatherLocationKnown = true;
     }
 
-    // One decision point, before the first render: no tile is ever painted before the modal (docs/first-run-empty-desk.md). The
-    // flag is read only when every other input already allows the modal; an exception here means no modal and no veil.
+    // One decision point, before the first render: no tile is painted before the wizard when it opens (docs/onboarding-wizard.md).
+    // Local flags are read only when every other input already allows the wizard; an exception here means no wizard and no veil.
     try {
-      if (firstRunPromptPossible(promptLiveState())) {
-        const { flagRead, dismissed } = await readDismissalFlag();
-        maybeAutoShowCityPrompt({ flagRead, dismissed });
+      if (onboardingWizardPossible(promptLiveState()) && localStorageArea) {
+        const flags = await readOnboardingLocalFlags(localStorageArea);
+        maybeShowOnboardingWizard(flags);
       }
     } catch {
-      // the automatic prompt is best-effort; a failure must not surface as an unhandled rejection or block the render
+      // the automatic wizard is best-effort; a failure must not surface as an unhandled rejection or block the render
     }
 
     renderFavorites();
@@ -2409,7 +2810,8 @@ if (favoritesRoot) {
     // One layer per press, topmost first (desktopUiState.escapeLayer); the DOM-owned flags come from here.
     const layer = escapeLayer(desktopUi, {
       tooltip: !tooltipLayer.hidden,
-      citySuggestions: isSuggestionsOpen(weatherUi),
+      citySuggestions: isSuggestionsOpen(weatherUi) && Boolean(onboardingWizardRoot ?? cityModalRoot),
+      onboardingWizard: Boolean(onboardingWizardRoot),
       cityModal: Boolean(cityModalRoot)
     });
     if (layer === "drag") {
@@ -2424,9 +2826,18 @@ if (favoritesRoot) {
       weatherUi = hideSuggestions(weatherUi);
       activeCityForm?.renderSuggestions();
       activeCityForm?.focusField();
+    } else if (layer === "onboardingWizard") {
+      if (event.repeat) return;
+      if (weatherBusy || favoritesBusy) return;
+      if (onboardingStep === 1) {
+        goToOnboardingStep2();
+        return;
+      }
+      if (!onboardingStep2ActionsAllowed()) return;
+      void finishOnboardingWizard();
     } else if (layer === "cityModal") {
       // While a city request runs Escape does nothing at all (I1).
-      if (!weatherBusy) hideCityModal({ dismiss: true });
+      if (!weatherBusy) hideCityModal();
     } else if (layer === "dialog") {
       if (!favoritesBusy) closeDesktopDialog();
     } else if (layer === "menu") {
@@ -2438,9 +2849,9 @@ if (favoritesRoot) {
 
   // Tab inside the open modal wraps; from body or outside it enters the modal (I3).
   document.addEventListener("keydown", (event) => {
-    const trapRoot = cityModalRoot ?? desktopDialogRoot;
+    const trapRoot = onboardingWizardRoot ?? cityModalRoot ?? desktopDialogRoot;
     if (event.key !== "Tab" || !trapRoot) return;
-    const controls = [...trapRoot.querySelectorAll("input, button")].filter((el) => !el.disabled && !el.hidden);
+    const controls = tabTrapFocusables(trapRoot);
     if (controls.length === 0) {
       event.preventDefault(); // busy: nothing to enter, focus stays on body and never leaves the page
       return;
@@ -2593,7 +3004,7 @@ function withTimeout(promise) {
   });
 }
 
-function changeCity(run) {
+function changeCity(run, { onSuccess = null } = {}) {
   weatherBusy = true;
   weatherChanging = true;
   // Cancel the debounce and any in-flight suggestion request and empty the list: nothing rebuilds the form now.
@@ -2601,7 +3012,8 @@ function changeCity(run) {
   weatherUi = hideSuggestions(weatherUi);
   activeCityForm?.renderSuggestions();
   cityModalError = "";
-  syncCityModal();
+  if (onboardingWizardRoot) syncOnboardingWizardUi();
+  else syncCityModal();
   renderFavorites();
   void (async () => {
     let ok = false;
@@ -2623,10 +3035,12 @@ function changeCity(run) {
       weatherChanging = false;
       renderFavorites();
       if (ok) {
-        hideCityModal(); // selection never writes the flag
+        if (onSuccess) onSuccess();
+        else hideCityModal();
       } else {
-        syncCityModal();
-        cityModalRoot?.querySelector(CITY_INPUT_SELECTOR)?.focus();
+        if (onboardingWizardRoot) syncOnboardingWizardUi();
+        else syncCityModal();
+        (cityModalRoot ?? onboardingWizardRoot)?.querySelector(CITY_INPUT_SELECTOR)?.focus();
       }
     }
   })();

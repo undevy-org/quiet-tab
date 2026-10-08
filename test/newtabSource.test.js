@@ -133,8 +133,9 @@ describe("newtab favorites source", () => {
     const code = await source();
     // The only stacking: the change-mode city modal over the weather edit dialog; first-run never opens over a dialog.
     assert.match(code, /const overWeatherDialog = mode === "change" && desktopDialogRoot !== null && desktopUi\.dialog\?\.kind === "edit-weather";/);
-    assert.match(code, /if \(cityModalRoot \|\| \(desktopDialogRoot && !overWeatherDialog\) \|\| isCityModalOpen\(weatherUi\)/);
-    assert.match(code, /if \(cityModalRoot \|\| desktopDialogRoot \|\| cityModalShownThisLoad\) return;/);
+    const showCity = code.slice(code.indexOf("function showCityModal("), code.indexOf("function hideCityModal("));
+    assert.match(showCity, /onboardingWizardRoot/);
+    assert.match(showCity, /desktopDialogRoot && !overWeatherDialog/);
     assert.match(code, /\[data-favorite-action="cancel"\]'\)\?\.addEventListener\("click", \(\) => \{\s+if \(!favoritesBusy\) closeDesktopDialog\(\);/);
   });
   it("renders everything into the one desktop root; the settings panel root is gone", async () => {
@@ -350,7 +351,8 @@ describe("newtab favorites source", () => {
     assert.match(code, /const migration = await migrateToWidgets\(localStorageArea, syncStorageArea\);\s*if \(migration\?\.newer\) \{\s*widgetsNewer = true;/);
     assert.match(code, /await ensureWidgetsLayout\(syncStorageArea, \{ screen: firstScreen\(\) \}\)/);
     assert.match(code, /widgetsEnsureFailed = true;/);
-    const order = ['inspectWidgetsMeta(rawMeta) === "newer"', "await migrateToWidgets(", "await migrateWidgetsToV2(syncStorageArea);", "await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });", "widgetsState = await widgetsService.getState();"].map((n) => code.indexOf(n));
+    const boot = code.slice(code.indexOf("if (favoritesRoot) {\n  void (async () => {"), code.indexOf("})();", code.indexOf("if (favoritesRoot)")));
+    const order = ['inspectWidgetsMeta(rawMeta) === "newer"', "await migrateToWidgets(", "await migrateWidgetsToV2(syncStorageArea);", "await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });", "widgetsState = await widgetsService.getState();"].map((n) => boot.indexOf(n));
     assert.ok(order.every((i) => i >= 0), order.join());
     assert.deepEqual([...order].sort((a, b) => a - b), order);
   });
@@ -397,7 +399,7 @@ describe("newtab city modal source", () => {
   it("renders the modal as its own dialog root under body, present only while open", async () => {
     const code = await source();
     assert.match(code, /function showCityModal\(mode, openerSelector\)/);
-    assert.match(code, /function hideCityModal\(\{ dismiss = false \} = \{\}\)/);
+    assert.match(code, /function hideCityModal\(\)/);
     assert.match(code, /function syncCityModal\(\)/);
     assert.match(code, /function attachCityModalListeners\(root\)/);
     assert.match(code, /root\.id = "city-modal";/);
@@ -412,7 +414,7 @@ describe("newtab city modal source", () => {
   it("makes the desktop inert while the modal is open and restores it on close", async () => {
     const code = await source();
     const show = between(code, "function showCityModal(", "function hideCityModal(");
-    const hide = between(code, "function hideCityModal(", "function onFirstRunDismissed(");
+    const hide = between(code, "function hideCityModal(", "function revealDesk(");
     assert.match(show, /favoritesRoot\.inert = true;/);
     assert.match(show, /hideTooltip\(\);/);
     assert.match(hide, /favoritesRoot\.inert = false;/);
@@ -432,16 +434,28 @@ describe("newtab city modal source", () => {
   it("orders the single Escape handler: tooltip, suggestions, modal", async () => {
     const code = await source();
     const handler = between(code, 'if (event.key !== "Escape")', 'if (event.key !== "Tab"');
-    const order = ['tooltip: !tooltipLayer.hidden', "citySuggestions:", "cityModal: Boolean(cityModalRoot)", 'layer === "tooltip"', 'layer === "citySuggestions"', 'layer === "cityModal"', 'layer === "dialog"', 'layer === "exitEdit"'].map((n) => handler.indexOf(n));
+    const order = [
+      'tooltip: !tooltipLayer.hidden',
+      "citySuggestions:",
+      "onboardingWizard: Boolean(onboardingWizardRoot)",
+      "cityModal: Boolean(cityModalRoot)",
+      'layer === "tooltip"',
+      'layer === "citySuggestions"',
+      'layer === "onboardingWizard"',
+      'layer === "cityModal"',
+      'layer === "dialog"',
+      'layer === "exitEdit"'
+    ].map((n) => handler.indexOf(n));
     assert.ok(order.every((i) => i >= 0), order.join());
     assert.deepEqual([...order].sort((a, b) => a - b), order);
-    assert.match(handler, /layer === "cityModal"\) \{[^}]*if \(!weatherBusy\) hideCityModal\(\{ dismiss: true \}\);/);
+    assert.match(handler, /layer === "cityModal"\) \{[^}]*if \(!weatherBusy\) hideCityModal\(\);/);
   });
   it("traps Tab inside the modal; open list items are part of the cycle, hidden controls are not", async () => {
     const code = await source();
     const trap = between(code, 'if (event.key !== "Tab" || !trapRoot) return;', "});");
     assert.doesNotMatch(trap, /select-city/);
-    assert.match(trap, /trapRoot\.querySelectorAll\("input, button"\)\]\.filter\(\(el\) => !el\.disabled && !el\.hidden\)/);
+    assert.match(trap, /const controls = tabTrapFocusables\(trapRoot\)/);
+    assert.match(code, /function tabTrapFocusables\(trapRoot\)[\s\S]*node\.inert \|\| node\.hidden/);
   });
 
   it("modal controls get a transparent 2px outline only while focused, plus the soft ring", async () => {
@@ -463,7 +477,7 @@ describe("newtab city modal source", () => {
 
   it("the Tab trap covers the city modal or the desktop dialog, whichever is open", async () => {
     const code = await source();
-    assert.match(code, /const trapRoot = cityModalRoot \?\? desktopDialogRoot;/);
+    assert.match(code, /const trapRoot = onboardingWizardRoot \?\? cityModalRoot \?\? desktopDialogRoot;/);
   });
 
   it("keeps Tab on the page (preventDefault) when every modal control is disabled", async () => {
@@ -472,13 +486,15 @@ describe("newtab city modal source", () => {
     assert.match(trap, /if \(controls\.length === 0\) \{\s*event\.preventDefault\(\);[^\n]*\s*return;\s*\}/);
   });
 
-  it("the automatic prompt never reopens a modal already shown this page load", async () => {
+  it("the automatic wizard never reopens after it was already shown this page load", async () => {
     const code = await source();
-    assert.match(code, /let cityModalShownThisLoad = false;/);
-    const auto = between(code, "function maybeAutoShowCityPrompt(", "\n}\n");
-    assert.match(auto, /if \(cityModalRoot \|\| desktopDialogRoot \|\| cityModalShownThisLoad\) return;/);
-    const show = between(code, "function showCityModal(", "// `dismiss` is set");
-    assert.match(show, /cityModalShownThisLoad = true;/);
+    assert.match(code, /let onboardingWizardShownThisLoad = false;/);
+    const auto = between(code, "function maybeShowOnboardingWizard(", "\n}\n");
+    assert.match(auto, /if \(onboardingWizardRoot \|\| cityModalRoot \|\| desktopDialogRoot \|\| onboardingWizardShownThisLoad\) return;/);
+    const show = between(code, "function showOnboardingWizard(", "\n}\n");
+    assert.match(show, /onboardingWizardShownThisLoad = true;/);
+    const cityShow = between(code, "function showCityModal(", "function hideCityModal(");
+    assert.match(cityShow, /cityModalShownThisLoad = true;/);
   });
 
   it("ignores backdrop clicks right after opening and remembers focus inside the modal", async () => {
@@ -495,14 +511,14 @@ describe("newtab city modal source", () => {
 
   it("runs a city change with a timeout, clearing suggestions first, and re-renders the grid", async () => {
     const code = await source();
-    const start = code.indexOf("function changeCity(run)");
+    const start = code.indexOf("function changeCity(run, { onSuccess = null } = {})");
     assert.ok(start > -1);
     const change = code.slice(start, code.indexOf("\n}\n", start));
     assert.match(change, /activeCityForm\?\.cancelPending\(\);/);
     assert.match(change, /activeCityForm\?\.renderSuggestions\(\);/);
     assert.match(change, /await withTimeout\(run\(\)\)/);
     assert.match(change, /weatherLocationError = "";/);
-    assert.match(change, /cityModalError = "";\s*syncCityModal\(\);\s*renderFavorites\(\);/);
+    assert.match(change, /cityModalError = "";\s*if \(onboardingWizardRoot\) syncOnboardingWizardUi\(\);\s*else syncCityModal\(\);\s*renderFavorites\(\);/);
     assert.match(code, /const CITY_REQUEST_TIMEOUT_MS = 15000;/);
     assert.match(code, /new WeatherApiError\("Request timed out", \{ kind: "timeout" \}\)/);
     assert.doesNotMatch(code, /The request took too long/);
@@ -519,15 +535,17 @@ describe("newtab city modal source", () => {
     const startBody = code.slice(start, code.indexOf("\n}\n", start));
     assert.match(startBody, /error: weatherErrorMessage\(error\)/);
     assert.doesNotMatch(startBody, /error\.message|String\(error\)/);
-    const modal = between(code, "function createCityForm(mode, location)", "function createWeatherMetricTile(");
+    const modal = between(code, "function createCityForm(mode, location)", "function buildCityModal(");
     assert.doesNotMatch(modal, /innerHTML/);
   });
   it("builds the modal with text-only buttons, a novalidate form and the approved strings, never innerHTML", async () => {
     const code = await source();
-    const modal = between(code, "function createCityForm(mode, location)", "function createWeatherMetricTile(");
+    const modal = between(code, "function createCityForm(mode, location)", "function buildCityModal(");
     assert.doesNotMatch(modal, /innerHTML/);
-    assert.match(modal, /createIconButton\("button", mode === "first-run" \? "Not now" : "Cancel", "x"\)/);
+    assert.match(modal, /createIconButton\("button", "Cancel", "x"\)/);
     assert.match(modal, /createIconButton\("button button--primary", "Save", "check"\)/);
+    assert.match(modal, /createIconButton\("button", "Skip", "x"\)/);
+    assert.match(modal, /createIconButton\("button button--primary", "Continue", "arrowRight"\)/);
     assert.match(modal, /form\.noValidate = true;/);
     assert.doesNotMatch(modal, /input\.required/);
     // AS-MO-06: change mode is prefilled from the stored city, caret at the end, no selection; no "Current:" line.
@@ -535,7 +553,7 @@ describe("newtab city modal source", () => {
     assert.doesNotMatch(modal, /\.select\(\)/);
     assert.doesNotMatch(modal, /city-modal__current|cityModalCurrent|Current: /);
     assert.match(modal, /errorNode\.setAttribute\("role", "alert"\);/);
-    for (const text of ["Enter a city name", "Show weather on your new tab?", "Not now", "Change city", "Set a city"]) {
+    for (const text of ["Enter a city name", "Where should we show weather?", "Skip", "Continue", "Change city", "Set a city"]) {
       assert.ok(code.includes(text), text);
     }
     assert.ok(!code.includes("Current: "), "Current: removed");
@@ -556,14 +574,14 @@ describe("newtab city modal source", () => {
   });
 });
 
-describe("newtab first-run city prompt source", () => {
+describe("newtab onboarding wizard boot source", () => {
   function bootstrap(code) {
     const start = code.indexOf("if (favoritesRoot) {\n  void (async () => {");
     assert.ok(start >= 0, "bootstrap start");
     return code.slice(start, code.indexOf("})();", start));
   }
 
-  // docs/first-run-empty-desk.md decision 3: ONE decision point, before the first render.
+  // docs/onboarding-wizard.md decision 1: ONE decision point, before the first render.
   const betweenIn = (code, from, to) => {
     const start = code.indexOf(from);
     assert.ok(start > -1, from);
@@ -573,60 +591,64 @@ describe("newtab first-run city prompt source", () => {
   };
   const functionBody = (code, name) => betweenIn(code, `function ${name}(`, "\n}\n");
 
-  it("takes the prompt decision once, in the bootstrap, BEFORE the first render: early check, capped flag read, modal, render, status, weather", async () => {
+  it("takes the wizard decision once, in the bootstrap, BEFORE the first render: early check, capped local read, wizard, render, status, weather", async () => {
     const code = await source();
-    assert.equal(code.match(/maybeAutoShowCityPrompt\(\{ flagRead, dismissed \}\);/g)?.length, 1); // the one call (the definition has no semicolon)
-    assert.equal(code.match(/maybeAutoShowCityPrompt\(/g)?.length, 2); // definition + one call
+    assert.equal(code.match(/maybeShowOnboardingWizard\(flags\);/g)?.length, 1);
+    assert.equal(code.match(/maybeShowOnboardingWizard\(/g)?.length, 2);
     const boot = bootstrap(code);
     const stateRead = boot.indexOf("widgetsState = await widgetsService.getState();");
     const location = boot.indexOf("weatherLocationKnown = true;");
-    const early = boot.indexOf("firstRunPromptPossible(promptLiveState())");
-    const flag = boot.indexOf("await readDismissalFlag()");
-    const call = boot.indexOf("maybeAutoShowCityPrompt({ flagRead, dismissed });");
-    const firstRender = boot.indexOf("\n    renderFavorites();\n", call); // the first render of the normal path (4-space indent; the error paths are nested deeper)
+    const early = boot.indexOf("onboardingWizardPossible(promptLiveState())");
+    const flag = boot.indexOf("await readOnboardingLocalFlags(localStorageArea)");
+    const call = boot.indexOf("maybeShowOnboardingWizard(flags);");
+    const firstRender = boot.indexOf("\n    renderFavorites();\n", call);
     const status = boot.indexOf("if (widgetsEnsureFailed) showDesktopStatus(ENSURE_FAILED_MESSAGE, { persist: true });", firstRender);
     const startWeather = boot.indexOf("void startWeather();", firstRender);
     assert.ok(stateRead > 0 && location > stateRead, "state and city are read first");
     assert.ok(early > location, "the early check follows the city read");
-    assert.ok(flag > early && call > flag, "early check, then the flag read, then the decision");
+    assert.ok(flag > early && call > flag, "early check, then the local read, then the decision");
     assert.ok(firstRender > call, "the first render comes after the decision");
-    assert.ok(status > firstRender && startWeather > status, "render, then the ensure-failure status, then weather (today's order)");
-    assert.equal(boot.indexOf("isDismissed", firstRender), -1, "no flag read after the first render");
-    assert.equal(code.match(/\.isDismissed\(\)/g)?.length, 1, "the flag is read in exactly one place");
-    // the flag is read only when the early check passes; an exception before the modal is inserted never blocks the render
-    assert.match(boot.slice(0, firstRender), /try \{\s*if \(firstRunPromptPossible\(promptLiveState\(\)\)\) \{\s*const \{ flagRead, dismissed \} = await readDismissalFlag\(\);\s*maybeAutoShowCityPrompt\(\{ flagRead, dismissed \}\);\s*\}\s*\} catch \{/);
+    assert.ok(status > firstRender && startWeather > status, "render, then the ensure-failure status, then weather");
+    assert.equal(boot.indexOf("readOnboardingLocalFlags", firstRender), -1, "no local boot read after the first render");
+    assert.doesNotMatch(code, /\.isDismissed\(\)/);
+    assert.match(
+      boot.slice(0, firstRender),
+      /try \{\s*if \(onboardingWizardPossible\(promptLiveState\(\)\) && localStorageArea\) \{\s*const flags = await readOnboardingLocalFlags\(localStorageArea\);\s*maybeShowOnboardingWizard\(flags\);\s*\}\s*\} catch \{/
+    );
   });
 
-  it("reads the flag with a 250 ms cap, fails closed on error or timeout and ignores a late result", async () => {
+  it("reads onboarding local flags through onboardingStore (capped, one get)", async () => {
     const code = await source();
-    assert.match(code, /const FLAG_READ_CAP_MS = 250;/);
-    const read = functionBody(code, "readDismissalFlag");
-    assert.match(read, /Promise\.race\(/);
-    assert.match(read, /setTimeout\([^;]*FLAG_READ_CAP_MS\)/);
-    assert.match(read, /clearTimeout\(/);
-    assert.match(read, /const unknown = \{ flagRead: false, dismissed: false \};/);
-    assert.match(read, /weatherPromptStore\.isDismissed\(\)\.then\(\(dismissed\) => \(\{ flagRead: true, dismissed \}\), \(\) => unknown\)/); // a rejection is unknown too; the late settle is a no-op
+    assert.match(code, /import \{ createOnboardingStore, readOnboardingLocalFlags \} from "\.\/onboardingStore\.js";/);
+    const storeModule = await readFile(new URL("../src/onboardingStore.js", import.meta.url), "utf8");
+    assert.match(storeModule, /export async function readOnboardingLocalFlags/);
+    assert.match(storeModule, /Promise\.race\(/);
+    assert.match(storeModule, /LOCAL_BOOT_KEYS/);
   });
 
-  it("builds the prompt store only with local storage and writes the flag silently", async () => {
+  it("builds onboarding and prompt stores on local storage", async () => {
     const code = await source();
-    assert.match(code, /import \{ firstRunPromptPossible, shouldAutoShowCityPrompt \} from "\.\/cityPrompt\.js";/);
+    assert.match(code, /import \{ onboardingWizardPossible, shouldShowOnboardingWizard \} from "\.\/cityPrompt\.js";/);
     assert.match(code, /const weatherPromptStore = hasStorageArea\(localStorageArea\) \? createWeatherPromptStore\(localStorageArea\) : null;/);
-    assert.match(code, /weatherPromptStore\.dismiss\(\)\.catch\(/);
-    assert.doesNotMatch(code, /onFirstRunDismissed\(\) \{\}/);
+    assert.match(code, /const onboardingStore = hasStorageArea\(localStorageArea\) \? createOnboardingStore\(localStorageArea\) : null;/);
+    assert.doesNotMatch(code, /onFirstRunDismissed/);
+    assert.doesNotMatch(code, /weatherPromptStore\.dismiss/);
   });
 
   it("feeds the pure rules with live state and never replaces an open modal", async () => {
     const code = await source();
-    const auto = functionBody(code, "maybeAutoShowCityPrompt");
-    assert.match(auto, /^function maybeAutoShowCityPrompt\(\{ flagRead, dismissed \}\) \{\s*if \(cityModalRoot \|\| desktopDialogRoot \|\| cityModalShownThisLoad\) return;/);
-    assert.match(auto, /shouldAutoShowCityPrompt\(\{ \.\.\.promptLiveState\(\), flagRead, dismissed \}\)/);
+    const auto = functionBody(code, "maybeShowOnboardingWizard");
+    assert.match(
+      auto,
+      /^function maybeShowOnboardingWizard\(\{ flagRead, dismissed, completeRead, complete \}\) \{\s*if \(onboardingWizardRoot \|\| cityModalRoot \|\| desktopDialogRoot \|\| onboardingWizardShownThisLoad\) return;/
+    );
+    assert.match(auto, /shouldShowOnboardingWizard\(\{/);
     const live = functionBody(code, "promptLiveState");
     for (const part of [
       "locationRead: weatherLocationKnown && !weatherLocationError",
       "hasLocation: Boolean(weatherLocation)",
       'item.type === "weather-metric" && item.enabled === true',
-      "weatherAvailable: Boolean(weatherService && weatherPromptStore)",
+      "weatherAvailable: Boolean(weatherService && weatherPromptStore && onboardingStore)",
       "gridLocked: widgetsNewer || widgetsMigrationFailed"
     ]) {
       assert.ok(live.includes(part), part);
@@ -641,18 +663,18 @@ describe("newtab first-run city prompt source", () => {
     assert.match(handler, /if \(!widgetsState \|\| widgetsNewer \|\| widgetsMigrationFailed \|\| renderedColumns === 0\) return;/);
   });
 
-  it("veils the desk only from showCityModal (first-run, right after the insertion) and clears it only from hideCityModal, before focus", async () => {
+  it("veils the desk from showOnboardingWizard and clears it from hideOnboardingWizard or hideCityModal, before focus", async () => {
     const code = await source();
     assert.equal(code.match(/dataset\.veiled = "true"/g)?.length, 1, "one place sets the veil");
-    const show = functionBody(code, "showCityModal");
-    const insert = show.indexOf("cityModalRoot = root;");
-    const veil = show.indexOf('if (mode === "first-run" && favoritesRoot) favoritesRoot.dataset.veiled = "true";');
-    assert.ok(insert > 0 && veil === show.indexOf("\n", insert) + 3, "the veil is the first statement after cityModalRoot = root");
+    const show = functionBody(code, "showOnboardingWizard");
+    const insert = show.indexOf("onboardingWizardRoot = root;");
+    const veil = show.indexOf('favoritesRoot.dataset.veiled = "true"');
+    assert.ok(insert > 0 && veil > insert, "the veil is set after the wizard root is mounted");
     for (const later of ["activeCityForm?.place();", "hideTooltip();", "closeAddMenu();", "favoritesRoot.inert = true;"]) {
       assert.ok(show.indexOf(later) > veil, `${later} comes after the veil`);
     }
     assert.equal(code.match(/delete favoritesRoot\.dataset\.veiled/g)?.length, 1, "one place clears the veil");
-    assert.equal(code.match(/\brevealDesk\(\)/g)?.length, 2, "revealDesk: its definition and the one call");
+    assert.equal(code.match(/\brevealDesk\(\)/g)?.length, 3, "revealDesk: definition plus hideCityModal and hideOnboardingWizard");
     const hide = functionBody(code, "hideCityModal");
     const reveal = hide.indexOf("revealDesk();");
     assert.ok(reveal > 0, "hideCityModal reveals the desk");
@@ -684,14 +706,15 @@ describe("newtab first-run city prompt source", () => {
     assert.ok(reduced, "reduced motion: no reveal animation");
   });
 
-  it("opens the first-run modal from one place and never calls focus() on that path", async () => {
+  it("opens the onboarding wizard from one boot path (shell built in a later task)", async () => {
     const code = await source();
-    assert.equal(code.match(/showCityModal\("first-run"/g)?.length, 1);
-    assert.match(code, /if \(show\) showCityModal\("first-run", null\);/);
+    assert.equal(code.match(/showOnboardingWizard\(/g)?.length, 2); // definition + maybeShowOnboardingWizard call
+    assert.match(code, /if \(show\) showOnboardingWizard\(\);/);
+    assert.doesNotMatch(code, /showCityModal\("first-run"/);
     const start = code.indexOf("function showCityModal(");
     const guard = code.indexOf('if (mode === "change")', start);
     assert.ok(start >= 0 && guard > start);
-    assert.doesNotMatch(code.slice(start, guard), /\.focus\(/); // no focus() call before the change-mode guard
+    assert.doesNotMatch(code.slice(start, guard), /\.focus\(/);
     const guardLine = code.slice(guard, code.indexOf("\n", guard));
     assert.match(guardLine, /\.focus\(\)/);
   });
@@ -699,6 +722,37 @@ describe("newtab first-run city prompt source", () => {
   it("adds no storage change listener (tabs do not observe each other)", async () => {
     const code = await source();
     assert.doesNotMatch(code, /onChanged/);
+  });
+
+  it("onboarding backdrop respects step-2 guard and ignores a second click after choose like the city modal", async () => {
+    const code = await source();
+    const listeners = betweenIn(code, "function attachOnboardingWizardListeners(root)", "function hideOnboardingWizard(");
+    assert.match(listeners, /if \(!onboardingStep2ActionsAllowed\(\)\) return;/);
+    assert.doesNotMatch(listeners, /onboardingStep === 1 && !onboardingStep2ActionsAllowed/);
+    assert.match(
+      listeners,
+      /event\.detail > 0[\s\S]*activeCityForm\?\.recentlyChosen\(\)[\s\S]*\[data-onboarding-backdrop\]/
+    );
+  });
+
+  it("syncOnboardingWizardUi applies finish busy after syncCityModal so aria-busy and disabled stay set", async () => {
+    const code = await source();
+    const sync = functionBody(code, "syncOnboardingWizardUi");
+    const citySync = sync.indexOf("syncCityModal();");
+    const finishBusy = sync.indexOf("const finishBusy = favoritesBusy && onboardingStep === 2;");
+    const ariaBusy = sync.indexOf('dialog.setAttribute("aria-busy", String(weatherBusy || finishBusy));');
+    assert.ok(citySync > 0 && finishBusy > citySync && ariaBusy > finishBusy, "city sync, then finish busy");
+    const cityModalSync = functionBody(code, "syncCityModal");
+    assert.match(cityModalSync, /if \(!onboardingWizardRoot\) \{\s*host\.querySelector\('\[role="dialog"\]'\)\?\.setAttribute\("aria-busy"/);
+  });
+
+  it("keeps step-1 focus on the title while the city request runs", async () => {
+    const code = await source();
+    const sync = functionBody(code, "syncCityModal");
+    assert.match(sync, /weatherBusy && onboardingWizardRoot && onboardingStep === 1/);
+    assert.match(sync, /#onboarding-step1-title/);
+    const trap = functionBody(code, "tabTrapFocusables");
+    assert.match(trap, /controls\.length === 0[\s\S]*onboardingWizardRoot[\s\S]*#onboarding-step1-title/);
   });
 });
 
@@ -932,9 +986,9 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     assert.match(css, /\.desktop-dialog \{[^}]*z-index: 101;/s);
   });
 
-  it("Task 10: the first-run copy points to a weather tile (the Widgets panel is gone)", async () => {
+  it("Task 10: onboarding step 1 copy mentions skipping the city for now", async () => {
     const code = await source();
-    assert.match(code, /skip this and you can add a city later from a weather tile\./);
+    assert.match(code, /Enter a city, or skip for now\./);
     assert.doesNotMatch(code, /later in Widgets/);
   });
 
@@ -945,11 +999,12 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
 
   it("Task 11: bootstrap runs the v1 -> v2 step whenever the sync area exists and locks on a newer result", async () => {
     const code = await source();
+    const boot = code.slice(code.indexOf("if (favoritesRoot) {\n  void (async () => {"), code.indexOf("})();", code.indexOf("if (favoritesRoot)")));
     // The legacy chain needs both areas; the v1 -> v2 step only sync (a profile without chrome.storage.local still migrates).
-    assert.match(code, /if \(hasStorageArea\(localStorageArea\) && hasStorageArea\(syncStorageArea\)\) \{\s*const migration = await migrateToWidgets\(localStorageArea, syncStorageArea\);[\s\S]*?\n      \}\n      if \(hasStorageArea\(syncStorageArea\)\) \{/);
-    assert.match(code, /const v2 = await migrateWidgetsToV2\(syncStorageArea\);\s*if \(v2\?\.meta === "newer"\) \{\s*widgetsNewer = true;\s*renderFavorites\(\);\s*return;/);
+    assert.match(boot, /if \(hasStorageArea\(localStorageArea\) && hasStorageArea\(syncStorageArea\)\) \{\s*const migration = await migrateToWidgets\(localStorageArea, syncStorageArea\);[\s\S]*?\n      \}\n      if \(hasStorageArea\(syncStorageArea\)\) \{/);
+    assert.match(boot, /const v2 = await migrateWidgetsToV2\(syncStorageArea\);\s*if \(v2\?\.meta === "newer"\) \{\s*widgetsNewer = true;\s*renderFavorites\(\);\s*return;/);
     // R7 order: legacy chain, v1 -> v2, ensure, first read.
-    const order = ["await migrateToWidgets(", "await migrateWidgetsToV2(", "await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });", "await widgetsService.getState()"].map((m) => code.indexOf(m));
+    const order = ["await migrateToWidgets(", "await migrateWidgetsToV2(", "await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });", "widgetsState = await widgetsService.getState()"].map((m) => boot.indexOf(m));
     assert.ok(order.every((at, i) => at > 0 && (i === 0 || at > order[i - 1])), JSON.stringify(order));
   });
 
@@ -964,22 +1019,23 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     assert.match(code, /const screenRows = viewportRows\(document\.documentElement\.clientHeight, viewportWidth\(\)\);/);
     // exactly one definition and one call: nothing re-reads the first screen later (no resize hook, no re-render)
     assert.equal(code.split("firstScreen(").length - 1, 2);
-    const call = code.indexOf("await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });");
-    assert.ok(call > code.indexOf("await migrateWidgetsToV3(") && call < code.indexOf("widgetsState = await widgetsService.getState();"));
+    const boot = code.slice(code.indexOf("if (favoritesRoot) {\n  void (async () => {"), code.indexOf("})();", code.indexOf("if (favoritesRoot)")));
+    const call = boot.indexOf("await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });");
+    assert.ok(call > boot.indexOf("await migrateWidgetsToV3(") && call < boot.indexOf("widgetsState = await widgetsService.getState();"));
     // evaluated before the first render of the desk: after the locking catch (which returns) nothing renders before the call
-    const betweenCatchAndCall = code.slice(code.indexOf("widgetsMigrationFailed = true;", code.indexOf("await migrateWidgetsToV3(")), call);
+    const betweenCatchAndCall = boot.slice(boot.indexOf("widgetsMigrationFailed = true;", boot.indexOf("await migrateWidgetsToV3(")), call);
     assert.ok(betweenCatchAndCall.indexOf("return;") < betweenCatchAndCall.indexOf("if (hasStorageArea(syncStorageArea))"), "the locking catch returns before the ensure");
     assert.equal((betweenCatchAndCall.match(/renderFavorites\(\)/g) ?? []).length, 1, "only the locking catch renders before the call (it returns)");
   });
   it("run 15: the bootstrap runs the v2 -> v3 step after the v2 step, inside the locking try, and locks on a newer result", async () => {
     const code = await source();
+    const boot = code.slice(code.indexOf("if (favoritesRoot) {\n  void (async () => {"), code.indexOf("})();", code.indexOf("if (favoritesRoot)")));
     assert.match(code, /import \{[^}]*\bmigrateWidgetsToV3\b[^}]*\} from "\.\/widgetsStore\.js"/);
-    assert.match(code, /const v3 = await migrateWidgetsToV3\(syncStorageArea\);\s*if \(v3\?\.meta === "newer"\) \{\s*widgetsNewer = true;\s*renderFavorites\(\);\s*return;/);
+    assert.match(boot, /const v3 = await migrateWidgetsToV3\(syncStorageArea\);\s*if \(v3\?\.meta === "newer"\) \{\s*widgetsNewer = true;\s*renderFavorites\(\);\s*return;/);
     // R7 order: legacy chain, v1 -> v2, v2 -> v3, ensure, first read.
-    const order = ["await migrateToWidgets(", "await migrateWidgetsToV2(", "await migrateWidgetsToV3(", "await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });", "await widgetsService.getState()"].map((m) => code.indexOf(m));
+    const order = ["await migrateToWidgets(", "await migrateWidgetsToV2(", "await migrateWidgetsToV3(", "await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });", "widgetsState = await widgetsService.getState()"].map((m) => boot.indexOf(m));
     assert.ok(order.every((at, i) => at > 0 && (i === 0 || at > order[i - 1])), JSON.stringify(order));
     // a failure of the v3 step goes through the same catch as the v2 step: the grid is locked with the migration-failure text
-    const boot = code.slice(code.indexOf("if (favoritesRoot) {\n  void (async () => {"));
     const tryBlock = boot.slice(0, boot.indexOf("} catch (error) {\n      widgetsMigrationFailed = true;"));
     assert.ok(tryBlock.includes("await migrateWidgetsToV3(syncStorageArea);"), "v3 migration runs inside the locking try");
     // the page works in displayed cells: it never converts between the displayed and the stored frame itself

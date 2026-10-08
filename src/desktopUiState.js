@@ -52,10 +52,14 @@ export function endDrag(state) {
 }
 
 // Which layer one Escape press closes, topmost first. `flags` comes from the DOM-owning caller.
-export function escapeLayer(state, { tooltip = false, citySuggestions = false, cityModal = false } = {}) {
+export function escapeLayer(
+  state,
+  { tooltip = false, citySuggestions = false, onboardingWizard = false, cityModal = false } = {}
+) {
   if (state.drag) return "drag";
   if (tooltip) return "tooltip";
   if (citySuggestions) return "citySuggestions";
+  if (onboardingWizard) return "onboardingWizard";
   if (cityModal) return "cityModal";
   if (state.dialog) return "dialog";
   if (state.menu) return "menu";
