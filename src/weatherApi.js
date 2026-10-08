@@ -27,9 +27,9 @@ export function weatherErrorMessage(error) {
 }
 
 // A rejected fetch is a network failure; our own cancellation (AbortError) passes through untouched.
-async function request(url, fetchImpl) {
+async function request(url, fetchImpl, init) {
   try {
-    return await fetchImpl(url);
+    return init === undefined ? await fetchImpl(url) : await fetchImpl(url, init);
   } catch (error) {
     if (error?.name === "AbortError") {
       throw error;
@@ -41,6 +41,8 @@ async function request(url, fetchImpl) {
 const FORECAST_ENDPOINT = "https://api.open-meteo.com/v1/forecast";
 const AIR_QUALITY_ENDPOINT = "https://air-quality-api.open-meteo.com/v1/air-quality";
 const GEOCODING_ENDPOINT = "https://geocoding-api.open-meteo.com/v1/search";
+const NOMINATIM_REVERSE_ENDPOINT = "https://nominatim.openstreetmap.org/reverse";
+export const NOMINATIM_USER_AGENT = "QuietTab (+https://github.com/undevy-org/quiet-tab)";
 
 const UV_INDEX_LEVELS = [
   { max: 2, label: "Low" },
@@ -346,6 +348,90 @@ export async function geocodeCity(name, { fetchImpl = globalThis.fetch } = {}) {
     country: typeof result.country === "string" ? result.country : "",
     latitude: result.latitude,
     longitude: result.longitude
+  };
+}
+
+function pickReverseGeocodeName(address) {
+  if (!address || typeof address !== "object") {
+    return "";
+  }
+
+  for (const key of ["city", "town", "village", "municipality", "county", "state"]) {
+    const value = address[key];
+    if (typeof value === "string" && value.trim() !== "") {
+      return value.trim();
+    }
+  }
+
+  return "";
+}
+
+export async function reverseGeocodeCoordinates(lat, lon, { fetchImpl = globalThis.fetch, signal } = {}) {
+  assertCoordinate(lat, "latitude");
+  assertCoordinate(lon, "longitude");
+
+  const url = new URL(NOMINATIM_REVERSE_ENDPOINT);
+  url.searchParams.set("lat", String(lat));
+  url.searchParams.set("lon", String(lon));
+  url.searchParams.set("format", "jsonv2");
+  url.searchParams.set("addressdetails", "1");
+  url.searchParams.set("zoom", "10");
+  url.searchParams.set("accept-language", "en");
+
+  let response;
+  try {
+    response = await request(url.toString(), fetchImpl, {
+      headers: { "User-Agent": NOMINATIM_USER_AGENT },
+      signal
+    });
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw new WeatherApiError("Nominatim reverse geocoding was aborted", {
+        kind: "timeout",
+        url: url.toString()
+      });
+    }
+    throw error;
+  }
+
+  if (!response.ok) {
+    throw new WeatherApiError(
+      `Nominatim reverse geocoding failed with status ${response.status}`,
+      { kind: "http", status: response.status, url: url.toString() }
+    );
+  }
+
+  let body;
+  try {
+    body = await response.json();
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw new WeatherApiError("Nominatim reverse geocoding was aborted", {
+        kind: "timeout",
+        url: url.toString()
+      });
+    }
+    throw new WeatherApiError("Nominatim reverse geocoding response was not valid JSON", {
+      url: url.toString()
+    });
+  }
+
+  const name = pickReverseGeocodeName(body?.address);
+  if (name === "") {
+    throw new WeatherApiError("Nominatim reverse geocoding found no city for the coordinates", {
+      kind: "notFound",
+      url: url.toString()
+    });
+  }
+
+  const country =
+    typeof body?.address?.country === "string" ? body.address.country.trim() : "";
+
+  return {
+    name,
+    country,
+    latitude: lat,
+    longitude: lon
   };
 }
 

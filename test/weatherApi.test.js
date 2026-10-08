@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  NOMINATIM_USER_AGENT,
   WeatherApiError,
   fetchAirQuality,
   fetchWeather,
   geocodeCity,
+  reverseGeocodeCoordinates,
   searchCities,
   summarizeHourlyForecast,
   usAqiCategory,
@@ -648,6 +650,131 @@ describe("searchCities", () => {
       () => searchCities("Spring", { fetchImpl }),
       (error) => error instanceof WeatherApiError && error.message.includes("429")
     );
+  });
+});
+
+describe("reverseGeocodeCoordinates", () => {
+  it("requests Nominatim with the expected query and identifying User-Agent", async () => {
+    const calls = [];
+    const fetchImpl = async (url, init) => {
+      calls.push({ url, init });
+      return response({
+        address: { city: "Tbilisi", country: "Georgia" }
+      });
+    };
+
+    const result = await reverseGeocodeCoordinates(41.72, 44.83, { fetchImpl });
+    const requestedUrl = new URL(calls[0].url);
+
+    assert.equal(requestedUrl.origin + requestedUrl.pathname, "https://nominatim.openstreetmap.org/reverse");
+    assert.equal(requestedUrl.searchParams.get("lat"), "41.72");
+    assert.equal(requestedUrl.searchParams.get("lon"), "44.83");
+    assert.equal(requestedUrl.searchParams.get("format"), "jsonv2");
+    assert.equal(requestedUrl.searchParams.get("addressdetails"), "1");
+    assert.equal(requestedUrl.searchParams.get("zoom"), "10");
+    assert.equal(requestedUrl.searchParams.get("accept-language"), "en");
+    assert.equal(calls[0].init.headers["User-Agent"], NOMINATIM_USER_AGENT);
+    assert.deepEqual(result, {
+      name: "Tbilisi",
+      country: "Georgia",
+      latitude: 41.72,
+      longitude: 44.83
+    });
+  });
+
+  it("uses county then state when no city-like field is present", async () => {
+    const fetchImpl = async () =>
+      response({ address: { county: "Fulton County", country: "United States" } });
+
+    const county = await reverseGeocodeCoordinates(33.75, -84.39, { fetchImpl });
+    assert.equal(county.name, "Fulton County");
+
+    const stateOnly = await reverseGeocodeCoordinates(33.75, -84.39, {
+      fetchImpl: async () => response({ address: { state: "Georgia", country: "United States" } })
+    });
+    assert.equal(stateOnly.name, "Georgia");
+  });
+
+  it("throws notFound when no name can be derived", async () => {
+    const fetchImpl = async () => response({ address: { country: "Ocean" } });
+
+    await assert.rejects(
+      () => reverseGeocodeCoordinates(0, 0, { fetchImpl }),
+      (error) => error instanceof WeatherApiError && error.details.kind === "notFound"
+    );
+  });
+
+  it("throws notFound for a Nominatim error body without address", async () => {
+    const fetchImpl = async () => response({ error: "Unable to geocode" });
+
+    await assert.rejects(
+      () => reverseGeocodeCoordinates(0, 0, { fetchImpl }),
+      (error) => error instanceof WeatherApiError && error.details.kind === "notFound"
+    );
+  });
+
+  it("throws http on non-OK responses such as 429", async () => {
+    const fetchImpl = async () => response({ error: "rate" }, { ok: false, status: 429 });
+
+    await assert.rejects(
+      () => reverseGeocodeCoordinates(41.72, 44.83, { fetchImpl }),
+      (error) => error instanceof WeatherApiError && error.details.kind === "http" && error.details.status === 429
+    );
+  });
+
+  it("throws network when fetch rejects", async () => {
+    await assert.rejects(
+      () =>
+        reverseGeocodeCoordinates(41.72, 44.83, {
+          fetchImpl: async () => {
+            throw new TypeError("Failed to fetch");
+          }
+        }),
+      (error) => error instanceof WeatherApiError && error.details.kind === "network"
+    );
+  });
+
+  it("converts AbortError during the body read into timeout", async () => {
+    const abort = new DOMException("aborted", "AbortError");
+    const fetchImpl = async () => ({
+      ok: true,
+      status: 200,
+      async json() {
+        throw abort;
+      }
+    });
+
+    await assert.rejects(
+      () => reverseGeocodeCoordinates(41.72, 44.83, { fetchImpl }),
+      (error) => error instanceof WeatherApiError && error.details.kind === "timeout"
+    );
+  });
+
+  it("throws an error without kind when JSON is invalid", async () => {
+    const fetchImpl = async () => ({
+      ok: true,
+      status: 200,
+      async json() {
+        throw new SyntaxError("Unexpected token");
+      }
+    });
+
+    await assert.rejects(
+      () => reverseGeocodeCoordinates(41.72, 44.83, { fetchImpl }),
+      (error) => error instanceof WeatherApiError && error.details.kind === undefined
+    );
+  });
+
+  it("keeps existing fetch callers on the one-argument request path", async () => {
+    const calls = [];
+    const fetchImpl = async (url) => {
+      calls.push(url);
+      return response({ results: [] });
+    };
+
+    await searchCities("Tbi", { fetchImpl });
+    assert.equal(calls.length, 1);
+    assert.equal(typeof calls[0], "string");
   });
 });
 
