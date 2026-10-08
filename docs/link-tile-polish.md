@@ -2,7 +2,7 @@
 
 ## Status
 
-`draft`
+`implemented`
 
 Decision: **do it**. Owner request 2026-10-07 (pipeline stage 0, run #19 / `dg-61`): two small UI fixes in one run — restore the **Size** row on **Add link**, and **center the favicon/letter horizontally** on **2×2** favorite tiles (label/host block stays left-aligned).
 
