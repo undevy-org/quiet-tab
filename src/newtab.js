@@ -265,6 +265,7 @@ let weatherFormGeneration = 0;
 let cityModalRoot = null;
 let cityModalOpener = null; // selector of the control that opened it, looked up again at close time
 let cityModalError = "";
+let locationStatusNode = null;
 let cityModalOpenedAt = 0;
 let cityModalHadFocus = false; // D14: focus was inside the modal at some point since it opened
 const CITY_MODAL_BACKDROP_GUARD_MS = 300;
@@ -618,6 +619,30 @@ function cityDisplayLabel(location) {
   return [location.name, location.country].filter((part) => part).join(", ");
 }
 
+function createCityLocationDescription(variant) {
+  const onboarding = variant === "onboarding";
+  const paragraph = createNode(
+    "p",
+    onboarding ? "onboarding-wizard__step-description" : "city-modal__description",
+    ""
+  );
+  const link = document.createElement("button");
+  link.type = "button";
+  link.className = "city-location-link";
+  link.dataset.weatherAction = "use-location";
+  link.textContent = "use your location";
+  const status = createNode("span", "sr-only", "");
+  status.dataset.cityLocationStatus = "";
+  status.setAttribute("role", "status");
+  locationStatusNode = status;
+  if (onboarding) {
+    paragraph.append("Enter a city, ", link, ", or skip for now.", status);
+  } else {
+    paragraph.append("Search for a city or ", link, ".", status);
+  }
+  return paragraph;
+}
+
 function createCityForm(mode, location) {
   weatherFormGeneration += 1;
   const formGeneration = weatherFormGeneration;
@@ -941,6 +966,7 @@ function buildCityModal(mode, location) {
   const title = createNode("h2", "city-modal__title", location ? "Change city" : "Set a city");
   title.id = "city-modal-title";
   dialog.appendChild(title);
+  dialog.appendChild(createCityLocationDescription(mode));
 
   dialog.appendChild(createCityForm(mode, location));
   root.append(backdrop, dialog);
@@ -1321,7 +1347,7 @@ function buildOnboardingWizard() {
   title1.id = "onboarding-step1-title";
   title1.dataset.onboardingStepTitle = "";
   title1.tabIndex = -1;
-  const description1 = createNode("p", "onboarding-wizard__step-description", "Enter a city, or skip for now.");
+  const description1 = createCityLocationDescription("onboarding");
   step1.append(title1, description1, createCityForm("onboarding", weatherLocationError ? null : currentLocation()));
   const step2 = buildOnboardingStep2();
   dialog.append(progress, step1, step2);

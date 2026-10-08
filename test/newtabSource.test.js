@@ -991,7 +991,11 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
 
   it("Task 10: onboarding step 1 copy mentions skipping the city for now", async () => {
     const code = await source();
-    assert.match(code, /Enter a city, or skip for now\./);
+    assert.match(code, /append\("Enter a city, ", link, ", or skip for now\.", status\)/);
+    assert.match(code, /append\("Search for a city or ", link, "\.", status\)/);
+    assert.match(code, /dataset\.weatherAction = "use-location"/);
+    assert.match(code, /dataset\.cityLocationStatus/);
+    assert.match(code, /function createCityLocationDescription/);
     assert.doesNotMatch(code, /later in Widgets/);
   });
 

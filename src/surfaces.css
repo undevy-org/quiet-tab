@@ -87,6 +87,27 @@
   overflow-wrap: anywhere;
 }
 
+.city-location-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  min-height: auto;
+  text-decoration: underline;
+  font-weight: var(--font-weight-control);
+}
+
+.city-location-link:disabled {
+  opacity: var(--control-disabled-opacity);
+}
+
+.city-location-link:focus-visible {
+  background: var(--soft-fill-strong);
+  box-shadow: 0 0 0 2px var(--focus-overlay-ring);
+}
+
 .city-modal .status--full {
   display: block;
   -webkit-line-clamp: unset;

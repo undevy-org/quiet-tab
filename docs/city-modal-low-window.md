@@ -2,6 +2,8 @@
 
 ## Status
 
+**Amended (run #20, use-my-location):** wizard step 1 description is one text line taller (`use your location` link). At 320 px width, Skip/Continue are visible at rest from **290 px** viewport height upward (was 280 px). Change-mode thresholds unchanged at 320×280 in dg-48 (description adds lines but dialog still fits). See `dg-48-city-modal-low-window.mjs` pairs.
+
 **Superseded in part by `docs/modal-overlay-design.md`** (permanent feedback reserve removed; AS-MO-13/14/17). AS-LW-01 is rewritten as AS-MO-13; AS-LW-02, AS-LW-03, AS-LW-04 (reserve, compact, error in a compact window) are retired; the list-order part of AS-LW-06 is restated without reserve numbers; AS-LW-05 is satisfied by the updated docs.
 
 `implemented` (merged in `55bbc07`; independent review 1 applied, re-review passed; see `low-window-spec-review.md`). Amended by `docs/dialog-threshold-jump.md`: the reserve is given up continuously, not all at once (Default decisions 1 to 3, AS-LW-03 numbers, the accepted exception and the "fit threshold" Review focus item below).
