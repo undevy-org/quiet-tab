@@ -3012,7 +3012,8 @@ function changeCity(run, { onSuccess = null } = {}) {
   weatherUi = hideSuggestions(weatherUi);
   activeCityForm?.renderSuggestions();
   cityModalError = "";
-  syncCityModal();
+  if (onboardingWizardRoot) syncOnboardingWizardUi();
+  else syncCityModal();
   renderFavorites();
   void (async () => {
     let ok = false;
@@ -3037,7 +3038,8 @@ function changeCity(run, { onSuccess = null } = {}) {
         if (onSuccess) onSuccess();
         else hideCityModal();
       } else {
-        syncCityModal();
+        if (onboardingWizardRoot) syncOnboardingWizardUi();
+        else syncCityModal();
         (cityModalRoot ?? onboardingWizardRoot)?.querySelector(CITY_INPUT_SELECTOR)?.focus();
       }
     }

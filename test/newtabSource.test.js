@@ -518,7 +518,7 @@ describe("newtab city modal source", () => {
     assert.match(change, /activeCityForm\?\.renderSuggestions\(\);/);
     assert.match(change, /await withTimeout\(run\(\)\)/);
     assert.match(change, /weatherLocationError = "";/);
-    assert.match(change, /cityModalError = "";\s*syncCityModal\(\);\s*renderFavorites\(\);/);
+    assert.match(change, /cityModalError = "";\s*if \(onboardingWizardRoot\) syncOnboardingWizardUi\(\);\s*else syncCityModal\(\);\s*renderFavorites\(\);/);
     assert.match(code, /const CITY_REQUEST_TIMEOUT_MS = 15000;/);
     assert.match(code, /new WeatherApiError\("Request timed out", \{ kind: "timeout" \}\)/);
     assert.doesNotMatch(code, /The request took too long/);
