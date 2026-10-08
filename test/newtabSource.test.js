@@ -948,7 +948,10 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     // Size radiogroup: one shared control, values 1x1|2x1|2x2, shown as 1×1 / 2×1 / 2×2.
     assert.match(code, /const SIZE_OPTIONS = \[\s*\["1x1", "1×1"\],\s*\["2x1", "2×1"\],\s*\["2x2", "2×2"\]\s*\];/);
     assert.match(fn(code, "createSizeControl"), /createSegmentedControl\("size", SIZE_OPTIONS,/);
-    assert.match(fn(code, "createFavoriteForm"), /if \(isEdit\) rows\.push\(createFormRow\("Size", createSizeControl\(displayedSize\(item\)\)\)\);/);
+    assert.match(
+      fn(code, "createFavoriteForm"),
+      /rows\.push\(\s*createFormRow\("Size", createSizeControl\(isEdit \? displayedSize\(item\) : \{ w: 1, h: 1 \}\)\)\s*\);/
+    );
     // Both favorite-form branches carry the role=alert slot (the edit dialog had none before Task 10).
     assert.match(fn(code, "createFavoriteForm"), /form\.append\(\.\.\.rows, createDialogErrorSlot\(\), footer\);/);
     assert.match(fn(code, "createDialogErrorSlot"), /error\.setAttribute\("role", "alert"\);\s*error\.dataset\.dialogError = "";/);

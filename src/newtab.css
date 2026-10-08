@@ -352,6 +352,7 @@ button.weather-tile {
 .favorite-tile[data-h="2"][data-w="2"] .favorite-letter {
   width: 40px;
   height: 40px;
+  align-self: center;
 }
 
 /* .status sets display: -webkit-box, which would otherwise defeat [hidden]. */
