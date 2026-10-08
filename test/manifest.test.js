@@ -18,7 +18,8 @@ describe("manifest", () => {
     assert.deepEqual(manifest.host_permissions, [
       "https://api.open-meteo.com/*",
       "https://air-quality-api.open-meteo.com/*",
-      "https://geocoding-api.open-meteo.com/*"
+      "https://geocoding-api.open-meteo.com/*",
+      "https://nominatim.openstreetmap.org/*"
     ]);
   });
 
