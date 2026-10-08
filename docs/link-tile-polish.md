@@ -14,12 +14,14 @@ Owner decision (2026-10-07): combine ideas 2 and 3 into a single run (no separat
 
 | Date | Raw note (owner) | Verdict | Reference |
 |------|------------------|---------|-----------|
-| 2026-10-07 | Restore Size on Add link; center 2×2 tile icon. | `confirmed` | `src/newtab.js:443` comment "add dialog adds 1×1"; `src/newtab.css:266-272` 2×2 `align-items: flex-start`. |
+| 2026-10-07 | Restore Size on Add link; center 2×2 tile icon. | `confirmed` | `src/newtab.js:454` comment "add dialog adds 1×1"; `src/newtab.css:266-272` 2×2 `align-items: flex-start`. |
 
-## Current behaviour (`main` at `43474f0`)
+## Current behaviour (`main` @ `7f6f69d`)
 
-- **Add link** (`createFavoriteForm(null)`): rows Link, Name, Icon, Custom icon, Color — **no Size row**. Submit uses `readFavoriteFormPayload` only; `addFavorite` gets default grid **1×1** from placement (`src/newtab.js:1281-1299`).
-- **Edit link** includes Size (`createSizeControl`, `readSize` on submit) (`src/newtab.js:1304-1313`).
+Baseline for this spec is the current `main` HEAD at stage 1 review (after onboarding-wizard merge). Re-check line numbers if `main` moves before implementation.
+
+- **Add link** (`createFavoriteForm(null)`): rows Link, Name, Icon, Custom icon, Color — **no Size row** (`src/newtab.js:453-454`, Size only when `isEdit`). Submit uses `readFavoriteFormPayload` only (`src/newtab.js:1661-1666`); `addFavorite` gets default grid **1×1** from placement (`widgetsService.addFavorite`, default `w`/`h`).
+- **Edit link** includes Size (`createSizeControl`, `readSize` on submit) (`src/newtab.js:1688-1689`).
 - **2×2 tile** (`data-w="2"[data-h="2"]`): `flex-direction: column; align-items: flex-start`; icon sits left while text is full width (`src/newtab.css:266-285`, `:351-355`).
 
 ## Default decisions (owner can override)
@@ -32,7 +34,7 @@ Owner decision (2026-10-07): combine ideas 2 and 3 into a single run (no separat
 
 - `src/newtab.js`: `createFavoriteForm` add path; `add-link` submit handler.
 - `src/newtab.css`: 2×2 icon alignment (e.g. `align-self: center` on icon, or `align-items: center` on column with text `width: 100%`).
-- Unit tests: optional pin that add form includes Size; layout tests if any exist for favorites.
+- Unit tests: **required** update to `test/newtabSource.test.js` pin(s) so Add link includes the Size row (default 1×1) and add-link submit uses `readSize` like edit-link; additional DOM asserts optional if `dg-61` covers AS-LP-01/02.
 - E2E: new `dg-61-link-tile-polish.mjs` (AS-LP-01..03). Touch `dg-*` add-link scenarios only if they assert row count — list in run record if changed.
 - Docs: `CHANGELOG.md` one line under `[Unreleased]`; no architecture change unless a one-sentence tile layout note is warranted.
 
@@ -66,7 +68,7 @@ Full UI pipeline (smaller scope; checkpoint may be lighter per plan). Branches: 
 - Verified by: E2E `dg-61` group 2.
 
 ### AS-LP-03 2×2 favorite icon is horizontally centered
-- Given: a 2×2 favorite on the grid.
+- Given: a 2×2 favorite on the grid (E2E may seed one favorite with `grid: { w: 2, h: 2 }` in sync storage, or create via Add link with Size 2×2 after Task 1).
 - When: comparing icon center x to tile center x.
 - Then: within ±1 px; label block still left-aligned.
 - Verified by: E2E `dg-61` group 3.
