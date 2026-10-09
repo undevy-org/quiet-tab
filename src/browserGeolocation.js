@@ -67,7 +67,7 @@ export function getBrowserPosition({
         timeout: 12000
       });
     } catch {
-      settle(reject, new BrowserLocationError("Geolocation failed", { code: "unavailable" }));
+      settle(reject, new BrowserLocationError("Geolocation failed", { code: "unsupported" }));
     }
   });
 }

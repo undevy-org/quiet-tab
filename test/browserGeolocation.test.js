@@ -80,7 +80,7 @@ describe("getBrowserPosition", () => {
     );
   });
 
-  it("rejects unavailable when getCurrentPosition throws synchronously", async () => {
+  it("rejects unsupported when getCurrentPosition throws synchronously", async () => {
     const geolocation = {
       getCurrentPosition() {
         throw new Error("boom");
@@ -89,7 +89,7 @@ describe("getBrowserPosition", () => {
 
     await assert.rejects(
       () => getBrowserPosition({ geolocation }),
-      (error) => error instanceof BrowserLocationError && error.code === "unavailable"
+      (error) => error instanceof BrowserLocationError && error.code === "unsupported"
     );
   });
 
