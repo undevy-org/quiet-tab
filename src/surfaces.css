@@ -103,6 +103,11 @@
   opacity: var(--control-disabled-opacity);
 }
 
+.city-location-link[aria-disabled="true"] {
+  text-decoration: none;
+  cursor: default;
+}
+
 .city-location-link:focus-visible {
   background: var(--soft-fill-strong);
   box-shadow: 0 0 0 2px var(--focus-overlay-ring);

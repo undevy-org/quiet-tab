@@ -34,7 +34,9 @@ import {
 } from "./widgetsStore.js";
 import { placeTooltip } from "./widgetsLayout.js";
 import { MAX_FAVORITE_WIDGETS, NEWER_WIDGETS_MESSAGE, weatherMetricKey } from "./widgetsShared.js";
-import { searchCities, WeatherApiError, weatherErrorMessage } from "./weatherApi.js";
+import { getBrowserPosition, BrowserLocationError } from "./browserGeolocation.js";
+import { locationErrorMessage, roundCoordinate } from "./cityLocation.js";
+import { reverseGeocodeCoordinates, searchCities, WeatherApiError, weatherErrorMessage } from "./weatherApi.js";
 import { createWeatherService } from "./weatherService.js";
 import { onboardingWizardPossible, shouldShowOnboardingWizard } from "./cityPrompt.js";
 import {
@@ -266,6 +268,13 @@ let cityModalRoot = null;
 let cityModalOpener = null; // selector of the control that opened it, looked up again at close time
 let cityModalError = "";
 let locationStatusNode = null;
+let locating = false;
+let locationAbortController = null;
+let locationStatusFrame = 0;
+let locationReverseTimer = 0;
+const LOCATION_LINK_LABEL = "use your location";
+const LOCATION_BUSY_LABEL = "Finding your location…";
+const LOCATION_REVERSE_TIMEOUT_MS = 8000;
 let cityModalOpenedAt = 0;
 let cityModalHadFocus = false; // D14: focus was inside the modal at some point since it opened
 const CITY_MODAL_BACKDROP_GUARD_MS = 300;
@@ -889,6 +898,7 @@ function createCityForm(mode, location) {
   input.addEventListener("input", () => {
     chosenCity = null; // editing drops the remembered choice
     clearCityError();
+    if (locationStatusNode) locationStatusNode.textContent = "";
   });
 
   input.addEventListener("keydown", (event) => {
@@ -978,17 +988,167 @@ function cityFormHostRoot() {
   return cityModalRoot ?? onboardingWizardRoot;
 }
 
+function cancelLocationStatusFrame() {
+  if (locationStatusFrame) {
+    cancelAnimationFrame(locationStatusFrame);
+    locationStatusFrame = 0;
+  }
+}
+
+function clearLocationStatus() {
+  cancelLocationStatusFrame();
+  if (locationStatusNode) locationStatusNode.textContent = "";
+}
+
+function abortLocationLookup() {
+  clearTimeout(locationReverseTimer);
+  locationReverseTimer = 0;
+  locationAbortController?.abort();
+  locationAbortController = null;
+}
+
+function teardownLocationLookup() {
+  abortLocationLookup();
+  if (!locating) return;
+  locating = false;
+  weatherBusy = false;
+  clearLocationStatus();
+}
+
+function focusLocationLink() {
+  const link = cityFormHostRoot()?.querySelector('[data-weather-action="use-location"]');
+  if (link instanceof HTMLElement) link.focus();
+}
+
+function syncLocationLink(host) {
+  const link = host.querySelector('[data-weather-action="use-location"]');
+  if (!(link instanceof HTMLButtonElement)) return;
+  if (locating) {
+    link.textContent = LOCATION_BUSY_LABEL;
+    link.setAttribute("aria-disabled", "true");
+  } else {
+    link.textContent = LOCATION_LINK_LABEL;
+    link.removeAttribute("aria-disabled");
+  }
+}
+
+function syncCityModalUi() {
+  if (onboardingWizardRoot) syncOnboardingWizardUi();
+  else syncCityModal();
+}
+
+async function useMyLocation(variant) {
+  if (weatherBusy || locating || !weatherService) return;
+  const attemptGeneration = weatherFormGeneration;
+
+  weatherBusy = true;
+  locating = true;
+  cityModalError = "";
+  clearLocationStatus();
+  activeCityForm?.cancelPending();
+  weatherUi = hideSuggestions(weatherUi);
+  activeCityForm?.renderSuggestions();
+
+  locationAbortController = new AbortController();
+  const { signal } = locationAbortController;
+  locationReverseTimer = setTimeout(() => locationAbortController?.abort(), LOCATION_REVERSE_TIMEOUT_MS);
+
+  syncCityModalUi();
+
+  cancelLocationStatusFrame();
+  locationStatusFrame = requestAnimationFrame(() => {
+    locationStatusFrame = 0;
+    if (!locating || attemptGeneration !== weatherFormGeneration || !locationStatusNode) return;
+    locationStatusNode.textContent = LOCATION_BUSY_LABEL;
+  });
+
+  const stillValid = () => locating && attemptGeneration === weatherFormGeneration;
+
+  const finishAttempt = () => {
+    locating = false;
+    weatherBusy = false;
+    abortLocationLookup();
+    clearLocationStatus();
+    syncCityModalUi();
+  };
+
+  try {
+    let position;
+    try {
+      position = await getBrowserPosition();
+    } catch (error) {
+      if (!stillValid()) return;
+      const code = error instanceof BrowserLocationError ? error.code : "unavailable";
+      cityModalError = locationErrorMessage(variant, { source: "position", code });
+      finishAttempt();
+      focusLocationLink();
+      return;
+    }
+    if (!stillValid()) return;
+
+    const latitude = roundCoordinate(position.latitude);
+    const longitude = roundCoordinate(position.longitude);
+
+    let city;
+    try {
+      city = await reverseGeocodeCoordinates(latitude, longitude, { signal });
+    } catch (error) {
+      if (!stillValid()) return;
+      const kind = error instanceof WeatherApiError ? error.kind : "unknown";
+      cityModalError = locationErrorMessage(variant, { source: "reverse", kind });
+      finishAttempt();
+      focusLocationLink();
+      return;
+    }
+    if (!stillValid()) return;
+
+    finishAttempt();
+    if (attemptGeneration !== weatherFormGeneration) return;
+
+    try {
+      const label = cityDisplayLabel({ name: city.name, country: city.country });
+      activeCityForm?.choose({
+        name: city.name,
+        country: city.country,
+        latitude: city.latitude,
+        longitude: city.longitude,
+        label
+      });
+      activeCityForm?.caretToEnd();
+      if (locationStatusNode) locationStatusNode.textContent = `Location found: ${label}`;
+    } catch {
+      if (attemptGeneration !== weatherFormGeneration) return;
+      cityModalError = locationErrorMessage(variant, { source: "position", code: "unavailable" });
+      syncCityModalUi();
+      focusLocationLink();
+    }
+  } finally {
+    clearTimeout(locationReverseTimer);
+    locationReverseTimer = 0;
+    if (attemptGeneration === weatherFormGeneration && locating) {
+      locating = false;
+      weatherBusy = false;
+      abortLocationLookup();
+      clearLocationStatus();
+      syncCityModalUi();
+    }
+  }
+}
+
 function syncCityModal() {
   const host = cityFormHostRoot();
   if (!host) return;
   for (const control of host.querySelectorAll("input, button")) {
-    if (control.dataset.weatherAction !== "select-city") control.disabled = weatherBusy;
+    if (control.dataset.weatherAction === "select-city") continue;
+    const isLocateLink = control.dataset.weatherAction === "use-location";
+    control.disabled = weatherBusy && !(locating && isLocateLink);
   }
+  syncLocationLink(host);
   activeCityForm?.refresh();
   if (!onboardingWizardRoot) {
-    host.querySelector('[role="dialog"]')?.setAttribute("aria-busy", String(weatherBusy));
+    host.querySelector('[role="dialog"]')?.setAttribute("aria-busy", String(weatherBusy && !locating));
   }
-  if (weatherBusy && onboardingWizardRoot && onboardingStep === 1) {
+  if (weatherBusy && !locating && onboardingWizardRoot && onboardingStep === 1) {
     const title = onboardingWizardRoot.querySelector("#onboarding-step1-title");
     const active = document.activeElement;
     const focusLeftWizard =
@@ -1017,7 +1177,14 @@ function attachCityModalListeners(root) {
 
   root.addEventListener("click", (event) => {
     const target = event.target instanceof Element ? event.target : null;
-    if (!target || weatherBusy) return;
+    if (!target) return;
+    const locateLink = target.closest('[data-weather-action="use-location"]');
+    if (locateLink instanceof HTMLElement) {
+      if (locateLink.getAttribute("aria-disabled") === "true" || weatherBusy && !locating) return;
+      void useMyLocation("change");
+      return;
+    }
+    if (weatherBusy) return;
     // The second click of a double click on an item lands on what was under the popover: the backdrop or a covered button
     // (for Save the submit is cancelled too). A keyboard activation (detail 0) is never such a click: Enter on Save saves.
     if (
@@ -1055,6 +1222,7 @@ function attachCityModalListeners(root) {
     if (!(form instanceof HTMLFormElement) || form.dataset.weatherForm !== "city") return;
     event.preventDefault();
     if (weatherBusy || !weatherService) return;
+    if (locationStatusNode) locationStatusNode.textContent = "";
     const cityName = String(new FormData(form).get("city") ?? "").trim();
     if (!cityName) {
       cityModalError = "Enter a city name";
@@ -1132,6 +1300,7 @@ function showCityModal(mode, openerSelector) {
 function hideCityModal() {
   if (!cityModalRoot) return;
   const mode = cityModalMode(weatherUi);
+  teardownLocationLookup();
   activeCityForm?.cancelPending();
   activeCityForm?.dispose?.();
   activeCityForm = null;
@@ -1239,7 +1408,7 @@ function syncOnboardingWizardUi() {
   onboardingWizardRoot.querySelectorAll('[data-onboarding-step="2"] input[type="checkbox"]').forEach((box) => {
     if (box instanceof HTMLInputElement) box.disabled = finishBusy;
   });
-  if (dialog) dialog.setAttribute("aria-busy", String(weatherBusy || finishBusy));
+  if (dialog) dialog.setAttribute("aria-busy", String((weatherBusy && !locating) || finishBusy));
 }
 
 function onboardingBackdropAllowed() {
@@ -1403,6 +1572,12 @@ function attachOnboardingWizardListeners(root) {
       else void finishOnboardingWizard();
       return;
     }
+    const locateLink = target.closest('[data-weather-action="use-location"]');
+    if (locateLink instanceof HTMLElement) {
+      if (locateLink.getAttribute("aria-disabled") === "true" || weatherBusy && !locating) return;
+      void useMyLocation("onboarding");
+      return;
+    }
     if (weatherBusy) return;
     const suggestion = target.closest('[data-weather-action="select-city"]');
     if (suggestion instanceof HTMLElement) {
@@ -1420,6 +1595,7 @@ function attachOnboardingWizardListeners(root) {
     if (!(form instanceof HTMLFormElement) || form.dataset.weatherForm !== "city" || onboardingStep !== 1) return;
     event.preventDefault();
     if (weatherBusy || !weatherService) return;
+    if (locationStatusNode) locationStatusNode.textContent = "";
     const cityName = String(new FormData(form).get("city") ?? "").trim();
     if (!cityName) {
       cityModalError = "Enter a city name";
@@ -1448,6 +1624,7 @@ function attachOnboardingWizardListeners(root) {
 function hideOnboardingWizard({ completed = false } = {}) {
   if (!onboardingWizardRoot) return;
   const focusWasInside = onboardingWizardHadFocus || onboardingWizardRoot.contains(document.activeElement);
+  teardownLocationLookup();
   activeCityForm?.cancelPending();
   activeCityForm?.dispose?.();
   activeCityForm = null;
