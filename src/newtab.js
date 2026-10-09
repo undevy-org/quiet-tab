@@ -1049,10 +1049,6 @@ async function useMyLocation(variant) {
   weatherUi = hideSuggestions(weatherUi);
   activeCityForm?.renderSuggestions();
 
-  locationAbortController = new AbortController();
-  const { signal } = locationAbortController;
-  locationReverseTimer = setTimeout(() => locationAbortController?.abort(), LOCATION_REVERSE_TIMEOUT_MS);
-
   syncCityModalUi();
 
   cancelLocationStatusFrame();
@@ -1091,6 +1087,12 @@ async function useMyLocation(variant) {
 
     let city;
     try {
+      locationAbortController = new AbortController();
+      const { signal } = locationAbortController;
+      locationReverseTimer = setTimeout(
+        () => locationAbortController?.abort(),
+        LOCATION_REVERSE_TIMEOUT_MS
+      );
       city = await reverseGeocodeCoordinates(latitude, longitude, { signal });
     } catch (error) {
       if (!stillValid()) return;
