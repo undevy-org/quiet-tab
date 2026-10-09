@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Use your location** in the first-run wizard (step 1) and the change-mode city modal: tap the link to
+  fill the city field from the browser position (Continue/Save still required). E2E: `dg-62-use-my-location.mjs`.
+- Host permission for Nominatim (`nominatim.openstreetmap.org`) for reverse geocoding on that tap only.
 - Add link dialog includes a Size row (default 1×1); 2×2 link tiles center the favicon or letter
   horizontally while labels stay left-aligned. E2E: `dg-61-link-tile-polish.mjs`.
 - First-run onboarding wizard: two steps (city, then starter links), progress pills, and

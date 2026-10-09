@@ -29,7 +29,7 @@ Nit 3 of the verification (the permanent blank strip of about 55 px between the 
    | 320 and 360 | 264 | 304 | 296 → 338 |
    | 400 | 238 | 277 | 270 → 312 |
 
-   (needed height = content + 2 px border + 2 × 16 px viewport margin.) Change mode has no description and is 213 px tall; it fits at 320×280 and is not affected.
+   (needed height = content + 2 px border + 2 × 16 px viewport margin.) Change mode now has the description line from run #20 (`Search for a city or use your location.`); measured thresholds in `dg-48` still fit at 320×280 at rest (see the amended status above). Historical first-run numbers in this table predate the wizard subtitle change.
 2. **When it does not fit, the dialog scrolls and the buttons are the first thing cut.** `placePopover` (`src/newtab.js` :651-668) adds `city-modal__dialog--scroll` (`max-height: calc(100vh - 2 * var(--viewport-margin)); overflow-y: auto`, `surfaces.css` :61-64) when `dialog height > innerHeight - 2 * VIEWPORT_MARGIN`. The scroll box starts at the top (`scrollTop` 0) and first-run does not focus the field, so nothing scrolls the buttons into view. The buttons sit at the end of the content, below the reserved block.
 
    Measured at rest, first-run, no error (button bottom against the dialog's bottom edge):
