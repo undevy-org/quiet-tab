@@ -25,7 +25,9 @@ forecast cache and a per-device "city prompt dismissed" flag persist to
 | `src/favoritesShared.js` | Shared favorites constants (icon modes, color sources, tile sizes) and helpers. |
 | `src/favoriteIcon.js` | Chooses a favicon, custom image, or letter icon for a tile. |
 | `src/favoriteColor.js` | Derives a tile's accent color from its domain or a sampled icon. |
-| `src/weatherApi.js` | Calls Open-Meteo's forecast, air-quality, and geocoding endpoints, normalizes responses, maps UV index and US AQI values to scale labels, and classifies failures (`details.kind`) into fixed user-facing texts via `weatherErrorMessage`. |
+| `src/browserGeolocation.js` | Wraps `navigator.geolocation.getCurrentPosition` with a deadline race and maps failures to `BrowserLocationError` codes (`denied`, `unavailable`, `timeout`, `unsupported`). |
+| `src/cityLocation.js` | Pure helpers: `roundCoordinate` (two decimals) and `locationErrorMessage` for the wizard and change-modal locate flow. |
+| `src/weatherApi.js` | Calls Open-Meteo's forecast, air-quality, and geocoding endpoints, reverse-geocodes coordinates via Nominatim (`reverseGeocodeCoordinates`), normalizes responses, maps UV index and US AQI values to scale labels, and classifies failures (`details.kind`) into fixed user-facing texts via `weatherErrorMessage`. |
 | `src/weatherStore.js` | Validates, reads, and writes the chosen location and the forecast cache, and reads/writes the per-device city-prompt-dismissed flag. |
 | `src/cityPrompt.js` | Pure rules for whether the onboarding wizard may open on this page load (`onboardingWizardPossible` / `shouldShowOnboardingWizard`). |
 | `src/onboardingWizard.js` / `src/onboardingStore.js` | First-run two-step wizard (city, then starter links) and the `quietTabOnboardingWizardComplete` local flag. |
@@ -211,7 +213,10 @@ the forecast arrives. A 2-wide tile shows the primary and secondary values, a
    into a fixed calm text, so `result.error` and the city modal's error slot never
    hold a browser or developer message.
 4. Setting a city, from the city modal, geocodes the typed name (Open-Meteo returns English place
-   names), stores the resolved location, and fetches a fresh forecast. Choosing a
+   names), stores the resolved location, and fetches a fresh forecast. **Use your location** (wizard
+   step 1 and change mode only) asks the browser for a position, rounds it, reverse-geocodes via
+   Nominatim, and fills the field through the same suggestion-choose path; nothing is stored until
+   Continue or Save. Choosing a
    suggestion only fills the field; Save then stores that city without a geocoding
    request (editing the text drops the choice, so Save geocodes it instead). The
    modal is opened by the hint tile, by the weather edit dialog's city-field (a single
@@ -383,5 +388,6 @@ Public spec: [`docs/design-system.md`](design-system.md) (phase 1: controls + su
   reads as an empty grid, and a malformed location or cache reads as unset; on
   write, invalid state is rejected with an error.
 - The extension has no content scripts, remote code, background worker, or
-  broad host permissions; its only host access is Open-Meteo's three public
-  endpoints.
+  broad host permissions; host access is Open-Meteo's three public endpoints and
+  Nominatim (`nominatim.openstreetmap.org`) for reverse geocoding when the user
+  activates **use your location**.

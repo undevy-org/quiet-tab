@@ -740,16 +740,17 @@ describe("newtab onboarding wizard boot source", () => {
     const sync = functionBody(code, "syncOnboardingWizardUi");
     const citySync = sync.indexOf("syncCityModal();");
     const finishBusy = sync.indexOf("const finishBusy = favoritesBusy && onboardingStep === 2;");
-    const ariaBusy = sync.indexOf('dialog.setAttribute("aria-busy", String(weatherBusy || finishBusy));');
+    const ariaBusy = sync.indexOf('dialog.setAttribute("aria-busy", String((weatherBusy && !locating) || finishBusy));');
     assert.ok(citySync > 0 && finishBusy > citySync && ariaBusy > finishBusy, "city sync, then finish busy");
     const cityModalSync = functionBody(code, "syncCityModal");
+    assert.match(cityModalSync, /weatherBusy && !locating/);
     assert.match(cityModalSync, /if \(!onboardingWizardRoot\) \{\s*host\.querySelector\('\[role="dialog"\]'\)\?\.setAttribute\("aria-busy"/);
   });
 
   it("keeps step-1 focus on the title while the city request runs", async () => {
     const code = await source();
     const sync = functionBody(code, "syncCityModal");
-    assert.match(sync, /weatherBusy && onboardingWizardRoot && onboardingStep === 1/);
+    assert.match(sync, /weatherBusy && !locating && onboardingWizardRoot && onboardingStep === 1/);
     assert.match(sync, /#onboarding-step1-title/);
     const trap = functionBody(code, "tabTrapFocusables");
     assert.match(trap, /controls\.length === 0[\s\S]*onboardingWizardRoot[\s\S]*#onboarding-step1-title/);
@@ -991,7 +992,11 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
 
   it("Task 10: onboarding step 1 copy mentions skipping the city for now", async () => {
     const code = await source();
-    assert.match(code, /Enter a city, or skip for now\./);
+    assert.match(code, /append\("Enter a city, ", link, ", or skip for now\.", status\)/);
+    assert.match(code, /append\("Search for a city or ", link, "\.", status\)/);
+    assert.match(code, /dataset\.weatherAction = "use-location"/);
+    assert.match(code, /dataset\.cityLocationStatus/);
+    assert.match(code, /function createCityLocationDescription/);
     assert.doesNotMatch(code, /later in Widgets/);
   });
 

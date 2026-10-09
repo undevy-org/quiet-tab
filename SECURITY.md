@@ -23,4 +23,5 @@ Relevant areas for this extension:
 
 The extension has no backend, no content scripts, no remote code, and no
 broad host permissions; it only reads Open-Meteo's public, keyless weather,
-air-quality, and geocoding endpoints.
+air-quality, and geocoding endpoints, and Nominatim (OpenStreetMap) for
+reverse geocoding when the user activates **use your location**.

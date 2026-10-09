@@ -2,21 +2,30 @@
 
 ## Data Sent
 
-The extension sends requests only to Open-Meteo's public, keyless APIs, to
-fetch weather for the city you choose:
+The extension sends requests to Open-Meteo's public, keyless APIs to fetch weather
+for the city you choose, and may send one reverse-geocoding request per activation
+of **use your location** in the city flows:
 
 ```text
 https://api.open-meteo.com/v1/forecast
 https://air-quality-api.open-meteo.com/v1/air-quality
 https://geocoding-api.open-meteo.com/v1/search
+https://nominatim.openstreetmap.org/reverse
 ```
 
 The city name you type is sent to Open-Meteo's geocoding endpoint to resolve
-coordinates. No other request is made by this extension.
+coordinates. When you tap **use your location**, the extension asks the browser
+for your position (`navigator.geolocation`, Chrome's own permission prompt). Only
+after you allow it, the rounded coordinates (two decimal places, about 1 km) are
+sent once to Nominatim (OpenStreetMap) to resolve a city name. Weather requests
+then use the stored rounded coordinates, as before. Nominatim and Open-Meteo see
+your IP address on those HTTPS requests, like any public API.
 
 For favorites, the extension may ask Chromium for a site's favicon through
 the Manifest V3 `_favicon` endpoint. Custom image URLs, if configured by the
 user, are loaded by the new tab page so they can be displayed as tile icons.
+
+Location data is not sold or used for advertising.
 
 ## Data Stored
 
@@ -29,7 +38,8 @@ browser profile only:
 
 The extension stores the following in `chrome.storage.sync`:
 
-- the weather city you chose (its name, country, and coordinates);
+- the weather city you chose (its name, country, and your rounded coordinates
+  from typing, choosing a suggestion, or **use your location**);
 - your favorite links' saved URLs;
 - labels;
 - domains;
@@ -51,8 +61,14 @@ locally, just without cross-device propagation.
 
 There is no background polling and no scheduled network activity. A weather
 request happens only when a new tab opens with a stale cache and a chosen city, or
-when you explicitly change the city.
+when you explicitly change the city. A Nominatim request happens only when you
+activate **use your location** and the browser returns a position.
 
 Removing the extension through the browser's extension manager removes its
 local extension storage according to the browser's normal extension-data
 behavior.
+
+## OpenStreetMap
+
+City names from **use your location** come from OpenStreetMap data via
+[Nominatim](https://nominatim.openstreetmap.org/). © OpenStreetMap contributors.

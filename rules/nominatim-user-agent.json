@@ -1,0 +1,21 @@
+[
+  {
+    "id": 1,
+    "priority": 1,
+    "action": {
+      "type": "modifyHeaders",
+      "requestHeaders": [
+        {
+          "header": "user-agent",
+          "operation": "set",
+          "value": "QuietTab (+https://github.com/undevy-org/quiet-tab)"
+        }
+      ]
+    },
+    "condition": {
+      "urlFilter": "||nominatim.openstreetmap.org^",
+      "domainType": "thirdParty",
+      "resourceTypes": ["xmlhttprequest", "other"]
+    }
+  }
+]

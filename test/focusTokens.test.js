@@ -84,7 +84,8 @@ describe("no focus rule hides the outline without a visible replacement (fix wav
     ".city-modal :is(button, input, .weather-form__suggestion):focus-visible": [
       ".city-modal .favorite-input:focus-visible",
       ".city-modal .button:focus-visible,\n.city-modal .icon-button:focus-visible",
-      ".city-modal .weather-form__suggestion:focus-visible"
+      ".city-modal .weather-form__suggestion:focus-visible",
+      ".city-location-link:focus-visible"
     ]
   };
   it("every :focus-visible rule with a transparent outline draws a box-shadow ring or is a listed base rule", () => {

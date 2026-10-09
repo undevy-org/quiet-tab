@@ -10,7 +10,7 @@ describe("city modal error feedback", () => {
     const code = await read("newtab.js");
     // AS-MO-17: after the slot is emptied the dialog height changed, so the list placement runs again (no resize event needed).
     assert.match(code, /function clearCityError\(\) \{\s*cityModalError = "";\s*errorNode\.textContent = "";\s*errorNode\.hidden = true;\s*placePopover\(\);\s*\}/);
-    assert.match(code, /input\.addEventListener\("input", \(\) => \{\s*chosenCity = null;[^\n]*\n\s*clearCityError\(\);\s*\}\);/);
+    assert.match(code, /input\.addEventListener\("input", \(\) => \{\s*chosenCity = null;[^\n]*\n\s*clearCityError\(\);[\s\S]*?\}\);/);
     assert.match(code, /clear\.addEventListener\("click", \(\) => \{[^}]*clearCityError\(\);/);
   });
 

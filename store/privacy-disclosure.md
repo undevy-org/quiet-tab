@@ -17,9 +17,11 @@ local weather panel.
 - `favicon`: displays each favorite's site favicon via the Manifest V3
   `_favicon` endpoint.
 - Host permissions (`api.open-meteo.com`, `air-quality-api.open-meteo.com`,
-  `geocoding-api.open-meteo.com`): fetch weather, air quality, and city
-  coordinates for the city the user sets. All three are Open-Meteo's
-  public, keyless APIs — no API key or account is involved.
+  `geocoding-api.open-meteo.com`, `nominatim.openstreetmap.org`): fetch
+  weather, air quality, and city coordinates for the city the user sets, and
+  reverse-geocode rounded coordinates when the user taps **use your location**
+  in the city flows. Open-Meteo's endpoints are public and keyless — no API
+  key or account. Nominatim is OpenStreetMap's reverse-geocoding service.
 
 ## Remote code
 
@@ -27,7 +29,8 @@ No. The extension ships no `eval`/`new Function`/`document.write`, and the
 only `<script>` tag in `src/newtab.html` loads a local, packaged file
 (`./newtab.js`) — nothing is loaded from a remote host. All host-permission
 network requests (`api.open-meteo.com`, `air-quality-api.open-meteo.com`,
-`geocoding-api.open-meteo.com`) fetch JSON data only, never executable code.
+`geocoding-api.open-meteo.com`, `nominatim.openstreetmap.org`) fetch JSON data
+only, never executable code.
 Answer "No, I am not using Remote code" — no justification field needed.
 
 ## Data usage disclosure
@@ -37,14 +40,16 @@ Answer "No, I am not using Remote code" — no justification field needed.
 - **Financial and payment information:** not collected.
 - **Authentication information:** not collected.
 - **Personal communications:** not collected.
-- **Location:** the city name the user types is sent to Open-Meteo's
-  geocoding API to resolve coordinates for the weather request, and the
-  resolved city (name, country, coordinates) is stored in
+- **Location:** when the user types a city, the name goes to Open-Meteo's
+  geocoding API; when the user taps **use your location**, the browser's
+  geolocation API runs only for that tap (Chrome's permission prompt), and
+  rounded coordinates are sent once to Nominatim to resolve a city name.
+  The chosen city (name, country, rounded coordinates) is stored in
   `chrome.storage.sync`, so Chrome's own sync carries it to the user's other
-  signed-in browsers. No browser geolocation API is used; the extension
-  never reads the device's actual location. Declare as: location data
-  limited to a user-chosen city, used only to fetch weather, never sold or
-  used for advertising.
+  signed-in browsers. Weather requests use those stored coordinates.
+  Declare as: location data used only to show weather for the city the user
+  chose, never sold or used for advertising; OpenStreetMap data via Nominatim
+  when **use your location** is used.
 - **Web history:** not collected.
 - **User activity:** not collected.
 - **Website content:** favorite URLs/labels the user explicitly saves are

@@ -2,6 +2,8 @@
 
 ## Status
 
+**Amended (run #20, use-my-location):** wizard step 1 description is one text line taller (`use your location` link). At 320 px width, Skip/Continue are visible at rest from **290 px** viewport height upward (was 280 px). Change-mode thresholds unchanged at 320×280 in dg-48 (description adds lines but dialog still fits). See `dg-48-city-modal-low-window.mjs` pairs.
+
 **Superseded in part by `docs/modal-overlay-design.md`** (permanent feedback reserve removed; AS-MO-13/14/17). AS-LW-01 is rewritten as AS-MO-13; AS-LW-02, AS-LW-03, AS-LW-04 (reserve, compact, error in a compact window) are retired; the list-order part of AS-LW-06 is restated without reserve numbers; AS-LW-05 is satisfied by the updated docs.
 
 `implemented` (merged in `55bbc07`; independent review 1 applied, re-review passed; see `low-window-spec-review.md`). Amended by `docs/dialog-threshold-jump.md`: the reserve is given up continuously, not all at once (Default decisions 1 to 3, AS-LW-03 numbers, the accepted exception and the "fit threshold" Review focus item below).
@@ -27,7 +29,7 @@ Nit 3 of the verification (the permanent blank strip of about 55 px between the 
    | 320 and 360 | 264 | 304 | 296 → 338 |
    | 400 | 238 | 277 | 270 → 312 |
 
-   (needed height = content + 2 px border + 2 × 16 px viewport margin.) Change mode has no description and is 213 px tall; it fits at 320×280 and is not affected.
+   (needed height = content + 2 px border + 2 × 16 px viewport margin.) Change mode now has the description line from run #20 (`Search for a city or use your location.`); measured thresholds in `dg-48` still fit at 320×280 at rest (see the amended status above). Historical first-run numbers in this table predate the wizard subtitle change.
 2. **When it does not fit, the dialog scrolls and the buttons are the first thing cut.** `placePopover` (`src/newtab.js` :651-668) adds `city-modal__dialog--scroll` (`max-height: calc(100vh - 2 * var(--viewport-margin)); overflow-y: auto`, `surfaces.css` :61-64) when `dialog height > innerHeight - 2 * VIEWPORT_MARGIN`. The scroll box starts at the top (`scrollTop` 0) and first-run does not focus the field, so nothing scrolls the buttons into view. The buttons sit at the end of the content, below the reserved block.
 
    Measured at rest, first-run, no error (button bottom against the dialog's bottom edge):
