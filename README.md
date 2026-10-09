@@ -51,7 +51,9 @@ The manifest requests only:
   Sync, and a short-lived weather cache and one prompt flag locally;
 - `favicon` to display site favicons on link tiles;
 - host access to Open-Meteo's forecast, air-quality, and geocoding
-  endpoints to fetch weather for the city you choose.
+  endpoints to fetch weather for the city you choose, and to Nominatim
+  (OpenStreetMap) when you tap **use your location** to fill the city field
+  from the browser's position.
 
 Favorites and the chosen weather city are stored in `chrome.storage.sync`,
 so they follow you to any other Chromium browser signed into the same Google
@@ -62,7 +64,9 @@ first-run city prompt are stored in `chrome.storage.local`, on this browser
 profile only.
 
 There is no remote content feed of any kind — no news, no analytics, no
-telemetry. See [Privacy](docs/privacy.md) for details.
+telemetry. See [Privacy](docs/privacy.md) for details. City names from
+**use your location** use [OpenStreetMap](https://www.openstreetmap.org/copyright)
+data via Nominatim.
 
 ## Development
 
