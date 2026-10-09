@@ -2,7 +2,7 @@
 
 ## Status
 
-`draft`
+`implemented`
 
 Decision: **do it**. Owner request 2026-10-08 (pipeline stage 0, run #20 / `dg-62`): a way to fill the city field from the device location, so the user does not have to type a city on first run or when changing the city.
 
