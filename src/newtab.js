@@ -1094,7 +1094,7 @@ async function useMyLocation(variant) {
       city = await reverseGeocodeCoordinates(latitude, longitude, { signal });
     } catch (error) {
       if (!stillValid()) return;
-      const kind = error instanceof WeatherApiError ? error.kind : "unknown";
+      const kind = error instanceof WeatherApiError ? error.details?.kind : "unknown";
       cityModalError = locationErrorMessage(variant, { source: "reverse", kind });
       finishAttempt();
       focusLocationLink();
