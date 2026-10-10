@@ -390,4 +390,6 @@ Public spec: [`docs/design-system.md`](design-system.md) (phase 1: controls + su
 - The extension has no content scripts, remote code, background worker, or
   broad host permissions; host access is Open-Meteo's three public endpoints and
   Nominatim (`nominatim.openstreetmap.org`) for reverse geocoding when the user
-  activates **use your location**.
+  activates **use your location**. The `declarativeNetRequestWithHostAccess`
+  permission only lets one static rule set the identifying `User-Agent` header
+  on requests to that host.
