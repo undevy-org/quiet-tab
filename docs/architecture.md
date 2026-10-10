@@ -179,10 +179,10 @@ v3 meta the same way (newer, read-only), as a build from before the desktop grid
 does with a v2 or v3 meta. A malformed meta is left alone by the
 ensure step.
 
-Chrome assigns the extension id; `manifest.json` does not pin a `key`. Two
-separate "Load unpacked" installs from different directories therefore get
-different ids and do not share synced storage — sync between devices applies
-to installs of the same published extension.
+`manifest.json` pins the extension id with a `key` (see "Extension id" below), so
+separate "Load unpacked" installs from different directories get the same id on
+every machine. Chrome Sync still applies only to a browser signed into the same
+Google account with sync enabled; it is not a property of the id.
 
 ## Weather
 
