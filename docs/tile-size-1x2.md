@@ -82,7 +82,7 @@ Terms: **footprint** = stored `grid.w` × `grid.h` (each 1 or 2). **1×2** = `w:
 - `src/weatherTiles.js`: `tall` branch in `readyModel` / `describeWeatherMetric`.
 - `src/widgetsStore.js`: **no change** to chrome grid rule.
 - Unit tests: `test/weatherTiles.test.js` (tall precipitation/AQI); `test/newtabSource.test.js` pins for fourth size option and favorite text guard; `test/desktopLayout.test.js` optional `placeNew` for 1×2 block.
-- E2E: new scenario file (e.g. `dg-62-tile-1x2.mjs`) — Add link 1×2, Edit weather 1×2, hint at 1×2 at 1280×800; **Add link Size row at 320×800** (four segments visible); tiles lack `data-tileSize`; visual metrics on tile box and key typography (±0.5 px) against mockup.
+- E2E: new scenario file `dg-NN-tile-1x2.mjs` (the plan takes the next free number; `dg-61`…`dg-63` are taken) — Add link 1×2, Edit weather 1×2, hint at 1×2 at 1280×800; **Add link Size row at 320×800** (four segments visible); tiles lack `data-tileSize`; visual metrics on tile box and key typography (±0.5 px) against mockup.
 - Docs: `CHANGELOG.md` `[Unreleased]`; `docs/architecture.md` one sentence under Desktop grid UI (four sizes); `docs/design-system.md` Size row lists four options; this spec → `implemented` after merge.
 - Notes: mockup CSS path above; optional companion HTML archived in `.private/superpowers/mockups/2026-10-10-tile-1x2/`.
 

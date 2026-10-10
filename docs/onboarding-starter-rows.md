@@ -51,13 +51,13 @@ Each starter is `label.onboarding-wizard__row` (`src/surfaces.css`): a 20×20 na
 
 2. **Checked.** `input:checked + .onboarding-wizard__starter-surface .onboarding-wizard__starter-check`: primary fill + contrast glyph (today's checked style). The row surface keeps `var(--border)`; no primary outline (OQ-P3-6 B).
 
-3. **Unchecked: the whole row reads "off" without losing contrast.** On `input:not(:checked) + .onboarding-wizard__starter-surface`: `filter: grayscale(1)` on the surface; `opacity: 0.4` on the icon only. Label colour `var(--muted)`; the check keeps today's unchecked border token. Label and check stay above 4.5:1 and 3:1 against the surface, in light and dark. (Today's companion used `opacity: 0.4` on the whole surface; that drops the label below 4.5:1 on an enabled control.)
+3. **Unchecked: the whole row reads "off" without losing contrast.** On `input:not(:checked) + .onboarding-wizard__starter-surface`: `filter: grayscale(1)` on the surface; `opacity: 0.4` on the icon only. Label colour `var(--muted)` (checked rows: `var(--text)`); the check keeps today's unchecked border token (`--border-control`). Label and check stay above 4.5:1 and 3:1 against the surface, in light and dark (computed in spec review 2: `--muted` 5.84 / 7.30, `--border-control` 3.33 / 3.28; grayscale changes them by ≤ 0.01). (Today's companion used `opacity: 0.4` on the whole surface; that drops the label below 4.5:1 on an enabled control.)
 
-4. **Focus.** `input:focus-visible + .onboarding-wizard__starter-surface`: today's checkbox focus ring, drawn around the surface.
+4. **Focus.** `input:focus-visible + .onboarding-wizard__starter-surface`: the ring is drawn **inside** the surface, `box-shadow: inset 0 0 0 2px var(--focus-ring)` (solid, ≥ 3:1), because `.onboarding-wizard__starters` scrolls (`overflow-y: auto`, `padding: 0`) and clips anything outside a full-width row. Forced colors: `outline: 2px solid Highlight; outline-offset: -2px`.
 
 5. **Forced colors.** Under `@media (forced-colors: active)`: the check gets `border: 1px solid CanvasText`; checked → `background: Highlight` with the glyph in `HighlightText`; the focus ring uses `Highlight`.
 
-6. **Remove obsolete CSS and DOM.** Delete `.onboarding-wizard__row`, `.onboarding-wizard__row-label`, `.onboarding-wizard__preview`, `.onboarding-wizard__preview-tile`, `.onboarding-wizard__preview-icon` (and `--letter`), the `:has(> input:checked)::before` glyph and the preview-only mute rule. `test/borderContrast.test.js` pins `.onboarding-wizard__starter-check` instead of the old checkbox selector.
+6. **Remove obsolete CSS and DOM.** Delete `.onboarding-wizard__row`, `.onboarding-wizard__row-label`, `.onboarding-wizard__preview`, `.onboarding-wizard__preview-tile`, `.onboarding-wizard__preview-icon` (and `--letter`), the `:has(> input:checked)::before` glyph and the preview-only mute rule. `test/borderContrast.test.js` pins `.onboarding-wizard__starter-check` instead of the old checkbox selector (its allowlist names `.onboarding-wizard__row input[type="checkbox"]` today) and gains one unit: `--color-text-muted` against the row surface ≥ 4.5:1 in both themes.
 
 7. **Unchanged.** Starter table, default-checked set, Finish payload and behaviour, list scroll cap (~3.5 rows of `--cell-size`), tab order, `aria-label`s, Space toggles, step-2 guards.
 
@@ -67,7 +67,7 @@ Each starter is `label.onboarding-wizard__row` (`src/surfaces.css`): a 20×20 na
 - `src/surfaces.css`: new `.onboarding-wizard__starter*` rules; delete the obsolete ones (decision 6).
 - `test/borderContrast.test.js`: selector update; `test/newtabSource.test.js`: pin the new row structure and the absence of the preview.
 - `docs/onboarding-wizard.md` (in the implementation PR): decision 5 UI bullet; AS-OB-04 (row height now `--cell-size`), AS-OB-17, AS-OB-26 (click anywhere on the row toggles) cross-link this spec.
-- E2E: `dg-63-onboarding-starter-rows.mjs` (new) or groups added to `dg-60`.
+- E2E: a new `dg-NN-onboarding-starter-rows.mjs` (the plan takes the next free number) or groups added to `dg-60`.
 - `CHANGELOG.md` `[Unreleased]`.
 
 ## Acceptance scenarios
@@ -83,7 +83,7 @@ Common setup: harness **1280×800**, wizard step 2, eight starters, light theme 
 ### AS-OSR-02 Check on the right, centered
 - Given: step 2, any row.
 - When: measuring.
-- Then: `.onboarding-wizard__starter-check` is 20×20, its right edge 10 px from the surface's right edge, its vertical center equals the row's (±1 px); the native input covers the whole row.
+- Then: `.onboarding-wizard__starter-check` is 20×20, its right edge 10 px from the inner edge of the surface border (11 px from the outer edge), its vertical center equals the row's (±1 px); the native input covers the whole row.
 - Verified by: E2E.
 
 ### AS-OSR-03 Click anywhere toggles
@@ -96,7 +96,7 @@ Common setup: harness **1280×800**, wizard step 2, eight starters, light theme 
 - Given: one unchecked and one checked row, light and dark theme.
 - When: reading computed styles and contrast.
 - Then: unchecked surface has `grayscale(1)`, its icon opacity 0.4; label contrast ≥ 4.5:1 and check border ≥ 3:1 against the surface in both themes; the checked row has no filter.
-- Verified by: E2E computed style; `borderContrast` unit for the check border.
+- Verified by: E2E computed style; `borderContrast` units for the check border and the muted label.
 
 ### AS-OSR-05 Checked row has no primary outline
 - Given: a checked row.
@@ -107,7 +107,7 @@ Common setup: harness **1280×800**, wizard step 2, eight starters, light theme 
 ### AS-OSR-06 Keyboard and names unchanged
 - Given: step 2.
 - When: Tab from the first row.
-- Then: order is the eight checkboxes → Back → Finish; each checkbox named `Add {label} to your grid`; the focused row shows the focus ring around the surface.
+- Then: order is the eight checkboxes → Back → Finish; each checkbox named `Add {label} to your grid`; the focused row shows the inset focus ring, entirely inside the list's `getBoundingClientRect`, for the first and the last row too.
 - Verified by: E2E (AS-OB-17 adapted).
 
 ### AS-OSR-07 Narrow window
@@ -145,4 +145,4 @@ Common setup: harness **1280×800**, wizard step 2, eight starters, light theme 
 
 ## Process
 
-Full UI pipeline (`quiet-tab-pipeline`); design checkpoint against the companion To-Be panel.
+Full UI pipeline (`quiet-tab-pipeline`); design checkpoint against the companion To-Be panel, except the unchecked mute (decision 3), which deliberately differs from it.
