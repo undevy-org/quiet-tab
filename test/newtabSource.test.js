@@ -1213,3 +1213,20 @@ describe("modal overlay: tokens, rows, footers, segmented (AS-MO-11, AS-MO-15)",
     assert.match(stripCss(css), /\.city-field:disabled/);
   });
 });
+
+describe("use my location: reverse lookup timer", () => {
+  it("starts the 8 s Nominatim abort timer only after the position resolves, so a slow permission prompt keeps the full budget (be771e1)", async () => {
+    const code = await source();
+    const start = code.indexOf("async function useMyLocation(");
+    assert.ok(start > -1, "useMyLocation");
+    const body = code.slice(start, code.indexOf("\nfunction syncCityModal(", start));
+    const position = body.indexOf("await getBrowserPosition()");
+    const reverse = body.indexOf("await reverseGeocodeCoordinates(");
+    const timer = body.indexOf("setTimeout(");
+    assert.ok(position > -1 && reverse > position, "position is awaited before the reverse lookup");
+    assert.equal(body.split("LOCATION_REVERSE_TIMEOUT_MS").length - 1, 1, "one reverse timer per attempt");
+    assert.equal(body.split("new AbortController()").length - 1, 1, "one abort controller per attempt");
+    assert.ok(timer > position && timer < reverse, "the timer is armed after the position and before the reverse request");
+    assert.ok(body.indexOf("new AbortController()") > position, "the controller is created after the position resolves");
+  });
+});

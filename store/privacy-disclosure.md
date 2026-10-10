@@ -16,6 +16,19 @@ local weather panel.
   (`chrome.storage.local`).
 - `favicon`: displays each favorite's site favicon via the Manifest V3
   `_favicon` endpoint.
+- `declarativeNetRequestWithHostAccess`: sets one request header, `User-Agent:
+  QuietTab (+https://github.com/undevy-org/quiet-tab)`, on requests to
+  `nominatim.openstreetmap.org`, which the extension makes when the user taps
+  **use your location**. OpenStreetMap's Nominatim usage policy requires an
+  application to identify itself, and Chrome does not allow an extension page
+  to set `User-Agent` through `fetch`. It is one static rule
+  (`rules/nominatim-user-agent.json`) limited to that host (only the
+  `User-Agent` header, only `xmlhttprequest`/`other` requests); it cannot
+  block, redirect or read any request or response, and it matches no other
+  site. Suggested wording for the Web
+  Store field: "Adds an identifying User-Agent header to the extension's own
+  reverse-geocoding requests to nominatim.openstreetmap.org, as that
+  service's usage policy requires. Not used for anything else."
 - Host permissions (`api.open-meteo.com`, `air-quality-api.open-meteo.com`,
   `geocoding-api.open-meteo.com`, `nominatim.openstreetmap.org`): fetch
   weather, air quality, and city coordinates for the city the user sets, and

@@ -50,6 +50,12 @@ The manifest requests only:
 - `storage` to persist favorites and your chosen weather city via Chrome
   Sync, and a short-lived weather cache and one prompt flag locally;
 - `favicon` to display site favicons on link tiles;
+- `declarativeNetRequestWithHostAccess` to set a `User-Agent` header that
+  identifies Quiet Tab on requests to Nominatim, as the OpenStreetMap usage
+  policy asks (Chrome does not let a page set that header itself). The one
+  static rule (`rules/nominatim-user-agent.json`) matches only
+  `nominatim.openstreetmap.org`, only changes that one header, and reads no
+  page, request or response content;
 - host access to Open-Meteo's forecast, air-quality, and geocoding
   endpoints to fetch weather for the city you choose, and to Nominatim
   (OpenStreetMap) when you tap **use your location** to fill the city field
