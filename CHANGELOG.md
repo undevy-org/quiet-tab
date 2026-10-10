@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- The Nominatim `User-Agent` rule (`rules/nominatim-user-agent.json`) now matches only requests made by Quiet Tab
+  itself: the manifest pins the extension id with a `key` (id `dbcdpffdgfbjmdlomgheeijfkkjkhmma`, the one the Chrome Web Store draft gave) and the
+  rule has `initiatorDomains` set to that id. Before, a page on any host the extension has permission for (for
+  example the Open-Meteo hosts) could make a request to Nominatim carry the Quiet Tab `User-Agent`. The pinned
+  `key` must be removed from the zip uploaded to the Web Store (`docs/architecture.md`, "Extension id"). E2E
+  `dg-63-nominatim-ua-wire.mjs` reads the header on the wire.
+
 ### Added
 
 - **Use your location** in the first-run wizard (step 1) and the change-mode city modal: tap the link to

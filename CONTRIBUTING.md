@@ -13,6 +13,8 @@ Thanks for your interest in improving Quiet Tab.
 1. Clone the repository.
 2. Open `chrome://extensions`, enable **Developer mode**, click **Load unpacked**,
    and select the repository directory.
+   The manifest pins the extension id with a `key`, so it is the same on every
+   machine (`docs/architecture.md`, "Extension id").
 3. Open a new tab to exercise the desktop grid and weather tiles. Reload
    the extension after changes.
 
