@@ -26,4 +26,5 @@ broad host permissions; it only reads Open-Meteo's public, keyless weather,
 air-quality, and geocoding endpoints, and Nominatim (OpenStreetMap) for
 reverse geocoding when the user activates **use your location**. Its one
 `declarativeNetRequestWithHostAccess` rule only sets the `User-Agent` header on
-requests to Nominatim.
+requests to Nominatim that the extension itself makes (`initiatorDomains` is the
+pinned extension id); it does not apply to requests from web pages.

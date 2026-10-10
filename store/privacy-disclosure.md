@@ -22,10 +22,11 @@ local weather panel.
   **use your location**. OpenStreetMap's Nominatim usage policy requires an
   application to identify itself, and Chrome does not allow an extension page
   to set `User-Agent` through `fetch`. It is one static rule
-  (`rules/nominatim-user-agent.json`) limited to that host (only the
-  `User-Agent` header, only `xmlhttprequest`/`other` requests); it cannot
-  block, redirect or read any request or response, and it matches no other
-  site. Suggested wording for the Web
+  (`rules/nominatim-user-agent.json`) limited to that host and to requests
+  made by this extension itself (`initiatorDomains` is the extension id
+  `dbcdpffdgfbjmdlomgheeijfkkjkhmma`; only the `User-Agent` header, only `xmlhttprequest`/`other`
+  requests); it cannot block, redirect or read any request or response, and
+  it matches no other site and no request from a web page. Suggested wording for the Web
   Store field: "Adds an identifying User-Agent header to the extension's own
   reverse-geocoding requests to nominatim.openstreetmap.org, as that
   service's usage policy requires. Not used for anything else."

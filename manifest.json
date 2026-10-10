@@ -2,6 +2,7 @@
   "manifest_version": 3,
   "name": "Quiet Tab",
   "version": "0.1.0",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA5NiwzBYGDHTrI9YZpTg3+YQqKqe3W8/Z+AwtNkmiglUzZ27y8MLl+LHUT1LD6O4+b+8U2kCXTP2nEPYZb2fel3PcTTWargNUuWkP8wMD1XFjuImn73OIf7lAgRohoTUEyDaB3OaSsYSYZOxWs316Gw1QNkgxUZYAXDx5u0xK2aBxbJqJiA3fj0vhNGRm7gVDhHcjR2/SRfJOBSJR5385+s6siZKD+FET/EqSl3KLRhjv8kmvM9RHMIj5fiNVTujTEAAPLurGEc77Aa8DYdrcgTsMqilSwuVt+90c/1spXuJVuyDUb6WLQSmmeJJEfCdU5pwmiyJdw7itED9RtG1foQIDAQAB",
   "description": "A quiet new-tab desktop of your favorite links and local weather — nothing else.",
   "icons": {
     "16": "icons/icon16.png",

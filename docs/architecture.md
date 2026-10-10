@@ -179,10 +179,10 @@ v3 meta the same way (newer, read-only), as a build from before the desktop grid
 does with a v2 or v3 meta. A malformed meta is left alone by the
 ensure step.
 
-Chrome assigns the extension id; `manifest.json` does not pin a `key`. Two
-separate "Load unpacked" installs from different directories therefore get
-different ids and do not share synced storage — sync between devices applies
-to installs of the same published extension.
+`manifest.json` pins the extension id with a `key` (see "Extension id" below), so
+separate "Load unpacked" installs from different directories get the same id on
+every machine. Chrome Sync still applies only to a browser signed into the same
+Google account with sync enabled; it is not a property of the id.
 
 ## Weather
 
@@ -374,6 +374,28 @@ The new tab page loads CSS in dependency order from `src/newtab.html`:
 
 Public spec: [`docs/design-system.md`](design-system.md) (phase 1: controls + surfaces; phase 2: grid/tile/page chrome in `design-tokens.css` + `newtab.css`).
 
+## Extension id
+
+`manifest.json` pins the extension id with a `key` (the public key, base64 of the DER, one line; no `BEGIN`/`END`
+lines). The key comes from the Chrome Web Store Developer Dashboard (draft listing, Package tab, "View public key"),
+so the id is the one the Store assigns: `dbcdpffdgfbjmdlomgheeijfkkjkhmma`. Chrome derives the id from the key (first 16 bytes of the SHA-256 of
+the DER, each nibble mapped to `a`-`p`), so every unpacked copy of the repository gets the same id on every machine;
+without a `key` an unpacked extension gets an id derived from its folder path.
+
+The id is used in one place: `initiatorDomains` of `rules/nominatim-user-agent.json`. The rule sets the identifying
+`User-Agent` on requests to `nominatim.openstreetmap.org`. `declarativeNetRequestWithHostAccess` already keeps it from
+firing for pages on hosts the extension has no permission for, but a page on one of the permitted hosts (the Open-Meteo
+ones) could still trigger it; `initiatorDomains` limits it to requests whose initiator is this extension.
+`test/manifest.test.js` derives the id from the key and requires the rule to name exactly that id; E2E
+`dg-63-nominatim-ua-wire.mjs` sends requests from the new tab page, from an ordinary page and from an Open-Meteo-host
+page to a local server standing in for Nominatim and reads the `User-Agent` there.
+
+Changing the key changes the id, so the key and the rule are changed together, and the key in the E2E harness
+(`PROD_KEY`) with them.
+
+**Publishing:** remove `key` from the `manifest.json` in the zip before uploading to the Web Store (the Store already holds the key of this listing and assigns the same id, so
+nothing needs to be reconciled). Do not remove it from the repository.
+
 ## Security Boundaries
 
 - User-provided text (favorite labels, city names) is rendered with DOM text
@@ -392,4 +414,4 @@ Public spec: [`docs/design-system.md`](design-system.md) (phase 1: controls + su
   Nominatim (`nominatim.openstreetmap.org`) for reverse geocoding when the user
   activates **use your location**. The `declarativeNetRequestWithHostAccess`
   permission only lets one static rule set the identifying `User-Agent` header
-  on requests to that host.
+  on requests to that host that the extension itself makes (see "Extension id").
