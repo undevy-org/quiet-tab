@@ -2,7 +2,7 @@
 
 ## Status
 
-`draft` — owner review (2026-10-10). Prerequisite for post-onboarding grid layout work; that spec does not start until this one is implemented.
+`draft` — owner review; minor fixes from the initiative spec review (2026-10-10, notes `pipeline/reports/onboarding-grid-initiative-spec-review.md`, M1–M4). **Part 1** of the onboarding-grid initiative and prerequisite for part 2 (`docs/post-onboarding-grid.md`), whose island table uses 1×2 links, a 1×2 temperature and a 1×2 city hint.
 
 Decision: **do it** (axiom agreed in brainstorming, 2026-10-10). The product exposes **four** equivalent tile footprints: **1×1**, **1×2**, **2×1**, and **2×2** for **favorites** and **weather metrics** (and the city hint, which mirrors its metric cell). **Chrome** tiles (Settings, Add) stay **1×1** only in this release (owner 2026-10-10).
 
@@ -32,17 +32,17 @@ Terms: **footprint** = stored `grid.w` × `grid.h` (each 1 or 2). **1×2** = `w:
 | **City hint** | 1×1: map-pin icon; 2-wide: text `Set a city`. At 1×2 would still show pin only. | N/A (inherits metric cell size). |
 | **Chrome** (Settings, Add) | Store rejects any grid except **1×1** (`hasGrid` in `src/widgetsStore.js`). | No size control. |
 
-**Related rules unchanged today:** 2×2 favorite icon is horizontally centered, text left (`docs/link-tile-polish.md`). Weather at 2-high shows larger primary (28px), city line, larger retry glyph (`newtab.css`, `docs/weather-tile-retry.md`). Segmented Size control: 40px row, direction B inside dialogs (`docs/design-system.md`). Onboarding starter size and post-onboarding grid are **part 3** of the initiative (after part 2: onboarding grid As-Is → To-Be); this spec is **part 1** only.
+**Related rules unchanged today:** 2×2 favorite icon is horizontally centered, text left (`docs/link-tile-polish.md`). Weather at 2-high shows larger primary (28px), city line, larger retry glyph (`newtab.css`, `docs/weather-tile-retry.md`). Segmented Size control: 40px row, direction B inside dialogs (`docs/design-system.md`). The post-onboarding island is **part 2** (`docs/post-onboarding-grid.md`) and the step 2 starter rows **part 3** (`docs/onboarding-starter-rows.md`); this spec is **part 1** only.
 
 ## Default decisions (owner can override)
 
 1. **Four footprints, one control.** Extend `SIZE_OPTIONS` with `["1x2", "1×2"]` in order **1×1 → 1×2 → 2×1 → 2×2** (owner OQ-5). Same radiogroup on **Add link**, **Edit link**, and **Edit weather**. Values remain `1x1` \| `1x2` \| `2x1` \| `2x2`; `readSize` unchanged. Default for **new** links stays **1×1**; default for **new** weather tiles stays each metric’s current default footprint from `defaultSize` / first placement (unchanged). No new user-visible strings beyond the **1×2** segment label (reuse multiplication sign `×` like existing options).
 
-2. **Favorite tile content at 1×2.** Show **icon + label + host** (same information as 2×2, narrower column). Layout per approved mockup: column, centered icon **32×32**, label **11px** semibold, up to **3** lines (`-webkit-line-clamp: 3`), host **10px** muted, centered text, padding **8×6** px, gap **5** px. Accessible name unchanged (`aria-label` / `title` = label). **1×1** stays icon-only; **2×1** / **2×2** unchanged (`docs/link-tile-polish.md`).
+2. **Favorite tile content at 1×2.** Show **icon + label + host** (same information as 2×2, narrower column). Layout per approved mockup: column, centered icon **32×32**, label **11px** semibold, up to **3** lines (`-webkit-line-clamp: 3`), host **10px** muted on **one** line with ellipsis, centered text, padding **8×6** px, gap **5** px. Accessible name unchanged (`aria-label` / `title` = label). **1×1** stays icon-only; **2×1** / **2×2** unchanged (`docs/link-tile-polish.md`).
 
 3. **Favorite DOM rule.** `createFavoriteTile` appends `.favorite-tile__text` when **`cell.w === 2` OR `cell.h === 2`**, with host line when **`cell.h === 2`** (covers 2×2 and 1×2, not 2×1).
 
-4. **City hint at 1×2.** When `cell.w === 1 && cell.h === 2`: column layout — map-pin **18px**, then visible text **`Set a city`** (same copy as 2-wide), **11px** semibold, centered, dashed border unchanged. **1×1** pin-only and **2×1** text-only behaviours unchanged.
+4. **City hint at 1×2.** When `cell.w === 1 && cell.h === 2`: column layout — map-pin **18px**, then visible text **`Set a city`** (same copy as 2-wide), **11px** semibold, centered, may wrap to **2** lines (at the 56 px cell it does), dashed border unchanged. **1×1** pin-only and **2×1** text-only behaviours unchanged.
 
 5. **Chrome (Settings, Add) — 1×1 only (owner OQ-1).** No change: store validator keeps **`w === 1 && h === 1`** only; placement/self-heal unchanged; **no** 1×2 layout CSS and **no** chrome work in this run. The brainstorming mockup showed chrome 1×2 for completeness; it is **not** implemented here.
 
@@ -68,11 +68,11 @@ Terms: **footprint** = stored `grid.w` × `grid.h` (each 1 or 2). **1×2** = `w:
 
 9. **Tooltips, retry, edit mode, drag.** No behaviour change: tooltips still use full `description` text; retry corner glyph and `aria-label` unchanged; edit dialogs gain the fourth size only; drag highlight and `maxDropRow` already respect `h`. **Hide weather** / **delete link** unchanged.
 
-10. **Narrow windows / `data-cell`.** Tall rules use the same cell box as other sizes (`--cell-size` from `gridMetrics`). At **56px** cells, 1×2 tile is **56×120** px; typography may use existing `:root[data-cell="56"]` weather token sizes where they apply to **primary/secondary** at 1×1, with **1×2 overrides** winning via selector specificity (same pattern as 2×2 vs 1×1).
+10. **Narrow windows / `data-cell`.** Tall rules use the same cell box as other sizes (`--cell-size` from `gridMetrics`). At **56px** cells (gap 6), 1×2 tile is **56×118** px; at **64px** cells (gap 8) **64×136** px; typography may use existing `:root[data-cell="56"]` weather token sizes where they apply to **primary/secondary** at 1×1, with **1×2 overrides** winning via selector specificity (same pattern as 2×2 vs 1×1).
 
 11. **Segmented control with four options (owner OQ-3).** **Phase A:** one radiogroup row at **40px** height; use narrow-dialog segment padding (`0 6px`, `docs/design-system.md`). **E2E at 320px** viewport must show all four labels fully visible and each segment reachable (no clip, no horizontal scroll). **Phase B (only if Phase A fails):** same radiogroup becomes a **2×2** grid of segments (reading order 1×1, 1×2, 2×1, 2×2); outer control height grows; dialog scroll rules unchanged. Do not use horizontal scroll.
 
-12. **Nothing else by default.** Part **2** (onboarding grid) and part **3** (onboarding starter footprints / placement) are separate specs. **Data compatibility: not required.**
+12. **Nothing else by default.** Part **2** (post-onboarding island) and part **3** (step 2 starter rows) are separate specs. **Data compatibility: not required.**
 
 ## Scope
 
@@ -92,7 +92,7 @@ Full UI pipeline (spec review, plan in notes, E2E-first implementation, checkpoi
 
 ## Non-goals
 
-- Part **2** (onboarding grid) and part **3** (onboarding starter sizes / placement).
+- Part **2** (post-onboarding island) and part **3** (step 2 starter rows).
 - New storage version or migration (1×2 is valid v3 grid already).
 - Any chrome footprint other than **1×1** (including 1×2 mockup in notes).
 - Chrome **2×1** / **2×2** or weather **2-wide** rule changes.
@@ -146,7 +146,7 @@ Common setup: harness **1280×800** unless noted; `gridMetrics` → cell **72**,
 ### AS-1X2-07 Narrow window 320×600 does not clip 1×2 tiles
 - Given: one 1×2 favorite and one 1×2 weather tile seeded.
 - When: load at 320×600.
-- Then: no horizontal scroll; tile content within cell; typography readable (no zero-size text).
+- Then: no horizontal scroll; tiles 56×118; tile content within cell (host ellipsized on one line, label ≤ 3 lines); typography readable (no zero-size text).
 - Verified by: E2E group 7.
 
 ### AS-1X2-08 Size radiogroup fits at 320px dialog width
@@ -175,14 +175,14 @@ Common setup: harness **1280×800** unless noted; `gridMetrics` → cell **72**,
 | ID | Decision |
 |----|----------|
 | **OQ-1** | Chrome (Settings, Add): **1×1 only**; no 1×2 in this spec. |
-| **OQ-4** | Onboarding starters: **part 3**; out of scope for this spec (part 1). |
+| **OQ-2** | Remove DOM **`data-tileSize`**; **`data-w` / `data-h` only** on tiles (storage `tileSize` fallback on legacy read stays out of scope). |
+| **OQ-3** | Size row at **320px**: Phase A tighter padding + E2E; if fail → Phase B **2×2** segment grid (no horizontal scroll). |
+| **OQ-4** | Onboarding starters: parts 2 and 3; out of scope for this spec (part 1). |
 | **OQ-5** | Size segment order: **1×1 → 1×2 → 2×1 → 2×2**. |
-| **OQ-2** | Remove DOM **`data-tileSize`**; **`data-w` / `data-h` only** on tiles (storage `tileSize` fallback on legacy read stays out of scope). | — |
-| **OQ-3** | Size row at **320px**: Phase A tighter padding + E2E; if fail → Phase B **2×2** segment grid (no horizontal scroll). | — |
 
 ## Visual reference
 
-Pixel-perfect mockup (owner-approved 2026-10-10): companion screen `widget-1x2-pixel-perfect.html`; CSS source of truth for implementation: `.private/superpowers/mockups/2026-10-10-tile-1x2/widget-1x2-proposed.css`. Weather values band: **centered vertically** between glyph and city (approved adjustment).
+Pixel-perfect mockup (owner-approved 2026-10-10): `widget-1x2-pixel-perfect.html`, archived next to the CSS in notes `superpowers/mockups/2026-10-10-tile-1x2/`; CSS source of truth for implementation: `.private/superpowers/mockups/2026-10-10-tile-1x2/widget-1x2-proposed.css`. Weather values band: **centered vertically** between glyph and city (approved adjustment).
 
 ## Copy (user-visible)
 
