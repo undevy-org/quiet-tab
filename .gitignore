@@ -15,3 +15,6 @@ CLAUDE.md
 
 # Private dev memory/notes (separate private repo, cloned here — see .private/README.md)
 .private/
+
+# Chrome-generated ruleset metadata (Load unpacked)
+_metadata/
