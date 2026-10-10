@@ -33,7 +33,7 @@ Boot runs `ensureWidgetsLayout` → `placeMissing`: the six system widgets as on
 
 2. **One write.** Finish makes **one** service call: `widgetsService.addFavorites(inputs, { columns, island: { rows } })`. Inside its single `mutate` (one `setState`, one `set()`): read fresh state, decide fresh desk (decision 3) on the state **before** the adds, add the links exactly as today (dedupe, cap), then, if the island applies (decision 4), overwrite the grid of every island member with § Island table. No intermediate grids are ever persisted. Finish calls it also when no starter is checked (k = 0, `inputs = []`). **No-op rule:** when no link is added and the island does not apply (decisions 3–4), `addFavorites` returns `[]` **without** writing (no `setState`), so a zero-link Finish on a desk that is not fresh never rewrites it.
 
-3. **Fresh desk.** The island applies only when, before the adds: there is **no** `favorite` item; all six system items (`DEFAULT_ENTRY_ORDER`) exist with a valid grid; all four metrics are `enabled`; every system item has its `defaultSize` footprint; and `weather:temperature` is the first metric in `meta.order` (so the city hint, which renders in the first enabled metric's cell, lands in the temperature cell). The check reads `base.items` after the mutation's usual `rebase`. Positions are not checked: a synced desk of only system tiles that someone arranged by hand is re-packed (accepted). Anything else (links synced from another device, links left by an earlier Finish whose complete flag failed to write, a hidden or resized metric, a second tab that finished first) is **not fresh**: the links are added by `placeNew` as 2×1 (today's behaviour) and no other widget moves beyond the `rebase` every mutation does (on a window narrower than the stored layout that rewrite already happens on any write). On a fresh desk dedupe cannot drop a starter (the starter URLs are distinct and no favorite exists), so k = number of checked starters.
+3. **Fresh desk.** The island applies only when, before the adds: there is **no** `favorite` item; all six system items (`DEFAULT_ENTRY_ORDER`) exist with a valid grid; all four metrics are `enabled`; every system item has its `defaultSize` footprint; and `weather:temperature` is the first metric in `meta.order` (checked as the first `weather-metric` in `base.items`, which `getState` returns in `meta.order` order) (so the city hint, which renders in the first enabled metric's cell, lands in the temperature cell). The check reads `base.items` after the mutation's usual `rebase`. Positions are not checked: a synced desk of only system tiles that someone arranged by hand is re-packed (accepted). Anything else (links synced from another device, links left by an earlier Finish whose complete flag failed to write, a hidden or resized metric, a second tab that finished first) is **not fresh**: the links are added by `placeNew` as 2×1 (today's behaviour) and no other widget moves beyond the `rebase` every mutation does (on a window narrower than the stored layout that rewrite already happens on any write). On a fresh desk dedupe cannot drop a starter (the starter URLs are distinct and no favorite exists), so k = number of checked starters.
 
 4. **Fit.** The island applies only when its width fits the window: `W ≤ columns` (`columns` = `currentColumns()` at Finish). Otherwise behave as "not fresh" (decision 3, last sentence). Height is soft: an island taller than the first screen is still applied, at row 0 (decision 6).
 
@@ -100,17 +100,17 @@ The table is also archived as JSON in notes `superpowers/mockups/2026-10-10-onbo
 
 ## Amendments to other docs and E2E (in the implementation PR)
 
-- **`docs/vertically-centered-defaults.md`:** decision 6 ("measured once, never recomputed … none of them rewrite `y`") and decision 9 ("Nothing else changes") gain the exception "except onboarding Finish on a fresh desk (`docs/post-onboarding-grid.md`)"; AS-VC-05 (a)(b)(c) are rewritten for the wizard (positions after Finish follow the island table, not row 4).
-- **`docs/first-run-empty-desk.md`:** AS-FE-05 / AS-FE-11 positions after Finish follow the island table.
-- **E2E sweep:** every scenario that reaches Finish (`grep -lE "Finish|finishFromStep1|finishStep2ZeroLinks" .private/e2e/scenarios/*.mjs`; at least `dg-03`, `dg-15`, `dg-45`, `dg-56`, `dg-58`, `dg-59`, `dg-60`, `10`, `13`, `14`) is reviewed; each assertion on tile positions or on the set of tiles after Finish is rewritten to the island or moved to a seed that skips the wizard. `dg-59` AS-VC-05 and `dg-56` AS-FE-05/11 are known to break.
+- **`docs/vertically-centered-defaults.md`:** decision 6 ("measured once, never recomputed … none of them rewrite `y`") and decision 9 ("Nothing else changes") gain the exception "except onboarding Finish on a fresh desk (`docs/post-onboarding-grid.md`)"; AS-VC-05 (a)(b)(c) are rewritten for the wizard: positions after Finish follow the island table, not row 4; (c) splits into "before Finish a resize writes nothing" and "Finish lays the island out for the window at Finish time" (AS-POG-14 c).
+- **`docs/first-run-empty-desk.md`:** check that AS-FE-05 / AS-FE-11 assert no tile positions after Finish (today they check the tile set and edges, which stay valid).
+- **E2E sweep:** every scenario that reaches Finish (`grep -lE "Finish|finishFromStep1|finishStep2ZeroLinks|finishWizard|WIZARD_FINISH|skipToStep2" .private/e2e/scenarios/*.mjs`; at review time `13`, `14`, `dg-15`, `dg-45`, `dg-56`, `dg-59`, `dg-60`) is reviewed; each assertion on tile positions or on the set of tiles after Finish is rewritten to the island or moved to a seed that skips the wizard. `dg-59` AS-VC-05 breaks (row 4, `top` 336, stored `y` 4); `dg-56` AS-FE-05/11 are only re-checked (tile set and edges, expected unchanged).
 
 ## Scope
 
 - `src/onboardingLayout.js` (new): island table, `isFreshDesk`, `islandPlacements`.
-- `src/widgetsService.js`: `addFavorites` optional `island: { rows }`.
+- `src/widgetsService.js`: `addFavorites` optional `island: { rows }`; `mutate`: when `build` returns `null`, `setState` is skipped and the current state is returned (`assertWritable()` and `rebase` run as before) — this is how the no-op rule of decision 2 is implemented.
 - `src/newtab.js`: `finishOnboardingWizard` per § Integration.
 - `test/onboardingLayout.test.js` (new): R1–R5 for every k; stored grids for every k at `rows` 9 and 3; `isFreshDesk` true/false cases; `islandPlacements` → `null` when `W > columns`. `test/widgetsService.test.js`: island write, not-fresh path, k = 0, one `set()`.
-- E2E: a new `dg-NN-post-onboarding-grid.mjs` (the plan takes the next free number; the new post-onboarding scenario…`dg-63` are taken); `dg-60` groups touched by the amendments; the E2E sweep of § Amendments to other docs.
+- E2E: a new `dg-NN-post-onboarding-grid.mjs` (the plan takes the next free number; `dg-61`…`dg-63` are taken); `dg-60` groups touched by the amendments; the E2E sweep of § Amendments to other docs.
 - Docs in the implementation PR: `docs/onboarding-wizard.md` amendments, `docs/architecture.md` (Finish paragraph), `CHANGELOG.md`, agent-config `CLAUDE.md` (bootstrap/Finish facts).
 
 ## Acceptance scenarios
@@ -127,19 +127,19 @@ Common setup unless noted: harness **1280×800** (cell 72, gap 8, pad 16, **14**
 - Given: k = 3 with GitHub, Gmail, Amazon checked.
 - When: Finish.
 - Then: GitHub 2×2, Gmail 1×2, Amazon 1×1 at the k = 3 link cells.
-- Verified by: unit; E2E the new post-onboarding scenario.
+- Verified by: unit; E2E (new post-onboarding scenario file).
 
 ### AS-POG-03 City skipped
 - Given: Skip on step 1; k = 0 and k = 3.
 - When: Finish.
 - Then: same geometry as with a city; the hint tile occupies the temperature cell at 1×2 (pin and `Set a city`, part 1 AS-1X2-04); precipitation, air quality and UV cells are empty; no other tile is in them. After setting a city through the hint, the metric tiles appear in their island cells and nothing moves.
-- Verified by: E2E the new post-onboarding scenario.
+- Verified by: E2E (new post-onboarding scenario file).
 
 ### AS-POG-04 Not fresh: existing link
 - Given: storage seeded with one favorite (any URL) and the default system strip; wizard open (complete flag false).
 - When: Finish with the default three checked.
 - Then: three new 2×1 links by `placeNew`; every pre-existing widget keeps its stored grid; no overlap.
-- Verified by: unit; E2E the new post-onboarding scenario.
+- Verified by: unit; E2E (new post-onboarding scenario file).
 
 ### AS-POG-05 Not fresh: hidden or resized metric
 - Given: one metric `enabled: false`, or temperature stored 2×1.
@@ -151,13 +151,13 @@ Common setup unless noted: harness **1280×800** (cell 72, gap 8, pad 16, **14**
 - Given: harness width 320 (4 columns).
 - When: Finish with k = 3 (`W = 4`) and, separately, k = 6 (`W = 5`).
 - Then: k = 3 island applies; k = 6 falls back to the AS-POG-04 behaviour.
-- Verified by: unit (all k × columns 2, 4, 6); E2E the new post-onboarding scenario k = 6 at 320×800.
+- Verified by: unit (all k × columns 2, 4, 6); E2E (new post-onboarding scenario file) k = 6 at 320×800.
 
 ### AS-POG-07 Low window
 - Given: harness 1280×400 (4 first-screen rows).
 - When: Finish with k = 6 (`H = 5`).
 - Then: island applied at displayed row 0 (`centeredDefaultRow(4, 5) = 0`), shape per table; the page scrolls to reach the last row.
-- Verified by: unit; E2E the new post-onboarding scenario.
+- Verified by: unit; E2E (new post-onboarding scenario file).
 
 ### AS-POG-08 One write, nothing intermediate
 - Given: k = 3, fresh desk.
@@ -181,7 +181,7 @@ Common setup unless noted: harness **1280×800** (cell 72, gap 8, pad 16, **14**
 - Given: Finish done with k = 3.
 - When: reload; then resize to 1440×900 and to 800×800.
 - Then: stored grids identical to right after Finish; at 1440×900 (16 columns) and 800×800 (8 columns) the island is shifted by the new origin only, still solid.
-- Verified by: E2E the new post-onboarding scenario.
+- Verified by: E2E (new post-onboarding scenario file).
 
 ### AS-POG-12 Escape and backdrop on step 2
 - Given: k = 2 checked.
