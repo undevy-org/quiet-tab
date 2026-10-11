@@ -217,7 +217,7 @@ Pixel-perfect mockup (owner-approved 2026-10-10): `widget-1x2-pixel-perfect.html
 
 | Location | Text |
 |----------|------|
-| Size radiogroup | **1×2** (segment label only) |
+| Size radiogroup | **1×2** (segment label only); since `docs/tile-size-followups.md` each segment also shows a shape glyph and its radio has the accessible name `1×2, 1 wide, 2 high` |
 | City hint 1×2 | `Set a city` (unchanged) |
 
 No other new strings.

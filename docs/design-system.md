@@ -213,9 +213,10 @@ All heights are **border-box** (`box-sizing: border-box` globally).
 ### `.segmented` / `.segmented__option`
 
 - Radiogroup pattern (Icon, Color, Size) — not a toggle switch
+- In forced colors the selected dialog segment is drawn with `forced-color-adjust: none`, `Highlight` and `HighlightText` (the soft fill and the inset ring do not survive; without the opt-out Chromium paints a Canvas backplate under the label). The Size segments carry a footprint shape glyph in `currentColor` (unit 5 px, unit 4 px up to 451 px windows).
 - Container: 1px `var(--color-border-control)` border (dividers between options keep the decorative `--border`), radius **8px**; **outer height 40px**
 - Option: `height: calc(var(--control-height) - 2 * var(--control-border-width))` → **38px**
-- Option padding `0 8px` (narrow dialog: `0 6px`)
+- Option padding `0 8px` (dialog up to 451 px wide windows: `0 5px`, `white-space: nowrap`)
 - Font **13px**; checked segment outside dialogs: primary fill, weight **600**
 - **Direction B (inside `.desktop-dialog`):** the checked segment uses the soft fill
   (`--soft-fill-strong`), `--text`, weight **600** and an inset 1px `--border-control`
@@ -293,7 +294,7 @@ Modal titles: `--font-size-title`, `margin: 0 0 var(--title-margin-bottom)` (**1
 
 | Screen | Controls (all **40px** outer, **8px** radius unless noted) |
 |--------|--------------------------------------------------------------|
-| Add link | Link, Name inputs; Icon / Color / Size segmented (1×1, 1×2, 2×1, 2×2); Cancel, Add |
+| Add link | Link, Name inputs; Icon / Color / Size segmented (1×1, 1×2, 2×1, 2×2, each with a footprint shape glyph and an accessible name that starts with the visible text); Cancel, Add |
 | Edit link | Above (Size: 1×1, 1×2, 2×1, 2×2); Cancel, Save; color swatch **40px** tall |
 | Delete link? | Cancel, Delete |
 | Hide <metric>? | Cancel, Hide (primary, `eyeOff`) |

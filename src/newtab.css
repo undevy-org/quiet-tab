@@ -737,6 +737,13 @@ button.weather-tile {
 .weather-tile[data-weather-tone="rain-4"] { background: rgba(var(--weather-tone-rgb), 0.48); }
 .weather-tile[data-weather-tone="rain-5"] { background: rgba(var(--weather-tone-rgb), 0.6); }
 
+/* docs/tile-size-followups.md decision 4: the muted city line and metric glyph fail WCAG contrast on a toned background
+   (rain-5 2.59:1; rain-2..4, orange, red, purple, maroon between 3.0 and 4.5), so a toned tile uses the full text color. */
+.weather-tile[data-weather-tone] .weather-tile__city,
+.weather-tile[data-weather-tone] .weather-tile__glyph {
+  color: var(--text);
+}
+
 /* Weather type follows the cell size that newtab.js sets from gridMetrics (R4: :root[data-cell] next to --cell-size),
    never a viewport query, so it always agrees with the cell box (a classic scrollbar cannot split them). :where keeps
    the specificity of a single class, so the 2-high sizes above still win. */

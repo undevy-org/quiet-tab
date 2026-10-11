@@ -348,13 +348,14 @@ function createSegmentedControl(name, options, selectedValue) {
   const group = createNode("div", "segmented");
   group.setAttribute("role", "radiogroup");
 
-  for (const [value, text, glyph] of options) {
+  for (const [value, text, glyph, accessibleName] of options) {
     const option = createNode("label", "segmented__option");
     const input = document.createElement("input");
     input.type = "radio";
     input.name = name;
     input.value = value;
     input.checked = value === selectedValue;
+    if (accessibleName) input.setAttribute("aria-label", accessibleName); // starts with the visible text (WCAG 2.5.3)
     option.appendChild(input);
     if (glyph) {
       const mark = createNode("i", `segmented__glyph segmented__glyph--${glyph}`);
@@ -495,11 +496,12 @@ function createDialogErrorSlot() {
   return error;
 }
 
+// Each option: value, visible label, shape glyph (docs/tile-size-followups.md decision 1), accessible name (decision 2).
 const SIZE_OPTIONS = [
-  ["1x1", "1×1"],
-  ["1x2", "1×2"],
-  ["2x1", "2×1"],
-  ["2x2", "2×2"]
+  ["1x1", "1×1", "size-1x1", "1×1, 1 wide, 1 high"],
+  ["1x2", "1×2", "size-1x2", "1×2, 1 wide, 2 high"],
+  ["2x1", "2×1", "size-2x1", "2×1, 2 wide, 1 high"],
+  ["2x2", "2×2", "size-2x2", "2×2, 2 wide, 2 high"]
 ];
 
 // Size radiogroup (name "size", values 1x1|1x2|2x1|2x2) shared by the link and weather edit dialogs.

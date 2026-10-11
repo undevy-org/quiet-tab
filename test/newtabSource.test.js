@@ -947,7 +947,10 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     assert.doesNotMatch(fn(code, "handleEditModeClick"), /hideWeatherMetric\(/);
     assert.match(fn(code, "handleEditModeClick"), /confirm-hide-weather/);
     // Size radiogroup: one shared control, values 1x1|1x2|2x1|2x2 (docs/tile-size-1x2.md decision 1).
-    assert.match(code, /const SIZE_OPTIONS = \[\s*\["1x1", "1×1"\],\s*\["1x2", "1×2"\],\s*\["2x1", "2×1"\],\s*\["2x2", "2×2"\]\s*\];/);
+    assert.match(
+      code,
+      /const SIZE_OPTIONS = \[\s*\["1x1", "1×1", "size-1x1", "1×1, 1 wide, 1 high"\],\s*\["1x2", "1×2", "size-1x2", "1×2, 1 wide, 2 high"\],\s*\["2x1", "2×1", "size-2x1", "2×1, 2 wide, 1 high"\],\s*\["2x2", "2×2", "size-2x2", "2×2, 2 wide, 2 high"\]\s*\];/
+    ); // docs/tile-size-followups.md decisions 1-2: shape glyph and an accessible name that starts with the visible text
     assert.match(fn(code, "createSizeControl"), /createSegmentedControl\("size", SIZE_OPTIONS,/);
     assert.match(
       fn(code, "createFavoriteForm"),
@@ -1143,6 +1146,39 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     assert.match(fn(code, "createWeatherMetricTile"), /const size = cell\.w === 2 \? "wide" : cell\.h === 2 \? "tall" : "square";/);
     assert.match(fn(code, "createWeatherMetricTile"), /createIconNode\("refresh", \{ size: cell\.w === 2 && cell\.h === 2 \? 14 : 12 \}\)/);
     assert.match(await css(), /\.weather-tile\[data-w="1"\]\[data-h="2"\] \.weather-tile__city\s*\{[^}]*overflow-wrap: anywhere;/s);
+  });
+
+  it("pins the Size shape glyphs and accessible names (docs/tile-size-followups.md decisions 1-3)", async () => {
+    const code = await source();
+    const controls = await readFile(new URL("../src/controls.css", import.meta.url), "utf8");
+    const surfaces = await readFile(new URL("../src/surfaces.css", import.meta.url), "utf8");
+    const segmented = fn(code, "createSegmentedControl");
+    assert.match(segmented, /for \(const \[value, text, glyph, accessibleName\] of options\)/);
+    assert.match(segmented, /if \(accessibleName\) input\.setAttribute\("aria-label", accessibleName\);/);
+    assert.match(controls, /\.segmented__glyph\s*\{[^}]*flex: none;[^}]*box-sizing: border-box;[^}]*border: 1\.5px solid currentColor;/s);
+    assert.match(controls, /\.segmented__glyph--size-1x2 \{ width: 5px; height: 11px; \}/);
+    assert.match(controls, /\.segmented__glyph--size-2x1 \{ width: 11px; height: 5px; \}/);
+    assert.match(controls, /\.segmented__glyph--size-2x2 \{ width: 11px; height: 11px; \}/);
+    // The segment rule lives in its own 451px block; the row wrapping stays in the 400px block.
+    const narrow = surfaces.slice(surfaces.indexOf("@media (max-width: 451px)"));
+    assert.match(narrow, /\.desktop-dialog \.segmented__option \{\s*padding: 0 5px;\s*white-space: nowrap;\s*\}/);
+    assert.match(narrow, /\.segmented__glyph--size-1x2 \{ width: 4px; height: 9px; \}/);
+    const wrap = surfaces.slice(surfaces.indexOf("@media (max-width: 400px)"), surfaces.indexOf("@media (max-width: 451px)"));
+    assert.match(wrap, /flex-wrap: wrap;/);
+    assert.doesNotMatch(wrap, /segmented__option/);
+  });
+
+  it("pins the forced-colors rule for the selected dialog segment (docs/tile-size-followups.md decision 6)", async () => {
+    const surfaces = await readFile(new URL("../src/surfaces.css", import.meta.url), "utf8");
+    const rule = /@media \(forced-colors: active\) \{\s*\.desktop-dialog \.segmented__option:has\(input:checked\) \{\s*forced-color-adjust: none;[^\n]*\n\s*background: Highlight;\s*color: HighlightText;\s*\}\s*\}/;
+    assert.match(surfaces, rule);
+    assert.ok(surfaces.search(rule) > surfaces.indexOf(".desktop-dialog .segmented__option:has(input:checked) {"), "after the rule it overrides");
+  });
+
+  it("pins the full text color on toned weather tiles (docs/tile-size-followups.md decision 4)", async () => {
+    const styles = await css();
+    assert.match(styles, /\.weather-tile\[data-weather-tone\] \.weather-tile__city,\s*\.weather-tile\[data-weather-tone\] \.weather-tile__glyph \{\s*color: var\(--text\);\s*\}/);
+    assert.match(styles, /\.weather-tile__city \{[^}]*color: var\(--muted\);/s); // an untoned tile keeps the muted line
   });
 
   it("pins the 1×2 city hint (docs/tile-size-1x2.md decision 4)", async () => {

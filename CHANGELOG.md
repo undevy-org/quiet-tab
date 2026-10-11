@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Size segments show the footprint as a small outline rectangle (width × height) before 1×1 / 1×2 / 2×1 / 2×2, and each Size radio has an accessible name that starts with the visible label (`1×2, 1 wide, 2 high`); the selected dialog segment keeps its mark in forced colors (`forced-color-adjust: none`, `Highlight`). E2E `dg-66-tile-size-followups.mjs` covers the glyphs, the tone contrast table, dark theme, forced colors and two open tabs; unit tests cover 1×2 tiles at the edges of the layout engine (docs/tile-size-followups.md).
 - Fourth tile size 1×2 (tall) for links, weather tiles and the city hint: Size control 1×1 / 1×2 / 2×1 / 2×2; a 1×2 link shows icon, label and host; a 1×2 weather tile stacks glyph, value and city (docs/tile-size-1x2.md).
 - **Use your location** in the first-run wizard (step 1) and the change-mode city modal: tap the link to
   fill the city field from the browser position (Continue/Save still required). E2E: `dg-62-use-my-location.mjs`.
@@ -104,6 +105,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The city line and the metric glyph of a toned weather tile use the full text color (they were muted: 2.59:1 on a rain-5 tile); the dialog segments (Icon, Color, Size) use `padding: 0 5px` and no wrapping up to 451 px windows (was 6 px up to 400 px), and the Size shape glyph uses unit 4 px there.
 - Tiles no longer carry the data-tile-size attribute; layout CSS uses data-w / data-h only.
 - The six starting tiles (the four weather tiles, Settings and Add) now appear in the
   middle of the first screen, not at its top. This happens only at their first

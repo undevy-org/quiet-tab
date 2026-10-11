@@ -371,11 +371,21 @@
   .desktop-dialog .favorite-form__color-controls {
     flex: 1 1 100%;
   }
+}
 
+/* Size segments with a shape glyph (docs/tile-size-followups.md decision 3): the content box of an option is only 37-49 px between
+   401 and 451 px, so the segments get the narrow padding, no wrapping and glyph unit 4 px (4x4, 4x9, 9x4, 9x9) up to 451 px. The
+   row wrapping above stays at 400 px. */
+@media (max-width: 451px) {
   .desktop-dialog .segmented__option {
-    padding: 0 6px;
+    padding: 0 5px;
     white-space: nowrap;
   }
+
+  .segmented__glyph--size-1x1 { width: 4px; height: 4px; }
+  .segmented__glyph--size-1x2 { width: 4px; height: 9px; }
+  .segmented__glyph--size-2x1 { width: 9px; height: 4px; }
+  .segmented__glyph--size-2x2 { width: 9px; height: 9px; }
 }
 
 .desktop-dialog__error {
@@ -493,6 +503,16 @@
   color: var(--text);
   font-weight: var(--font-weight-control);
   box-shadow: inset 0 0 0 1px var(--border-control);
+}
+
+/* Forced colors drop the soft fill and the inset ring, which left the selected segment marked by weight alone
+   (docs/tile-size-followups.md decision 6d): it takes the system selection colors (the shape glyph follows through currentColor). */
+@media (forced-colors: active) {
+  .desktop-dialog .segmented__option:has(input:checked) {
+    forced-color-adjust: none; /* otherwise Chromium paints a Canvas backplate under the label and HighlightText vanishes on it */
+    background: Highlight;
+    color: HighlightText;
+  }
 }
 
 /* Add menu (edit mode, >= 1 hidden metric): a popover anchored to the Add tile, placed by newtab.js. */

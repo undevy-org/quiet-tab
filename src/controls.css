@@ -124,6 +124,20 @@
   text-align: center;
 }
 
+/* Size shape glyph (docs/tile-size-followups.md decision 1): an outline rectangle in the footprint's proportion, unit 5 px
+   (width x height: 1x1 5x5, 1x2 5x11, 2x1 11x5, 2x2 11x11); the narrow block of surfaces.css switches to unit 4. */
+.segmented__glyph {
+  flex: none;
+  box-sizing: border-box;
+  border: 1.5px solid currentColor;
+  border-radius: 1.5px;
+}
+
+.segmented__glyph--size-1x1 { width: 5px; height: 5px; }
+.segmented__glyph--size-1x2 { width: 5px; height: 11px; }
+.segmented__glyph--size-2x1 { width: 11px; height: 5px; }
+.segmented__glyph--size-2x2 { width: 11px; height: 11px; }
+
 .segmented__option:last-child {
   border-right: none;
 }
