@@ -149,6 +149,7 @@ Docked suggestion lists use no shadow (in-flow scroll).
 
 ### Grid / tiles
 
+- The link tile's host line (`.favorite-tile__host`) is `color-mix(in srgb, var(--muted) 70%, var(--text))`: a little darker than `--muted` so it keeps 4.5:1 on every accent (the label stays `--text`).
 - Selector family: `.favorite-tile`, `.chrome-tile`, `.weather-tile`,
   `.city-hint-tile`, `.tile-remove`, edit-mode tiles.
 - Documented metric names (not CSS custom properties in Phase 2):

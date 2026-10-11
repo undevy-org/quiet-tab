@@ -4,6 +4,7 @@ import { createWidgetsStore, createInitialWidgetsState, isWidgetsState } from ".
 import { MAX_FAVORITE_WIDGETS, NEWER_WIDGETS_MESSAGE } from "../src/widgetsShared.js";
 import { createMemoryStorageArea } from "./memoryStorageArea.js";
 import {
+  LinkGoneError,
   PlacementError,
   createWidgetsService,
   normalizeFavoriteUrl,
@@ -327,15 +328,21 @@ describe("widgetsService", () => {
     assert.deepEqual(await store.getState(), state);
   });
 
-  it("rejects updates, deletes, and moves for unknown favorites", async () => {
-    const { service } = await createHarness();
-
-    await assert.rejects(
-      () => service.updateFavorite("missing", { label: "Missing" }, COLS),
-      /Favorite not found/
-    );
-    await assert.rejects(() => service.deleteFavorite("missing", COLS), /Favorite not found/);
-    await assert.rejects(() => service.moveWidget("missing", { x: 0, y: 0 }, COLS), /Widget not found/);
+  it("an unknown id raises LinkGoneError (a link deleted in another tab) for update, delete and move, and writes nothing", async () => {
+    const { service, store } = await createHarness();
+    const before = JSON.stringify(await store.getState());
+    const gone = (id) => (error) => {
+      assert.ok(error instanceof LinkGoneError);
+      assert.equal(error.name, "LinkGoneError");
+      assert.equal(error.code, "link-gone");
+      assert.equal(error.id, id);
+      assert.equal(error.message, "This link was deleted in another tab.");
+      return true;
+    };
+    await assert.rejects(() => service.updateFavorite("missing", { label: "Missing" }, COLS), gone("missing"));
+    await assert.rejects(() => service.deleteFavorite("missing", COLS), gone("missing"));
+    await assert.rejects(() => service.moveWidget("missing", { x: 0, y: 0 }, COLS), gone("missing"));
+    assert.equal(JSON.stringify(await store.getState()), before);
   });
 
   it("rejects invalid favorite background colors", async () => {
@@ -401,7 +408,7 @@ describe("widgetsService", () => {
 
     await assert.rejects(
       () => service.moveWidget("missing", { x: 0, y: 0 }, COLS),
-      /Widget not found/
+      LinkGoneError // an unknown id is a link gone elsewhere (docs/stale-link-and-host-contrast.md); the lock must still be free
     );
 
     const state = await service.moveWidget("fav-1", { x: 3, y: 0 }, COLS);
@@ -630,6 +637,15 @@ describe("widgetsService with weather metrics", () => {
     const { service } = await serviceWithMetrics();
     await assert.rejects(service.deleteFavorite("weather:uv", COLS), /Favorite not found/);
     await assert.rejects(service.updateFavorite("weather:uv", { label: "x" }, COLS), /Favorite not found/);
+  });
+
+  it("a metric id is not a gone link: Favorite not found for update/delete; a hidden metric cannot be moved (Widget not found)", async () => {
+    const { service } = await serviceWithMetrics();
+    await assert.rejects(service.deleteFavorite("weather:uv", COLS), (error) => !(error instanceof LinkGoneError) && /Favorite not found/.test(error.message));
+    await assert.rejects(service.updateFavorite("weather:uv", { label: "x" }, COLS), (error) => !(error instanceof LinkGoneError) && /Favorite not found/.test(error.message));
+    await service.updateWeatherMetric("weather:uv", { enabled: false }, COLS);
+    await assert.rejects(service.moveWidget("weather:uv", { x: 0, y: 5 }, COLS), (error) => !(error instanceof LinkGoneError) && /Widget not found/.test(error.message));
+    await assert.rejects(service.moveWidget("f0", { x: 99, y: 99 }, COLS), (error) => !(error instanceof LinkGoneError)); // an existing id keeps the old paths (here a placement refusal)
   });
 
   it("every mutation reports the newer-version message (not 'not found') when the meta became newer", async () => {
