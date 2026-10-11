@@ -2,7 +2,7 @@
 
 ## Status
 
-`draft` — owner review; minor fixes from the initiative spec review (2026-10-10, notes `pipeline/reports/onboarding-grid-initiative-spec-review.md`, M1–M4). **Part 1** of the onboarding-grid initiative and prerequisite for part 2 (`docs/post-onboarding-grid.md`), whose island table uses 1×2 links, a 1×2 temperature and a 1×2 city hint.
+`implemented` — minor fixes from the initiative spec review (2026-10-10, notes `pipeline/reports/onboarding-grid-initiative-spec-review.md`, M1–M4). **Part 1** of the onboarding-grid initiative and prerequisite for part 2 (`docs/post-onboarding-grid.md`), whose island table uses 1×2 links, a 1×2 temperature and a 1×2 city hint.
 
 Decision: **do it** (axiom agreed in brainstorming, 2026-10-10). The product exposes **four** equivalent tile footprints: **1×1**, **1×2**, **2×1**, and **2×2** for **favorites** and **weather metrics** (and the city hint, which mirrors its metric cell). **Chrome** tiles (Settings, Add) stay **1×1** only in this release (owner 2026-10-10).
 
@@ -70,7 +70,7 @@ Terms: **footprint** = stored `grid.w` × `grid.h` (each 1 or 2). **1×2** = `w:
 
 9. **Tooltips, retry, edit mode, drag.** No behaviour change: tooltips still use full `description` text; retry `aria-label` and behaviour unchanged (corner glyph size per decision 7); edit dialogs gain the fourth size only; drag highlight and `maxDropRow` already respect `h`. **Hide weather** / **delete link** unchanged.
 
-10. **Narrow windows / `data-cell`.** Tall rules use the same cell box as other sizes (`--cell-size` from `gridMetrics`). At **56px** cells (gap 6), 1×2 tile is **56×118** px; at **64px** cells (gap 8) **64×136** px; weather typography per decision 7 (22px / 11px only at the 72px cell; the per-cell tokens at 64 and 56). City hint text: one line at the 72px cell, two lines at 64 and 56.
+10. **Narrow windows / `data-cell`.** Tall rules use the same cell box as other sizes (`--cell-size` from `gridMetrics`). At **56px** cells (gap 6), 1×2 tile is **56×118** px; at **64px** cells (gap 8) **64×136** px; weather typography per decision 7 (20px / 11px only at the 72px cell; the per-cell tokens at 64 and 56). City hint text: one line at the 72px cell, two lines at 64 and 56.
 
 11. **Segmented control with four options (owner OQ-3).** **Phase A:** one radiogroup row at **40px** height; use narrow-dialog segment padding (`0 6px`, `docs/design-system.md`). Measured in design review (2026-10-11) on the real CSS: segments are 53.5–71.3px wide at 320–440px with no clipping, so **Phase A is the plan**. Its E2E check (AS-1X2-08) at **320, 400 and 420px**: for each option `scrollWidth ≤ clientWidth` of its label and its rect inside the radiogroup rect; the radiogroup rect inside the dialog content box. **Phase B (only if that check fails during implementation):** same radiogroup becomes a **2×2** grid of segments (reading order 1×1, 1×2, 2×1, 2×2); outer control height grows; dialog scroll rules unchanged. Do not use horizontal scroll.
 
@@ -84,7 +84,7 @@ Terms: **footprint** = stored `grid.w` × `grid.h` (each 1 or 2). **1×2** = `w:
 - `src/weatherTiles.js`: `tall` branch in `readyModel` / `describeWeatherMetric`.
 - `src/widgetsStore.js`: **no change** to chrome grid rule.
 - Unit tests: `test/weatherTiles.test.js` (tall precipitation/AQI); `test/newtabSource.test.js` pins for fourth size option and favorite text guard; `test/desktopLayout.test.js` optional `placeNew` for 1×2 block.
-- E2E: new scenario file `dg-NN-tile-1x2.mjs` (the plan takes the next free number; `dg-61`…`dg-63` are taken) — Add link 1×2, Edit weather 1×2, hint at 1×2 at 1280×800; **Add link Size row at 320×800** (four segments visible); tiles lack `data-tile-size`; tile box ±1 px and font sizes ±0.5 px against the mockup at the 72px cell (the mockup is drawn for 72 only); at 64 and 56 only the no-clip checks of AS-1X2-07 / AS-1X2-10. Existing E2E that count three sizes and must change: `dg-04-edit-favorite.mjs` (lines 42–43), `dg-29-weather-modal.mjs` (line 38).
+- E2E: new scenario file `dg-NN-tile-1x2.mjs` (the plan takes the next free number; `dg-61`…`dg-63` are taken) — Add link 1×2, Edit weather 1×2, hint at 1×2 at 1280×800; **Add link Size row at 320×800** (four segments visible); tiles lack `data-tile-size`; tile box ±1 px and font sizes ±0.5 px against decision 7 at the 72px cell (the mockup is drawn for 72 only); at 64 and 56 only the no-clip checks of AS-1X2-07 / AS-1X2-10. Existing E2E that count three sizes and must change: `dg-04-edit-favorite.mjs` (lines 42–43), `dg-29-weather-modal.mjs` (line 38).
 - Docs: `CHANGELOG.md` `[Unreleased]`; `docs/architecture.md` one sentence under Desktop grid UI (four sizes); `docs/design-system.md` Size row lists four options and names Add link as well as Edit link (today it says Edit link only, while the code has Size in both); agent-config `CLAUDE.md` (DOM contract: drop `data-tile-size`, four sizes); this spec → `implemented` after merge.
 - Notes: mockup CSS path above; optional companion HTML archived in `.private/superpowers/mockups/2026-10-10-tile-1x2/`.
 
@@ -196,7 +196,7 @@ Common setup: harness **1280×800** unless noted; `gridMetrics` → cell **72**,
 - Favorite text guard (`w === 2 || h === 2`).
 - `data-tileSize` fully removed from DOM; no CSS keyed on it.
 - Segmented control at 320 / 400 / 420px (Phase A expected).
-- 1×2 weather type sizes per cell (22 only at 72).
+- 1×2 weather type sizes per cell (20 only at 72).
 - Regression: 1×1, 2×1, 2×2 tiles unchanged (checkpoint screenshots).
 
 ## Resolved decisions (owner)

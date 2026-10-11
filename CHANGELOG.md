@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Fourth tile size 1×2 (tall) for links, weather tiles and the city hint: Size control 1×1 / 1×2 / 2×1 / 2×2; a 1×2 link shows icon, label and host; a 1×2 weather tile stacks glyph, value and city (docs/tile-size-1x2.md).
 - **Use your location** in the first-run wizard (step 1) and the change-mode city modal: tap the link to
   fill the city field from the browser position (Continue/Save still required). E2E: `dg-62-use-my-location.mjs`.
 - Host permission for Nominatim (`nominatim.openstreetmap.org`) for reverse geocoding on that tap only,
@@ -103,6 +104,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Tiles no longer carry the data-tile-size attribute; layout CSS uses data-w / data-h only.
 - The six starting tiles (the four weather tiles, Settings and Add) now appear in the
   middle of the first screen, not at its top. This happens only at their first
   appearance; moving them afterwards is unchanged, and a window of another height
