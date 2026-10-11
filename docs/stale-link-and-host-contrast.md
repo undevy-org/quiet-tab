@@ -19,15 +19,16 @@
 
 ## Default decisions (owner can override)
 
-1. **Typed error.** `widgetsService` exports `LinkGoneError` (`name` `LinkGoneError`, `code` `"link-gone"`, `id` the missing id, message `This link was deleted in another tab.`). `updateFavorite`, `deleteFavorite` and `moveWidget` throw it when **no item at all** has the id. An id that belongs to a non-favorite item keeps `Error("Favorite not found")` (a programming error, not a stale tab); `moveWidget` with an id that is in the layout is unchanged. The text for a deleted link is the one the owner chose; a link deleted from another device through sync is covered by the same text.
-2. **Recovery in `runDesktopMutation`.** When the action throws an error with `code === "link-gone"` (checked before `onFailure` and before the dialog error), in this order, all while the busy lock is held: (a) any pending drop is cleared; (b) the neighbour target of the gone id is computed from the current DOM (`neighborTargets(error.id)`, the same rule as a normal delete: next tile, else previous, else Settings); (c) the state is re-read with `widgetsService.getState()` (no write); if that fails the old state is kept and the next steps still run; (d) one `finishFavoritesAction(generation, () => { widgetsState = fresh })` ends the busy state and re-renders from fresh storage, so the tile of the deleted link disappears; (e) if a dialog is open it is closed with `closeDesktopDialog({ restoreFocusTo: neighbour })`; otherwise (a refused drop) focus goes to the neighbour; (f) `#desktop-status` (`role="alert"`, announced by itself; `#desktop-live` is not used, as for every other write failure) shows the message; the function returns `false`. The recovery never throws out of `runDesktopMutation`.
+1. **Typed error.** `widgetsService` exports `LinkGoneError` (`name` `LinkGoneError`, `code` `"link-gone"`, `id` the missing id, message `This link was deleted in another tab.`). `updateFavorite`, `deleteFavorite` and `moveWidget` throw it when **no item at all** has the id. An id that belongs to a non-favorite item keeps `Error("Favorite not found")` (a programming error, not a stale tab); `moveWidget` checks the items (`base.items`), not the layout: an id of an existing item that is not on the grid (a hidden weather metric) keeps `Error("Widget not found")`, an id in the layout is unchanged. The text `This link was deleted in another tab.` is a default (the owner chose the behaviour, not the wording; owner can override); a link deleted from another device through sync is covered by the same text.
+2. **Recovery in `runDesktopMutation`.** When the action throws an error with `code === "link-gone"` (checked before `onFailure` and before the dialog error), in this order, all while the busy lock is held: (a) any pending drop is cleared; (b) the neighbour target of the gone id is computed from the current DOM (`neighborTargets(error.id)`, the same rule as a normal delete: next tile, else previous, else Settings); (c) the state is re-read with `widgetsService.getState()` (no write); if that fails the old state is kept and the next steps still run; (d) one `finishFavoritesAction(generation, () => { widgetsState = fresh })` ends the busy state and re-renders from fresh storage, so the tile of the deleted link disappears; (e) if a dialog is open it is closed with `closeDesktopDialog({ restoreFocusTo: neighbour })`; otherwise (a refused drop) focus goes to the neighbour; (f) `#desktop-status` (`role="alert"`, announced by itself; `#desktop-live` is not used, as for every other write failure) shows the message; the function returns `false`. The recovery never throws out of `runDesktopMutation`. If the generation changed meanwhile (not reachable today: an action starts only when the busy lock is free), `finishFavoritesAction` applies nothing and does not render, but steps (e) and (f) still run. The status disappears after the usual 8 s.
 3. **Entry points.** The Edit link Save, the Delete link? confirm (`confirmDeleteFavorite` then returns at its `closed meanwhile` check) and a drag-drop of a tile (`commitDrop`) of a link deleted in another tab. Mutations of ids that still exist behave as today (AS-TSF-06 of `docs/tile-size-followups.md`). No `chrome.storage.onChanged` listener is added.
-4. **Host color.** `.favorite-tile__host` color becomes `color-mix(in srgb, var(--muted) 70%, var(--text))` (70 % `--muted`, 30 % `--text`: a little closer to the text color in both themes; lowering the muted share darkens the line, raising it would undo the fix). Chromium reports the computed value as `color(srgb r g b)` with components 0..1, so the E2E color parsers (`CONTRAST_JS.parse` in `dg-66`, `contrastOf` in `.private/e2e/lib/harness.mjs`) learn that form (components × 255) and `dg-64`, `dg-66` are re-run. Required, measured (AS-SLH-03): host contrast ≥ 4.5:1 against the composited tile background for the stored accents `#69a8ff` (default), `#ffffff`, `#ffd400`, `#ff3b30`, `#d32f2f`, `#000000` and `#24292f` (painted after `normalizeAccentLightness`), at 1×2 (10px) and 2×2 (12px), in the light and dark themes. The estimate for the 70 % mix is at least 5.98:1 (light) and 6.69:1 (dark). If a pair fails, the muted share is lowered (never raised) and recorded in the plan ledger.
+4. **Host color.** `.favorite-tile__host` color becomes `color-mix(in srgb, var(--muted) 70%, var(--text))` (70 % `--muted`, 30 % `--text`: a little closer to the text color in both themes; lowering the muted share darkens the line, raising it would undo the fix). Chromium reports the computed value as `color(srgb r g b)` or `color(srgb r g b / a)` with components 0..1, so the E2E color parsers (`CONTRAST_JS.parse` in `dg-66`, `contrastOf` in `.private/e2e/lib/harness.mjs`) learn that form (components × 255) and `dg-64`, `dg-66` are re-run. Required, measured (AS-SLH-03): host contrast ≥ 4.5:1 against the composited tile background for the stored accents `#69a8ff` (default), `#ffffff`, `#ffd400`, `#ff3b30`, `#d32f2f`, `#000000` and `#24292f` (painted after `normalizeAccentLightness`), at 1×2 (10px) and 2×2 (12px), in the light and dark themes. The estimate for the 70 % mix is at least 5.98:1 (light) and 6.69:1 (dark). If a pair fails, the muted share is lowered (never raised) and recorded in the plan ledger.
 
 ## Scope
 
 - `src/widgetsService.js`: `LinkGoneError`, the throw sites of `updateFavorite`, `deleteFavorite`, `moveWidget`.
 - `src/newtab.js`: `runDesktopMutation` recovery (a helper `recoverFromGoneLink`), `pendingDrop` cleared by it.
+- `.private/e2e/lib/harness.mjs`: `failStorageGetAfter` (and a delayed variant) for AS-SLH-06.
 - `src/newtab.css`: `.favorite-tile__host` color.
 - `test/widgetsService.test.js`: the block "rejects updates, deletes, and moves for unknown favorites" (lines 331-338: `LinkGoneError` for the three calls with an unknown id) and a new test that a metric id still gives `Favorite not found` (lines 631-632 stay); `test/newtabSource.test.js` pins for the host color rule, `recoverFromGoneLink` and `code === "link-gone"`; E2E new `dg-67-stale-link-and-host-contrast.mjs`; `.private/e2e/lib/harness.mjs` `contrastOf` and `dg-66` `CONTRAST_JS.parse` learn `color(srgb …)`.
 - Docs: `CHANGELOG.md`, `docs/architecture.md` (one sentence in the concurrency section), `docs/design-system.md` (host color), backlog 66–67 closed.
@@ -50,39 +51,39 @@ Full UI pipeline: spec review and gate → plan → E2E-first → final code rev
 
 ### AS-SLH-01 Save on a link deleted in another tab
 - Given: tabs A and B on the same profile, B opened before A deletes f0; both showed f0, f1, f2.
-- When: in B (edit mode), open Edit link on f0 and press Save.
+- When: in B (edit mode), open Edit link on f0 and press Save; repeated at 1280×800, 500×800 and 320×600 (the last repeat with f0 the only link, so the neighbour is Settings).
 - Then: no write is sent (`syncSetCalls` unchanged, storage identical); the dialog closes; B's grid no longer shows f0; `#desktop-status` (role alert) reads `This link was deleted in another tab.` and disappears after the usual 8 s; keyboard focus is on a tile of B (the neighbour of f0), not on `body`; no page error; B is not busy: Add link works at once.
 - Verified by: E2E `dg-67` group 1; unit test of `LinkGoneError`.
 
 ### AS-SLH-02 Delete on a link deleted in another tab
 - Given: as AS-SLH-01.
 - When: in B, press the − of f0 and confirm Delete.
-- Then: storage unchanged; the confirm dialog closes; f0 is gone from B's grid; the same message; focus on the neighbour of f0, not `body`.
+- Then: storage unchanged; the confirm dialog closes; f0 is gone from B's grid; the same message; focus on the neighbour of f0, not `body`; edit mode stays on.
 - Verified by: E2E `dg-67` group 2.
 
 ### AS-SLH-03 Host contrast on accent tiles
 - Given: link tiles 1×2 and 2×2 stored with each accent of decision 4; light and dark; windows 1280×800 and 320×600.
 - When: render.
-- Then: host contrast against the composited tile background (own color layer, then the largest-alpha stop of the gradient, over the page background; the accent painted is the normalized one) is ≥ 4.5:1 for every accent × size × theme, and strictly lower than the label contrast of the same tile; the host color differs from the label color; font sizes 10px / 12px unchanged. A table (accent, size, theme, ratio) is printed on a FAIL.
+- Then: host contrast against the composited tile background (own color layer, then the largest-alpha stop of the gradient, over the page background; the accent painted is the normalized one) is ≥ 4.5:1 for every accent × size × theme, and strictly lower than the label contrast of the same tile; the host color differs from the label color; font sizes unchanged (10px at 1×2, 12px at 2×2). A table (accent, size, theme, ratio) is printed on a FAIL.
 - Verified by: E2E `dg-67` group 3.
 
 ### AS-SLH-04 Service errors
 - Given: a service over an in-memory store.
 - When: `updateFavorite`, `deleteFavorite`, `moveWidget` with an unknown id; `updateFavorite`/`deleteFavorite` with the id of a weather metric.
-- Then: unknown id → `LinkGoneError` (`code` `link-gone`, `id`, the message above), nothing written; a metric id → `Error("Favorite not found")`; `moveWidget` with an id that exists is unchanged.
+- Then: unknown id → `LinkGoneError` (`code` `link-gone`, `id`, the message above), nothing written; a metric id → `Error("Favorite not found")` for `updateFavorite`/`deleteFavorite`; `moveWidget` with an existing id is unchanged and with a hidden metric (an item that is not on the grid) gives `Error("Widget not found")`.
 - Verified by: unit `test/widgetsService.test.js`.
 
 ### AS-SLH-05 Drop of a tile deleted in another tab
 - Given: as AS-SLH-01, B in edit mode.
 - When: in B, drag f0 to a free cell.
-- Then: nothing is written; no tile snaps back to a ghost position; f0 is gone from B's grid; the same message in `#desktop-status`; focus on the neighbour; B is not busy.
+- Then: nothing is written; no tile snaps back to a ghost position (no `.is-settled`, no `.drop-highlight` left); f0 is gone from B's grid; the same message in `#desktop-status`; focus on the neighbour; edit mode stays on (`data-edit="true"`); B is not busy.
 - Verified by: E2E `dg-67` group 4.
 
 ### AS-SLH-06 The re-read fails
-- Given: as AS-SLH-01, B's `chrome.storage.sync.get` of the widgets meta key is made to reject after the failed save.
-- When: Save on f0 in B.
-- Then: the dialog still closes, the message is shown, no page error, B is not busy (a later action works once the fault is cleared); B's grid keeps its old state until the next successful read.
-- Verified by: E2E `dg-67` group 5 (`failStorageInit` / `clearStorageFault`).
+- Given: as AS-SLH-01, and in B a new harness helper `failStorageGetAfter(page, { key, skip: 2 })` (`.private/e2e/lib/harness.mjs`) installed after B has loaded: it wraps `chrome.storage.sync.get`, lets the first two reads of the widgets meta key through (`assertWritable` and the read inside `mutate`) and rejects the third (the recovery's re-read).
+- When: Save on f0 in B; then, in a second run of the scenario with the third read delayed (`delayStorageInit`-style wrapper), press Save again and click another tile while the recovery runs.
+- Then: the dialog still closes, the message is shown, no page error; B's grid keeps its old state (the tile of f0 stays, the focus goes to its neighbour); the second press starts no write while the busy lock is held; B is not busy afterwards (a later action works).
+- Verified by: E2E `dg-67` group 5 (new helpers in `harness.mjs`).
 
 ## Review focus
 
@@ -93,4 +94,4 @@ Full UI pipeline: spec review and gate → plan → E2E-first → final code rev
 
 ## Copy (user-visible)
 
-- `This link was deleted in another tab.` (status line and live region). "Favorite not found" is no longer user-visible for a deleted link.
+- `This link was deleted in another tab.` (status line, `role="alert"`). "Favorite not found" is no longer user-visible for a deleted link.
