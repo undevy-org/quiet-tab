@@ -1,8 +1,8 @@
-# Tile size 1×2 follow-ups: shape glyphs, city-line contrast, dark theme, forced colors, two tabs, engine tests
+# Tile size 1×2 follow-ups: shape glyphs, tone contrast, dark theme, forced colors, two tabs, engine tests
 
 ## Status
 
-`draft` — closes every open Minor and every "not verified" item of `docs/tile-size-1x2.md` (run 24): the Size segments do not show which number is the width, the city line on a rain-toned tile fails WCAG contrast, dark theme and forced colors were never checked on 1×2 surfaces, two open tabs were never exercised, and the layout engine has no unit tests for a 1-wide, 2-high tile at the edges. Follow-up to `docs/tile-size-1x2.md` (`implemented`).
+`draft` — closes the open Minors 63 and 64 and every "not verified" item of `docs/tile-size-1x2.md` (run 24): the Size segments do not show which number is the width, text on rain-toned and other toned weather tiles fails WCAG contrast, dark theme and forced colors were never checked on 1×2 surfaces, two open tabs were never exercised, and the layout engine has no unit tests for a 1-wide, 2-high tile at the edges. Backlog 65 (checkpoint Minors L2-01, L2-02) is **closed as an accepted design decision** of the owner-approved mockup (Accepted exceptions), not as a code change. Follow-up to `docs/tile-size-1x2.md` (`implemented`).
 
 **Data compatibility: not required** (no-users policy, `agent-config/CLAUDE.md`); storage shape unchanged.
 
@@ -15,104 +15,109 @@
 
 ## Current behaviour (`main` after run 24)
 
-- Size segments read `1×1 / 1×2 / 2×1 / 2×2` with no hint which number is the width. `createSegmentedControl` already accepts an optional third tuple element rendered as `<i class="segmented__glyph segmented__glyph--<name>" aria-hidden>` but no option uses it and `src/controls.css` has no rule for it.
-- `.weather-tile__city` is `var(--muted)`. On a tile with `data-weather-tone="rain-5"` (background `rgba(58,130,214,0.6)`) the 10px city line measures 2.58:1 (the 12px city line of a 2×2 tile the same); on the other tones 4.66–4.89:1.
-- Dark theme (`@media (prefers-color-scheme: dark)` in `src/design-tokens.css`, `src/surfaces.css`) and forced colors were not exercised on 1×2 tiles, the 1×2 hint or the Size row.
-- Two new tab pages: an open tab does not listen to storage changes (`docs/architecture.md`); every mutation starts from fresh storage under the extension-wide lock. Never exercised for 1×2.
+- Size segments read `1×1 / 1×2 / 2×1 / 2×2` with no hint which number is the width. `createSegmentedControl` (`src/newtab.js:347-369`) accepts an optional third tuple element rendered as `<i class="segmented__glyph segmented__glyph--<name>" aria-hidden>`; no option uses it and no stylesheet has a rule for it. Its other users (`iconMode`, `backgroundColorSource`) pass two-element tuples.
+- `.weather-tile__city` is `var(--muted)` (`src/newtab.css:582-590`; 1×2 override `:557-569`); `.weather-tile__glyph` is `var(--muted)` (`:489`). The tone backgrounds are `rgba(58,130,214, 0.12…0.6)` for `rain-1…rain-5` and a `linear-gradient` (alpha 0.18 → 0.06) for the other tones (`:716-738`). Measured at run 24: the city line on rain-5 is 2.58:1 (10px and 12px). Hand estimates for the light theme: rain-2 about 4.0, rain-3 about 3.5, rain-4 about 3.0, so more tones than rain-5 fail; the exact table is produced by AS-TSF-03.
+- Dark theme is the `@media (prefers-color-scheme: dark)` block of `src/design-tokens.css:106`. It and forced colors were not exercised on 1×2 tiles, the 1×2 hint or the Size row. There is no `@media (forced-colors)` rule in `src/`.
+- The selected Size segment is drawn with a background, a color and an inset `box-shadow` (`src/surfaces.css:491-496`, `src/controls.css:141-145`); forced colors drops background and shadow.
+- Two new tab pages: an open tab does not listen to storage changes (`docs/architecture.md`); every mutation starts from fresh storage under the extension-wide lock.
 - `test/desktopLayout.test.js` has no case with `w: 1, h: 2`.
 
 ## Default decisions (owner can override)
 
-1. **Shape glyph per Size option.** Every option (1×1, 1×2, 2×1, 2×2) shows, before its label, an outline rectangle in the footprint's proportion: unit **5 px**, a block gap of **1 px** inside a 2-unit side: 1×1 **5×5**, 1×2 **5×11**, 2×1 **11×5**, 2×2 **11×11** (width × height), border **1.5 px** `currentColor`, radius **1.5 px**, the glyph is aligned to the vertical center, gap to the label **4 px**. It is `<i class="segmented__glyph segmented__glyph--size-<w>x<h>" aria-hidden="true">`, drawn by CSS only (no `innerHTML`, no SVG). The visible label text is unchanged (`1×2` etc., spec `docs/tile-size-1x2.md` Copy).
-2. **Accessible names.** Each Size radio gets `aria-label` = `"<w> wide, <h> high"` (`1 wide, 1 high`, `1 wide, 2 high`, `2 wide, 1 high`, `2 wide, 2 high`), set by `createSegmentedControl` through an optional fourth tuple element (the other segmented controls are unchanged). No `title`.
-3. **Fit.** The glyph must not change the Size row geometry: AS-1X2-08 (labels unclipped, radiogroup inside dialog at 320, 400, 420 px) keeps passing. Segment padding is not increased; if a label clips at 320 px the glyph is reduced to unit 4 px (4×4, 4×9, 9×4, 9×9) at `max-width: 400px` only.
-4. **City-line color.** `.weather-tile__city` uses `var(--text)` on every tile that has `data-weather-tone` (rain-1…rain-5, green, yellow, orange, red, purple, maroon, neutral), in light and dark; an untoned tile keeps `var(--muted)`. Measured requirement: contrast of the city line against the composited tile background **≥ 4.5:1** for every tone, in both themes, for the 10px (1×2) and 12px (2×2) line, in ready and stale states. Tone gradients are **not** changed.
-5. **Dark theme.** In dark theme every text on a 1×2 link tile (label, host), every text on a 1×2 weather tile (primary, secondary, city), the 1×2 hint text, and the Size row (label, glyph) has contrast **≥ 4.5:1** (text) / **≥ 3:1** (glyph, borders, focus ring) against its composited background. Where a measured value is lower, the token or rule that produces it is fixed in this run (no new token unless unavoidable); a defect in a surface that part 1 did not touch is recorded in `backlog.md`, not fixed here (Non-goals).
-6. **Forced colors.** With `forced-colors: active`: the 1×2 link, weather and hint tiles keep a visible boundary (the border is not transparent and not equal to the canvas color), the focus ring is visible (non-`none` outline with a non-canvas color), the Size glyph is visible (its border resolves to a non-canvas color), text is readable (the UA overrides), nothing clips. Tone backgrounds are overridden by the UA (Accepted exceptions).
-7. **Two tabs.** Tab A and tab B are open on the same profile. A resizes a link to 1×2. B shows its old state (no live update) until reload. B's next mutation (rename another link, add a link) starts from fresh storage: A's 1×2 footprint survives, no tile overlaps, no error appears. B after reload shows the 1×2 tile.
-8. **Engine unit tests.** `test/desktopLayout.test.js` gains cases for a `w:1, h:2` tile (and a 2×1 and 1×1 next to it) at the right edge and the bottom limit: `placeResized` to 1×2 with the cell below occupied, with the right neighbour occupied, in the last column; `canPlace` / `maxDropRow` / `clampDropCell` with `h = 2` at the last row of the first screen and one row below the lowest tile; `displayLayout` of two adjacent 1×2 tiles and of a 1×2 overlapped by a stored neighbour. No engine code changes unless a test finds a defect.
+1. **Shape glyph per Size option.** Every option (1×1, 1×2, 2×1, 2×2) shows, before its label, an outline rectangle in the footprint's proportion. Unit **5 px**, a 1 px gap inside a 2-unit side: 1×1 **5×5**, 1×2 **5×11**, 2×1 **11×5**, 2×2 **11×11** (width × height). Border **1.5 px** `currentColor` (the browser rounds it at device pixel ratio 1; E2E does not assert the border width), radius **1.5 px**, `flex: none` (never shrinks), vertically centered. The gap to the label is the existing `--control-gap-icon` (6 px) of `.segmented__option`. At `max-width: 400px` the glyph uses **unit 4 px** unconditionally (4×4, 4×9, 9×4, 9×9). It is `<i class="segmented__glyph segmented__glyph--size-<w>x<h>" aria-hidden="true">`, drawn by CSS only (no `innerHTML`, no SVG). The visible label text is unchanged (`1×2` etc., `docs/tile-size-1x2.md` Copy).
+2. **Accessible names (Label in Name, WCAG 2.5.3).** Each Size radio gets `aria-label` = `"<w>×<h>, <w> wide, <h> high"`: `1×1, 1 wide, 1 high`, `1×2, 1 wide, 2 high`, `2×1, 2 wide, 1 high`, `2×2, 2 wide, 2 high` (the visible text comes first). Set by `createSegmentedControl` through an optional fourth tuple element; the other segmented controls are unchanged. No `title`.
+3. **Fit.** The glyph must not change the Size row geometry: AS-1X2-08 keeps passing and in addition every label keeps **at least 2 px** of room (`label.scrollWidth ≤ label.clientWidth − 2`) at 320, 400 and 420 px. Segment padding is not increased.
+4. **Contrast on toned weather tiles.** On every `.weather-tile[data-weather-tone]` (rain-1…rain-5, green, yellow, orange, red, purple, maroon, neutral) the city line, the secondary line and the metric glyph use `var(--text)`; an untoned tile keeps `var(--muted)`. Requirement, measured (AS-TSF-03): text ≥ **4.5:1** (primary, secondary, city; 10px, 12px and larger sizes), glyph ≥ **3:1**, in light and dark, ready and stale, 1×1, 2×1, 1×2 and 2×2. Tone gradients and backgrounds are **not** changed. If a pair still fails after this rule, the failing text color on that tone is fixed by the same kind of override (`--text`), recorded in the plan ledger.
+5. **Dark theme.** In dark theme: every text on a 1×2 link tile (label, host), every text on a 1×2 weather tile (primary, secondary, city), the 1×2 hint text, and the Size row (label) has contrast **≥ 4.5:1**; the Size glyph, the hint's dashed border (`--border-control`), the segmented group border (`--border-control`) and the focus ring have **≥ 3:1** against their backgrounds. Tile borders of link and weather tiles are decorative (`docs/border-contrast.md`, AS-CT-05 keeps exactly six `--border-control` users) and are **not** held to 3:1. Where a measured value is lower, the token or rule that produces it is fixed in this run (no new token unless unavoidable); a defect in a surface that part 1 did not touch is recorded in `backlog.md`, not fixed here (Non-goals).
+6. **Forced colors.** With `forced-colors: active`: (a) the 1×2 link, weather and hint tiles keep a visible boundary (a border of width ≥ 1 px whose color differs from the Canvas color, probed with an element styled `background: Canvas`); (b) the focus ring of each tile is an outline of width ≥ 2 px whose color differs from Canvas; (c) the Size glyph border color differs from Canvas; (d) the **selected** Size segment is distinguishable from the unselected ones: a new `@media (forced-colors: active)` rule for `.segmented__option:has(input:checked)` (the dialogs' segmented controls: Icon, Color, Size) sets `background: Highlight; color: HighlightText` (the glyph follows through `currentColor`); (e) the Size radio focus shows an outline of width ≥ 2 px, color ≠ Canvas; (f) nothing clips. Tone backgrounds are overridden by the UA (Accepted exceptions).
+7. **Two tabs.** Tab A and tab B are open on the same profile. A resizes a link to 1×2; B shows its old state (no live update) until reload. B's next mutation starts from fresh storage: A's 1×2 survives it, no two stored tiles overlap, no error appears. B editing the **same** tile applies B's choice (last write wins). B reload shows the 1×2 tile.
+8. **Engine unit tests.** `test/desktopLayout.test.js` gains cases for `w:1, h:2` tiles (with 2×1 and 1×1 neighbours) at 14, 6 and 4 columns: `placeResized` to 1×2 with the cell below occupied, with the right neighbour occupied, in the last column (stays in its own row, `firstFree` looks for a block of height 2); `canPlace` at the right edge and at the bottom limit; `maxDropRow` for `h = 2` in three separate cases (below the first screen: `viewportRows − 2` wins; below the lowest other tile: `lowest + 1` wins; own row below both: own `y` wins); `clampDropCell` keeps `x ≤ columns − w` (`columns − 1` for a 1-wide tile; it does not take `h`); `displayLayout` of two adjacent 1×2 tiles and of a 1×2 overlapped by a stored neighbour. No engine code changes unless a test finds a defect.
 
 ## Scope
 
 - `src/newtab.js`: `SIZE_OPTIONS` (glyph and accessible-name elements), `createSegmentedControl` (optional `aria-label` element).
-- `src/controls.css`: `.segmented__glyph` and `--size-*` rules (and the narrow `max-width: 400px` variant if needed).
-- `src/newtab.css`: city-line color on toned tiles; any dark-theme fix of 1×2 surfaces found by AS-TSF-03.
-- `src/design-tokens.css` / `src/surfaces.css`: only if AS-TSF-03 or AS-TSF-04 finds a failing token on a 1×2 surface.
-- `test/newtabSource.test.js` pins, `test/desktopLayout.test.js` (decision 8).
-- E2E: new `dg-66-tile-size-followups.mjs`; `dg-64`, `dg-04`, `dg-29` expectations only if the Size row markup change breaks them.
-- Docs: `docs/tile-size-1x2.md` (Copy: segment glyph and accessible names), `docs/design-system.md` (Size row), `CHANGELOG.md`, `backlog.md` rows 63–65 closed.
+- `src/controls.css`: `.segmented__glyph` and `--size-*` rules.
+- `src/surfaces.css`: `@media (max-width: 400px)` glyph unit; `@media (forced-colors: active)` rule for the selected segment and the Size radio focus.
+- `src/newtab.css`: `--text` on toned weather tiles (city, secondary, glyph); any dark-theme fix of 1×2 surfaces found by AS-TSF-04.
+- `src/design-tokens.css`: only if AS-TSF-04 finds a failing token on a 1×2 surface.
+- `test/newtabSource.test.js`: the `SIZE_OPTIONS` pin (today an exact regexp over two-element tuples, line ~950) is rewritten for the new tuples; new pins for the aria-label, glyph classes and `--text` rules. `test/desktopLayout.test.js` (decision 8).
+- E2E: new `dg-66-tile-size-followups.mjs` (`dg-65` is reserved by run 25); `dg-64`, `dg-04`, `dg-29` expectations only if the Size row markup change breaks them.
+- Docs: `docs/tile-size-1x2.md` (Copy: segment glyph and accessible names), `docs/design-system.md` (Size row, forced-colors rule), `CHANGELOG.md`; backlog rows 63–65 closed.
 
 ## Process
 
-Full UI pipeline (`quiet-tab-pipeline`): spec review and spec gate → plan in notes → E2E-first implementation → one design checkpoint (after the Size glyph and city-contrast tasks) → final code review of the branch → final design gate → independent verification. Run №27, E2E `dg-66`.
+Full UI pipeline (`quiet-tab-pipeline`): spec review and spec gate → plan in notes → E2E-first implementation → one design checkpoint (after the Size-glyph, contrast and forced-colors tasks) → final code review of the branch → final design gate → independent verification. Run №27.
 
 ## Non-goals
 
-- Changing tone gradients (colors of `data-weather-tone`) or any tile background.
+- Changing tone gradients or any tile background; changing link/weather tile borders.
 - Changing the visible Size label text, the option order or the stored values.
+- Re-centering or re-laying out the 1×2 link tile (backlog 65; Accepted exceptions).
 - Live sync between open tabs (`chrome.storage.onChanged`).
-- Real screen-reader runs (VoiceOver / NVDA): not automatable here; the accessible names and tree are asserted instead.
+- Real screen-reader runs (VoiceOver / NVDA): not automatable here; the accessible names and the accessibility tree are asserted instead.
 - Fixing a dark-theme or forced-colors defect of a surface part 1 did not touch (recorded in `backlog.md`).
 - Engine behaviour changes.
 
 ## Accepted exceptions
 
-- In forced colors the UA replaces tile backgrounds and tone colors; only boundary, focus ring, glyph and text visibility are required (decision 6).
-- An open tab stays stale until its next mutation or reload (existing design, decision 7).
+- In forced colors the UA replaces tile backgrounds and tone colors; only the items of decision 6 are required.
+- An open tab stays stale until its next mutation or reload; a stale tab editing the same tile overwrites it (last write wins, decision 7).
+- **Backlog 65 (checkpoint L2-01, L2-02).** The 1×2 link tile centers the whole icon + label + host block (owner-approved mockup, `docs/tile-size-1x2.md` decision 2), so the icons of two adjacent 1×2 links sit at different heights when their labels wrap to a different number of lines; and on a 56 px cell a long word is broken inside the word (`overflow-wrap: anywhere`) instead of being clipped. Both stay as designed.
 
 ## Acceptance scenarios
 
 ### AS-TSF-01 Size segments show the footprint shape
 - Given: Add link, Edit link and Edit weather dialogs, 1280×800.
 - When: open each Size row.
-- Then: four segments in order 1×1, 1×2, 2×1, 2×2; each has a `.segmented__glyph` whose box is 5×5, 5×11, 11×5, 11×11 px (±0.5) and sits left of its label, vertically centered (±1 px); the glyph is `aria-hidden`; the visible text of each segment is unchanged; each radio's `aria-label` is `1 wide, 1 high`, `1 wide, 2 high`, `2 wide, 1 high`, `2 wide, 2 high`; the glyph border color equals the segment text color (selected and unselected).
+- Then: four segments in order 1×1, 1×2, 2×1, 2×2; each has a `.segmented__glyph` whose box is 5×5, 5×11, 11×5, 11×11 px (±0.5), left of its label, vertically centered (±1 px); the glyph is `aria-hidden`; the visible text of each segment is unchanged; each radio's `aria-label` is `1×1, 1 wide, 1 high`, `1×2, 1 wide, 2 high`, `2×1, 2 wide, 1 high`, `2×2, 2 wide, 2 high`; the glyph border color equals the segment text color (selected and unselected); the other segmented controls (Icon, Color) have no glyph and no `aria-label` change.
 - Verified by: E2E `dg-66` group 1; `newtabSource` pins.
 
 ### AS-TSF-02 Size row still fits
 - Given: Add link at 320, 400, 420 px.
 - When: open the Size row.
-- Then: AS-1X2-08 holds (each label unclipped, inside the radiogroup, radiogroup inside the dialog) with glyphs present; no horizontal scroll.
+- Then: AS-1X2-08 holds (each label unclipped, inside the radiogroup, radiogroup inside the dialog) with glyphs present, every label with `scrollWidth ≤ clientWidth − 2`; the glyph box is 4×4, 4×9, 9×4, 9×9 at 320 and 400 px and 5×5, 5×11, 11×5, 11×11 at 420 px; no horizontal scroll.
 - Verified by: E2E `dg-66` group 2 (and `dg-64` group 8 stays green).
 
-### AS-TSF-03 City-line contrast
-- Given: city set; precipitation, temperature, air quality and UV tiles in every tone (rain-1…rain-5, green, yellow, orange, red, purple, maroon, neutral); sizes 1×2 and 2×2; ready and stale; light and dark.
+### AS-TSF-03 Contrast on toned weather tiles
+- Given: city set; fixtures per metric — precipitation probability 0, 10, 30, 50, 70, 90 (tones `neutral`, `rain-1…rain-5`), US AQI 25, 75, 125, 175, 250, 400 (green, yellow, orange, red, purple, maroon), temperature and UV values covering every tone they can produce (`src/weatherPresentation.js`); sizes 1×1, 2×1, 1×2, 2×2; ready and stale; light and dark.
 - When: render.
-- Then: contrast of `.weather-tile__city` against the composited tile background (tile `background` over the page/panel background, alpha handled) is ≥ 4.5:1 in every case.
-- Verified by: E2E `dg-66` group 3 (computed colors, composited in the page).
+- Then: for each tile, the contrast of the primary, secondary and city text against the composited background is ≥ 4.5:1 and of the metric glyph ≥ 3:1. Compositing in the page: the worst stop of the tile background (`--weather-tone-rgb` at the largest alpha of its gradient or solid `rgba`, over `getComputedStyle(body).backgroundColor`) — for dark text on a dark tone and light text on a light tone alike the worst-case stop is used. A table (tone, theme, size, element, ratio) is written to the E2E report.
+- Verified by: E2E `dg-66` group 3.
 
 ### AS-TSF-04 Dark theme on 1×2 surfaces
-- Given: `colorScheme: dark`; a 1×2 link, 1×2 weather tiles (ready, stale, error, loading), a 1×2 hint, the Add link dialog Size row; windows 1280, 500, 320.
+- Given: `colorScheme: dark`; a 1×2 link with accent colors default `105,168,255`, white, yellow and red; 1×2 weather tiles (ready, stale, error, loading); a 1×2 hint; the Add link dialog Size row; windows 1280×800, 500×800, 320×600.
 - When: render; focus each tile with Tab.
-- Then: all texts ≥ 4.5:1; glyph, tile border, focus ring ≥ 3:1 against their backgrounds; no clipping; no horizontal scroll.
+- Then: link label and host, weather primary/secondary/city, hint text and Size labels ≥ 4.5:1; Size glyph, the hint's dashed border, the `.segmented` border and the focus ring ≥ 3:1; no clipping; no horizontal scroll. Link and weather tile borders are not asserted (decision 5).
 - Verified by: E2E `dg-66` group 4 (computed styles; failing values listed in the FAIL line).
 
 ### AS-TSF-05 Forced colors on 1×2 surfaces
-- Given: `forcedColors: active` (and light scheme); the same surfaces as AS-TSF-04.
-- When: render; focus each tile with Tab.
-- Then: each tile boundary is a visible border (width ≥ 1 px, color ≠ canvas); the focus ring is an outline with width ≥ 2 px and color ≠ canvas; the Size glyph border color ≠ canvas; no clipping.
+- Given: `forcedColors: active`, light scheme; the same surfaces as AS-TSF-04 plus the Edit link dialog with the 1×2 option selected.
+- When: render; focus each tile and the Size radios with Tab.
+- Then: the items (a)–(f) of decision 6: tile boundary border ≥ 1 px with color ≠ Canvas; focus outline ≥ 2 px with color ≠ Canvas; Size glyph border ≠ Canvas; the selected Size segment has the `Highlight` background and the unselected ones do not; the Size radio focus outline ≥ 2 px ≠ Canvas; no clipping.
 - Verified by: E2E `dg-66` group 5.
 
 ### AS-TSF-06 Two open tabs
-- Given: tabs A and B on the same profile, a desk with links f0, f1 and the default tiles.
-- When: A edits f0 to 1×2; B (still showing the old state) renames f1; then B reloads; then A adds a link.
-- Then: after B's rename f0 is still 1×2 in storage and no two tiles overlap; B shows no error; after reload B shows f0 as 1×2 and f1 with the new name; A's added link does not overlap anything and f0 stays 1×2.
-- Verified by: E2E `dg-66` group 6 (two pages in one context).
+- Given: tabs A and B on the same profile, a desk with links f0, f1, f2 and the default tiles.
+- When: (1) A edits f0 to 1×2; (2) B (still showing the old state) renames f1; (3) B adds a link; (4) B drags f2 onto the cell under A's 1×2 tile; (5) B edits f0 to 2×1; (6) B reloads; (7) A adds a link.
+- Then: after (2) f0 is still 1×2 in storage and no two stored tiles overlap, B shows no error; after (3) the new link overlaps nothing (placed from fresh storage); after (4) the drop is refused (`That spot is taken` in `#desktop-status`) and storage is unchanged; after (5) f0 is 2×1 (last write wins) with no overlap; after (6) B shows f0 as 2×1 and f1 with the new name; after (7) A's new link overlaps nothing. "No overlap" is asserted on the stored `grid` rectangles in one coordinate frame (stored signed x).
+- Verified by: E2E `dg-66` group 6 (two pages in one context; helpers of `dg-26-two-tabs.mjs`).
 
 ### AS-TSF-07 Engine edge cases for a 1×2 tile
 - Given: layouts at 14, 6 and 4 columns with 1×2, 2×1, 1×1 tiles at the right edge and the bottom limit.
 - When: `placeResized`, `canPlace`, `maxDropRow`, `clampDropCell`, `displayLayout` are called as in decision 8.
-- Then: results match the documented rules (resize keeps the cell when free, else the first free block in the own row to the right, then rows below from column 0; a 1×2 at the last column fits; `clampDropCell` keeps `x ≤ columns − 1`; `maxDropRow` for `h = 2` is `viewportRows − 2` on the first screen).
+- Then: results match the code's documented rules: resize keeps the cell when the 1×2 block is free, else the first free block of height 2 in the own row from the nearest column that fits (never left of its own column), then the rows below from column 0; a 1×2 in the last column fits; `clampDropCell` keeps `x ≤ columns − w`; `maxDropRow` is `max(lowest other bottom + 1, viewportRows − h, own y)` and each of the three terms wins in its own test.
 - Verified by: unit `test/desktopLayout.test.js`.
 
 ## Review focus
 
-- Glyph proportions read as width × height at a glance (1×2 is tall, 2×1 is wide); selected and focused segment states; glyph does not push the label out at 320 px.
-- Every tone × theme × size combination of the city line (AS-TSF-03): no tone missed; stale dashed tiles.
-- Dark theme of the 1×2 surfaces beyond the city line (link host line, secondary line, hint text).
-- Forced colors: the tile boundary and the focus ring are not lost with `background` only styling.
-- Two tabs: no data loss and no overlap after the stale tab's mutation.
+- Glyph proportions read as width × height at a glance (1×2 is tall, 2×1 is wide); selected and focused segment states; the glyph never pushes a label out at 320 px.
+- Every tone × theme × size combination (AS-TSF-03): no tone missed, secondary and glyph included; stale dashed tiles.
+- Dark theme of the 1×2 surfaces beyond the city line (link host line, secondary line, hint text); link accent extremes.
+- Forced colors: tile boundary, focus ring, the selected segment and its glyph are not lost.
+- Two tabs: no data loss and no overlap after the stale tab's mutations; the refused drop.
+- The accessible name starts with the visible text.
 
 ## Copy (user-visible)
 
 - Visible: unchanged (`1×1`, `1×2`, `2×1`, `2×2`).
-- Accessible only: `1 wide, 1 high`, `1 wide, 2 high`, `2 wide, 1 high`, `2 wide, 2 high` (radio `aria-label`).
+- Accessible only (radio `aria-label`): `1×1, 1 wide, 1 high`, `1×2, 1 wide, 2 high`, `2×1, 2 wide, 1 high`, `2×2, 2 wide, 2 high`.
