@@ -44,9 +44,9 @@ Each starter is `label.onboarding-wizard__row` (`src/surfaces.css`): a 20×20 na
 
    - `.onboarding-wizard__starter`: `display: block`, `width: 100%`, `height: var(--cell-size)` (72 at 1280×800; `--cell-size` is set on `:root` by `applyGridMetrics`), `position: relative`, `cursor: pointer`.
    - Native checkbox: `position: absolute; inset: 0; margin: 0; opacity: 0;` — the whole row is its hit target; it stays the only focusable element of the row and keeps its `aria-label`.
-   - `.onboarding-wizard__starter-surface`: flex row, `align-items: center`, `gap: 8px`, `padding: 0 10px`, height 100%, the border, radius and background of today's `.onboarding-wizard__preview-tile`; `pointer-events: none`.
+   - `.onboarding-wizard__starter-surface`: flex row, `align-items: center`, `gap: 8px`, `padding: 0 10px`, height 100%, the border and radius of today's `.onboarding-wizard__preview-tile`, background **`var(--panel)`** (today's `var(--panel-elevated, var(--panel))` names an undefined token, so it already resolves to `--panel`; contrast in decision 3 is computed against `--panel`); `pointer-events: none`.
    - Icon **22×22**, `border-radius: 4px`; the letter fallback keeps today's behaviour (`createOnboardingStarterPreview`), renamed to `.onboarding-wizard__starter-icon--letter`.
-   - Label: own class `.onboarding-wizard__starter-label` (not `favorite-tile__label`, so grid tile rules never leak in), `flex: 1`, `min-width: 0`, one line with ellipsis, same font as today's row label.
+   - Label: own class `.onboarding-wizard__starter-label` (not `favorite-tile__label`, so grid tile rules never leak in) with the link tile's label type: **13px / 600**, `line-height: 1.2`, `flex: 1`, `min-width: 0`, `white-space: nowrap; overflow: hidden; text-overflow: ellipsis` (matches the companion To-Be panel; today's 12px / 400 row label is dropped).
    - `.onboarding-wizard__starter-check`: **20×20**, `border-radius: 6px`, last flex item (right), `flex-shrink: 0`; the border, background and checked glyph of today's checkbox move here.
 
 2. **Checked.** `input:checked + .onboarding-wizard__starter-surface .onboarding-wizard__starter-check`: primary fill + contrast glyph (today's checked style). The row surface keeps `var(--border)`; no primary outline (OQ-P3-6 B).
@@ -88,7 +88,7 @@ Common setup: harness **1280×800**, wizard step 2, eight starters, light theme 
 
 ### AS-OSR-03 Click anywhere toggles
 - Given: an unchecked row.
-- When: click on the label text, then on the icon, then on the check.
+- When: `page.mouse.click` at the center of the label's rect, then of the icon's rect, then of the check's rect (coordinates, not element locators: the surface has `pointer-events: none`, so locator clicks on its children time out).
 - Then: the state toggles on each click (checked, unchecked, checked); Space on the focused row toggles too.
 - Verified by: E2E (replaces the AS-OB-26 preview click).
 
@@ -107,20 +107,32 @@ Common setup: harness **1280×800**, wizard step 2, eight starters, light theme 
 ### AS-OSR-06 Keyboard and names unchanged
 - Given: step 2.
 - When: Tab from the first row.
-- Then: order is the eight checkboxes → Back → Finish; each checkbox named `Add {label} to your grid`; the focused row shows the inset focus ring, entirely inside the list's `getBoundingClientRect`, for the first and the last row too.
+- Then: order is the eight checkboxes → Back → Finish; each checkbox named `Add {label} to your grid`; the focused row's surface has computed `box-shadow` `inset 0 0 0 2px` in the `--focus-ring` colour, and the surface rect lies inside the list's `getBoundingClientRect` for the first and the last row (scrolled into view).
 - Verified by: E2E (AS-OB-17 adapted).
 
 ### AS-OSR-07 Narrow window
 - Given: harness 320×600.
 - When: step 2.
-- Then: rows 56 px high (`--cell-size` 56), label ellipsized, check fully visible, no horizontal scroll; list cap still ~3.5 rows.
+- Then: rows 56 px high (`--cell-size` 56); the label's computed `white-space` is `nowrap` and `text-overflow` is `ellipsis` (the starter labels are short enough not to truncate, so truncation itself is not asserted); check fully visible; no horizontal scroll; list cap still ~3.5 rows.
 - Verified by: E2E.
 
 ### AS-OSR-08 Forced colors
 - Given: `forced-colors: active` emulated.
 - When: step 2 with one checked row.
-- Then: the unchecked check has a visible border; the checked one is filled with `Highlight`.
+- Then: the unchecked check has a visible border; the checked one is filled with `Highlight`; the focused row's surface has `outline-style: solid` and `outline-offset: -2px`.
 - Verified by: E2E (emulated media).
+
+### AS-OSR-09 Icon and letter fallback
+- Given: step 2 at 1280×800; favicon requests for one starter blocked (harness route abort) so it shows the letter fallback.
+- When: inspecting the icons; then unchecking both rows.
+- Then: favicon `img.onboarding-wizard__starter-icon` and the fallback `.onboarding-wizard__starter-icon--letter` are both 22×22; in the unchecked rows both have opacity 0.4.
+- Verified by: E2E.
+
+### AS-OSR-10 500 px and low window
+- Given: harness 500×800, then 1280×600.
+- When: step 2.
+- Then: at 500 px rows are 64 px (`--cell-size` 64) and the check stays inside the row; at 1280×600 the list keeps the ~3.5-row cap (`docs/onboarding-wizard.md` AS-OB-04) and the dialog behaves as in AS-OB-16 (same footer and scroll outcome as before this change).
+- Verified by: E2E.
 
 ## Decision log
 

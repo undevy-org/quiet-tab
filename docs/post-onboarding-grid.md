@@ -4,7 +4,7 @@
 
 `draft` — revision 2 (2026-10-10) after two independent spec reviews (notes `pipeline/reports/onboarding-grid-initiative-spec-review.md`). **Part 2** of the onboarding-grid initiative: part 1 `docs/tile-size-1x2.md` (prerequisite: 1×2 footprints in UI/CSS), part 3 `docs/onboarding-starter-rows.md` (step 2 UI, independent of this spec).
 
-Decision: **do it**. After onboarding **Finish** on a fresh desk, the system widgets and the new starter links form **one island**: a solid rectangle (no empty cell inside its bbox), centered once (horizontal: the grid's center line; vertical: the first screen). The island geometry per link count **k** is a **normative table** in this spec (§ Island table). Reload and resize never re-pack.
+Decision: **do it**. After onboarding **Finish** on a fresh desk, the system widgets and the new starter links form **one island**: a solid rectangle (no empty cell inside its bbox), centered once (horizontal: the grid's center line; vertical: the first screen). The island geometry per link count **k** is a **normative table** in this spec (§ Island table). Reload and resize never re-pack (no storage write; on a window narrower than the island `displayLayout` reflows it on screen only, as for any layout).
 
 **Data compatibility: not required** (no-users policy, `agent-config/CLAUDE.md`).
 
@@ -31,7 +31,7 @@ Boot runs `ensureWidgetsLayout` → `placeMissing`: the six system widgets as on
 
 1. **Finish-only.** The island is applied only inside a successful Finish (button, Escape or backdrop on step 2, `docs/onboarding-wizard.md` decision 6), including k = 0. Never on reload, resize, Add link, or boot.
 
-2. **One write.** Finish makes **one** service call: `widgetsService.addFavorites(inputs, { columns, island: { rows } })`. Inside its single `mutate` (one `setState`, one `set()`): read fresh state, decide fresh desk (decision 3) on the state **before** the adds, add the links exactly as today (dedupe, cap), then, if the island applies (decision 4), overwrite the grid of every island member with § Island table. No intermediate grids are ever persisted. Finish calls it also when no starter is checked (k = 0, `inputs = []`). **No-op rule:** when no link is added and the island does not apply (decisions 3–4), `addFavorites` returns `[]` **without** writing (no `setState`), so a zero-link Finish on a desk that is not fresh never rewrites it.
+2. **One write.** Finish makes **one** service call: `widgetsService.addFavorites(inputs, { columns, island: { rows } })`. Inside its single `mutate` (one `setState`, one `set()`): read fresh state, decide fresh desk (decision 3) on the state **before** the adds, add the links exactly as today (dedupe, cap), then, if the island applies (decision 4), overwrite the grid of every island member with § Island table. No intermediate grids are ever persisted. Finish calls it also when no starter is checked (k = 0, `inputs = []`). **No-op rule** (only when `island` is passed; without it `addFavorites` is unchanged): when no link is added and the island does not apply (decisions 3–4), `addFavorites` returns `[]` **without** writing (no `setState`), so a zero-link Finish on a desk that is not fresh never rewrites it.
 
 3. **Fresh desk.** The island applies only when, before the adds: there is **no** `favorite` item; all six system items (`DEFAULT_ENTRY_ORDER`) exist with a valid grid; all four metrics are `enabled`; every system item has its `defaultSize` footprint; and `weather:temperature` is the first metric in `meta.order` (checked as the first `weather-metric` in `base.items`, which `getState` returns in `meta.order` order) (so the city hint, which renders in the first enabled metric's cell, lands in the temperature cell). The check reads `base.items` after the mutation's usual `rebase`. Positions are not checked: a synced desk of only system tiles that someone arranged by hand is re-packed (accepted). Anything else (links synced from another device, links left by an earlier Finish whose complete flag failed to write, a hidden or resized metric, a second tab that finished first) is **not fresh**: the links are added by `placeNew` as 2×1 (today's behaviour) and no other widget moves beyond the `rebase` every mutation does (on a window narrower than the stored layout that rewrite already happens on any write). On a fresh desk dedupe cannot drop a starter (the starter URLs are distinct and no favorite exists), so k = number of checked starters.
 
@@ -45,7 +45,7 @@ Boot runs `ensureWidgetsLayout` → `placeMissing`: the six system widgets as on
 
 8. **Link sizes.** Each link is stored with its table footprint (1×1, 1×2, 2×1 or 2×2). The interim `w: 2, h: 1` in the Finish payload stays as the size used on a not-fresh desk (decision 3).
 
-9. **Failure.** If the call throws with `k ≥ 1`: today's path (inline "Couldn't add links. Try again.", stay on step 2, nothing written). If it throws with `k = 0`: Finish continues (flag, close, reveal); the desk keeps the boot strip; no message (the layout is cosmetic and the user selected nothing). `onboardingStartersCommitted` is set after a **successful** call for any k (k = 0 included), so a retry after a flag-write failure never calls the service again. After a swallowed k = 0 failure it stays false, which is harmless: Finish goes on to write the flag; if that write also fails, the Finish retry calls the service once more (the desk is still veiled and fresh, so the island may apply now); once the flag is set the wizard never reopens and the desk keeps the boot strip.
+9. **Failure.** If the call throws with `k ≥ 1`: today's path (inline "Couldn't add links. Try again.", stay on step 2, nothing written). If it throws with `k = 0`: Finish continues (flag, close, reveal); the desk keeps the boot strip; no message (the layout is cosmetic and the user selected nothing). `onboardingStartersCommitted` is set after a successful call **with k ≥ 1** (as today), so a retry after a flag-write failure never adds those links again. After a k = 0 call (successful or swallowed) it stays false: if the flag write then fails and the user checks starters before Finish again, those links are added (the desk is no longer fresh once the k = 0 island was written, because temperature is 1×2, so they go by `placeNew` 2×1; with nothing checked the call is a no-op). The `widgetsService` guard stays: with no service (grid locked or boot failed) Finish skips the call as today; a call refused by `assertWritable` follows the k = 0 / k ≥ 1 rules above.
 
 10. **Veil.** The service call runs before `markComplete` and before the wizard closes, so the first unveiled frame already shows the island. `refreshAutoAccent` for `auto` links stays `void` after close.
 
@@ -138,7 +138,7 @@ Common setup unless noted: harness **1280×800** (cell 72, gap 8, pad 16, **14**
 ### AS-POG-04 Not fresh: existing link
 - Given: storage seeded with one favorite (any URL) and the default system strip; wizard open (complete flag false).
 - When: Finish with the default three checked.
-- Then: three new 2×1 links by `placeNew`; every pre-existing widget keeps its stored grid; no overlap.
+- Then: three new 2×1 links by `placeNew`; no overlap; every pre-existing widget keeps its stored grid when the window is wide enough for the stored layout (at 1280×800 it is). On a narrower window the pre-existing grids equal `toStored(displayLayout(items, columns))` after the usual `rebase`, nothing more.
 - Verified by: unit; E2E (new post-onboarding scenario file).
 
 ### AS-POG-05 Not fresh: hidden or resized metric
@@ -150,13 +150,13 @@ Common setup unless noted: harness **1280×800** (cell 72, gap 8, pad 16, **14**
 ### AS-POG-06 Too narrow
 - Given: harness width 320 (4 columns).
 - When: Finish with k = 3 (`W = 4`) and, separately, k = 6 (`W = 5`).
-- Then: k = 3 island applies; k = 6 falls back to the AS-POG-04 behaviour.
-- Verified by: unit (all k × columns 2, 4, 6); E2E (new post-onboarding scenario file) k = 6 at 320×800.
+- Then: k = 3 island applies; k = 6 falls back to the AS-POG-04 behaviour (pre-existing grids per its narrow-window rule). At 500×500 (6 columns) the k = 6 island (`W = 5`) applies.
+- Verified by: unit (all k × columns 2, 4, 6); E2E (new post-onboarding scenario file) k = 6 at 320×800 and at 500×500.
 
 ### AS-POG-07 Low window
 - Given: harness 1280×400 (4 first-screen rows).
 - When: Finish with k = 6 (`H = 5`).
-- Then: island applied at displayed row 0 (`centeredDefaultRow(4, 5) = 0`), shape per table; the page scrolls to reach the last row.
+- Then: island applied at displayed row 0 (`centeredDefaultRow(4, 5) = 0`), shape per table; focus goes to Settings as after every Finish (`docs/onboarding-wizard.md` AS-OB-31), so the page scrolls just enough to show it (its focus ring inside the window); the top rows of the island may scroll out of view (Accepted exceptions).
 - Verified by: unit; E2E (new post-onboarding scenario file).
 
 ### AS-POG-08 One write, nothing intermediate
@@ -175,12 +175,12 @@ Common setup unless noted: harness **1280×800** (cell 72, gap 8, pad 16, **14**
 - Given: k = 0; the widgets write fails.
 - When: Finish.
 - Then: wizard completes and closes; desk shows the boot strip; no error text.
-- Verified by: unit.
+- Verified by: E2E (new post-onboarding scenario file; widgets write failure injected as in AS-OB-19); unit for the service.
 
 ### AS-POG-11 No re-pack on reload or resize
 - Given: Finish done with k = 3.
 - When: reload; then resize to 1440×900 and to 800×800.
-- Then: stored grids identical to right after Finish; at 1440×900 (16 columns) and 800×800 (8 columns) the island is shifted by the new origin only, still solid.
+- Then: stored grids identical to right after Finish; at 1440×900 (16 columns) and 800×800 (8 columns) the island is shifted by the new origin only, still solid. Resized further to 320×600 (4 columns, `W = 4`) it still fits; for a k = 6 island at 320×600 (`W = 5 > 4`) the screen shows `displayLayout`'s reflow and the stored grids still do not change.
 - Verified by: E2E (new post-onboarding scenario file).
 
 ### AS-POG-12 Escape and backdrop on step 2
@@ -200,7 +200,7 @@ Step 2 waits on the person; the island reads `columns`, `rows` and "fresh" at Fi
 - Given: load at 1280×800, wizard on step 2.
 - When: (a) the window becomes 320×600, then Finish with k = 6; (b) a favorite appears in sync storage (another device), then Finish with k = 3; (c) the window becomes 1280×400, then Finish with k = 3.
 - Then: (a) `W = 5 > 4` → no island, links by `placeNew`, nothing else rewritten beyond `rebase`; (b) not fresh → as AS-POG-04; (c) island applied with `dy = centeredDefaultRow(4, 4) = 0`.
-- Verified by: unit (service called with the new `columns` / `rows` / state); E2E for (a) and (b).
+- Verified by: unit (service called with the new `columns` / `rows` / state); E2E for (a), (b) and (c).
 
 ### AS-POG-15 Zero links on a desk that is not fresh
 - Given: storage seeded with one favorite; wizard open.
@@ -222,6 +222,31 @@ The network is not involved (the write is local storage).
 | OQ-6 | C: soft first-screen height. | Kept: `centeredDefaultRow` gives row 0 when taller. |
 | OQ-7 | A: on-desk members only. | Replaced by the fresh-desk rule (a hidden metric means not fresh). |
 | OQ-8 | B→A: local pack, one shift, stored v3 grids. | Kept, made exact in cells (decision 6). |
+
+### AS-POG-16 Tab order on the island
+- Given: Finish with k = 3, city saved.
+- When: Tab from Settings back to the start of the island and forward.
+- Then: tiles are reached in `(y, x)` order of their top-left cell: temperature, precipitation, YouTube (1×2), air quality, ChatGPT (2×2), UV, X, Settings, Add. Links are not in j order where the layout interleaves them (accepted: visual reading order wins, R3).
+- Verified by: E2E (new post-onboarding scenario file).
+
+### AS-POG-17 Service arguments
+- Given: unit.
+- When: `addFavorites(inputs, { columns, island: { rows } })` with `rows` not an integer ≥ 1, or with more than 8 inputs.
+- Then: invalid `rows` → `dy = 0` (the row-0 rule `placeMissing` uses without a valid screen); k > 8 → no island (as "does not fit").
+- Verified by: unit.
+
+## Accepted exceptions
+
+- **Empty metric cells without a city.** "Solid" describes the stored layout; without a city three cells of the island stay empty on screen until a city is set (owner, 2026-10-10).
+- **Hand-arranged synced system tiles are re-packed** when the desk is otherwise fresh (decision 3).
+- **Odd `W`** sits half a cell right of the center line (decision 6).
+- **Island taller than the first screen** starts at row 0, and focusing Settings may scroll its top rows out of view (AS-POG-07).
+- **k = 8** shows eight 1×1 icon-only links (owner, 2026-10-10).
+- **Tab order** follows the layout, not j (AS-POG-16).
+
+## Copy
+
+No new user-visible strings. Existing strings in this flow: "Couldn't add links. Try again." (AS-POG-09), the hint's `Set a city` (part 1).
 
 ## Non-goals
 

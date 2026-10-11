@@ -59,31 +59,33 @@ Terms: **footprint** = stored `grid.w` × `grid.h` (each 1 or 2). **1×2** = `w:
 7. **Weather tile DOM/CSS at 1×2.** `createWeatherMetricTile`: city line when `cell.h === 2` (already); retry glyph **12px** at 1-high, **14px** at 2-high (unchanged rule). CSS selectors use **`[data-w="1"][data-h="2"]`** for tall-only rules so **2×2** keeps existing rules. Approved layout:
    - Glyph top (**18px** SVG), flex-shrink 0.
    - `.weather-tile__values`: `flex: 1`, column, **justify-content: center** (values band vertically centered between glyph and city).
-   - Primary **22px**, secondary **11px**, centered.
+   - Primary **22px**, secondary **11px**, centered — at the **72px** cell only. At **64px** and **56px** cells the 1×2 tile keeps the existing per-cell weather tokens (`--font-size-weather-primary-cell-64` 16px / `-secondary-cell-64` 10px; `-cell-56` 14px / 9px): the 22px primary does not fit a 1-wide column there (`100%` at 22px bold is about 60px wide against 54px / 46px of content width, design review L0-01).
+   - Secondary may wrap to **2** lines (e.g. `12.3 PM2.5` wraps at the 64px and 56px cells); it is never clipped.
    - City **10px**, up to **2** lines, bottom band.
    - Padding **8px 4px 6px**; tone borders/gradients unchanged.
    - Do **not** apply 2×2-only rules (`primary` 28px, glyph 24px) to 1×2.
+   - Retry corner glyph keeps today's offset (`6px`, `src/newtab.css` `.weather-tile[data-h="2"] .weather-tile__retry`); the mockup's 5px is not normative.
 
-8. **Remove DOM `data-tileSize` (owner OQ-2).** `placeTile` sets only CSS vars `--w` / `--h` and **`data-w` / `data-h`** on each tile node. **Delete** `node.dataset.tileSize = …` and any read of `dataset.tileSize` or `[data-tileSize]` in `src/`. Tile layout CSS and runtime logic use **`data-w` and `data-h` only** so future footprints (beyond today’s 1–2 span) do not need a parallel naming scheme. **Storage:** optional `tileSize` on very old migrated items may remain in `sizeOf` / v1→v2 paths as a read fallback when `grid` is missing — **non-goal** to remove that field from validators or migrations in this run (no users); new writes already omit it (`widgetsService` deletes `tileSize`).
+8. **Remove DOM `data-tileSize` (owner OQ-2).** `placeTile` sets only CSS vars `--w` / `--h` and **`data-w` / `data-h`** on each tile node. **Delete** `node.dataset.tileSize = …` and any read of `dataset.tileSize` or `[data-tileSize]` in `src/`. (The DOM attribute is `data-tile-size`; every check of its absence uses that name.) Tile layout CSS and runtime logic use **`data-w` and `data-h` only** so future footprints (beyond today’s 1–2 span) do not need a parallel naming scheme. **Storage:** optional `tileSize` on very old migrated items may remain in `sizeOf` / v1→v2 paths as a read fallback when `grid` is missing — **non-goal** to remove that field from validators or migrations in this run (no users); new writes already omit it (`widgetsService` deletes `tileSize`).
 
 9. **Tooltips, retry, edit mode, drag.** No behaviour change: tooltips still use full `description` text; retry corner glyph and `aria-label` unchanged; edit dialogs gain the fourth size only; drag highlight and `maxDropRow` already respect `h`. **Hide weather** / **delete link** unchanged.
 
-10. **Narrow windows / `data-cell`.** Tall rules use the same cell box as other sizes (`--cell-size` from `gridMetrics`). At **56px** cells (gap 6), 1×2 tile is **56×118** px; at **64px** cells (gap 8) **64×136** px; typography may use existing `:root[data-cell="56"]` weather token sizes where they apply to **primary/secondary** at 1×1, with **1×2 overrides** winning via selector specificity (same pattern as 2×2 vs 1×1).
+10. **Narrow windows / `data-cell`.** Tall rules use the same cell box as other sizes (`--cell-size` from `gridMetrics`). At **56px** cells (gap 6), 1×2 tile is **56×118** px; at **64px** cells (gap 8) **64×136** px; weather typography per decision 7 (22px / 11px only at the 72px cell; the per-cell tokens at 64 and 56). City hint text: one line at the 72px cell, two lines at 64 and 56.
 
-11. **Segmented control with four options (owner OQ-3).** **Phase A:** one radiogroup row at **40px** height; use narrow-dialog segment padding (`0 6px`, `docs/design-system.md`). **E2E at 320px** viewport must show all four labels fully visible and each segment reachable (no clip, no horizontal scroll). **Phase B (only if Phase A fails):** same radiogroup becomes a **2×2** grid of segments (reading order 1×1, 1×2, 2×1, 2×2); outer control height grows; dialog scroll rules unchanged. Do not use horizontal scroll.
+11. **Segmented control with four options (owner OQ-3).** **Phase A:** one radiogroup row at **40px** height; use narrow-dialog segment padding (`0 6px`, `docs/design-system.md`). Measured in design review (2026-10-11) on the real CSS: segments are 53.5–71.3px wide at 320–440px with no clipping, so **Phase A is the plan**. Its E2E check (AS-1X2-08) at **320, 400 and 420px**: for each option `scrollWidth ≤ clientWidth` of its label and its rect inside the radiogroup rect; the radiogroup rect inside the dialog content box. **Phase B (only if that check fails during implementation):** same radiogroup becomes a **2×2** grid of segments (reading order 1×1, 1×2, 2×1, 2×2); outer control height grows; dialog scroll rules unchanged. Do not use horizontal scroll.
 
 12. **Nothing else by default.** Part **2** (post-onboarding island) and part **3** (step 2 starter rows) are separate specs. **Data compatibility: not required.**
 
 ## Scope
 
 - `src/newtab.js`: `SIZE_OPTIONS`; `createFavoriteTile`; `createCityHintTile`; `createWeatherMetricTile` size mapping; **`placeTile` drops `dataset.tileSize`**.
-- `src/controls.css` or `surfaces.css`: only if Phase B — layout for four-option Size radiogroup as 2×2 grid inside dialogs.
+- `src/controls.css` or `surfaces.css`: only if Phase B — layout for four-option Size radiogroup as 2×2 grid inside dialogs (not expected, decision 11).
 - `src/newtab.css`: 1×2 rules for favorite, weather, city hint (from mockup CSS, adjusted selectors); **no** chrome 1×2 rules; ensure 2×2 / 2×1 rules do not leak to 1×2 (audit `[data-h="2"]` without `[data-w]`).
 - `src/weatherTiles.js`: `tall` branch in `readyModel` / `describeWeatherMetric`.
 - `src/widgetsStore.js`: **no change** to chrome grid rule.
 - Unit tests: `test/weatherTiles.test.js` (tall precipitation/AQI); `test/newtabSource.test.js` pins for fourth size option and favorite text guard; `test/desktopLayout.test.js` optional `placeNew` for 1×2 block.
-- E2E: new scenario file `dg-NN-tile-1x2.mjs` (the plan takes the next free number; `dg-61`…`dg-63` are taken) — Add link 1×2, Edit weather 1×2, hint at 1×2 at 1280×800; **Add link Size row at 320×800** (four segments visible); tiles lack `data-tileSize`; visual metrics on tile box and key typography (±0.5 px) against mockup.
-- Docs: `CHANGELOG.md` `[Unreleased]`; `docs/architecture.md` one sentence under Desktop grid UI (four sizes); `docs/design-system.md` Size row lists four options; this spec → `implemented` after merge.
+- E2E: new scenario file `dg-NN-tile-1x2.mjs` (the plan takes the next free number; `dg-61`…`dg-63` are taken) — Add link 1×2, Edit weather 1×2, hint at 1×2 at 1280×800; **Add link Size row at 320×800** (four segments visible); tiles lack `data-tile-size`; tile box ±1 px and font sizes ±0.5 px against the mockup at the 72px cell (the mockup is drawn for 72 only); at 64 and 56 only the no-clip checks of AS-1X2-07 / AS-1X2-10. Existing E2E that count three sizes and must change: `dg-04-edit-favorite.mjs` (lines 42–43), `dg-29-weather-modal.mjs` (line 38).
+- Docs: `CHANGELOG.md` `[Unreleased]`; `docs/architecture.md` one sentence under Desktop grid UI (four sizes); `docs/design-system.md` Size row lists four options and names Add link as well as Edit link (today it says Edit link only, while the code has Size in both); agent-config `CLAUDE.md` (DOM contract: drop `data-tile-size`, four sizes); this spec → `implemented` after merge.
 - Notes: mockup CSS path above; optional companion HTML archived in `.private/superpowers/mockups/2026-10-10-tile-1x2/`.
 
 ## Process
@@ -100,7 +102,8 @@ Full UI pipeline (spec review, plan in notes, E2E-first implementation, checkpoi
 
 ## Accepted exceptions
 
-- **Size radiogroup** may switch to Phase B (2×2 segment grid) if Phase A fails at 320px.
+- **Size radiogroup** may switch to Phase B (2×2 segment grid) only if the AS-1X2-08 measurement fails.
+- **Keyboard, focus, edit mode, large data:** unchanged mechanisms (the segmented radiogroup's arrow keys, tile focus rings, jiggle, the 200-link cap) apply to the new option and the new footprint as they are; covered by the existing E2E (`dg-23`, `dg-32`, `dg-38`, `dg-40`, `dg-44`), not repeated here.
 - **Letter fallback** on 1×2 uses the same 32×32 box as favicon (not 40×40 of 2×2).
 
 ## Acceptance scenarios
@@ -122,13 +125,14 @@ Common setup: harness **1280×800** unless noted; `gridMetrics` → cell **72**,
 ### AS-1X2-03 Edit weather saves 1×2 and shows tall layout
 - Given: city set, precipitation tile, Edit weather, Size **1×2**.
 - When: Save.
-- Then: stored `h:2, w:1`; tile shows glyph, primary, secondary (start time when fixture provides it), city; values band vertically centered between glyph and city (±2 px visual check vs mockup).
+- Then: stored `h:2, w:1`; tile shows glyph, primary, secondary (start time when fixture provides it), city; values band vertically centered between glyph and city (±1 px: the band's center equals the midpoint between the glyph's bottom and the city's top).
+- Also: air quality at 1×2 shows primary + `PM2.5` secondary; temperature and UV at 1×2 show the primary only; loading and error states keep their 1×1 content (decision 6).
 - Verified by: E2E group 3.
 
 ### AS-1X2-04 City hint at 1×2 shows pin and text
 - Given: no city; metric cell displayed as 1×2 (seeded storage).
 - When: page load.
-- Then: hint tile shows pin and `Set a city`; dashed border; tap opens city modal.
+- Then: hint tile shows pin and `Set a city` (one line at the 72px cell); dashed border; tap opens city modal. At 500×800 (64px cell) the text takes two lines and stays inside the tile.
 - Verified by: E2E group 4.
 
 ### AS-1X2-05 Weather retry on 1×2 matches 2-high retry chrome
@@ -146,20 +150,32 @@ Common setup: harness **1280×800** unless noted; `gridMetrics` → cell **72**,
 ### AS-1X2-07 Narrow window 320×600 does not clip 1×2 tiles
 - Given: one 1×2 favorite and one 1×2 weather tile seeded.
 - When: load at 320×600.
-- Then: no horizontal scroll; tiles 56×118; tile content within cell (host ellipsized on one line, label ≤ 3 lines); typography readable (no zero-size text).
+- Then: no horizontal scroll; tiles 56×118; tile content within cell (host ellipsized on one line, label ≤ 3 lines); weather primary 14px, its `scrollWidth ≤ clientWidth` with the longest fixture value (`100%`); typography readable (no zero-size text).
 - Verified by: E2E group 7.
 
 ### AS-1X2-08 Size radiogroup fits at 320px dialog width
 - Given: viewport **320×800**, Add link dialog open.
 - When: measuring the Size radiogroup and its four options.
-- Then: all labels **1×1**, **1×2**, **2×1**, **2×2** visible; no option clipped; radiogroup does not extend past the dialog content box; implementation matches Phase A or documented Phase B layout.
+- Then: all labels **1×1**, **1×2**, **2×1**, **2×2** visible; at 320, 400 and 420px each option's label has `scrollWidth ≤ clientWidth` and the option rect lies inside the radiogroup rect, which lies inside the dialog content box (decision 11).
 - Verified by: E2E group 8.
 
-### AS-1X2-09 Tiles expose w/h only on the DOM (no data-tileSize)
+### AS-1X2-09 Tiles expose w/h only on the DOM (no data-tile-size)
 - Given: desk with at least one favorite and one weather tile.
 - When: inspecting tile nodes in the grid.
-- Then: each has `data-w` and `data-h`; **`data-tileSize` is absent**; `placeTile` in source does not assign `dataset.tileSize` (`newtabSource` pin inverted).
+- Then: each has `data-w` and `data-h`; **`data-tile-size` is absent** (`hasAttribute("data-tile-size")` false; this step fails on today's `main`); `placeTile` in source does not assign `dataset.tileSize` (`newtabSource` pin inverted).
 - Verified by: E2E smoke + `test/newtabSource.test.js`.
+
+### AS-1X2-10 1×2 weather at the 64px cell
+- Given: viewport 500×800 (cell 64, gap 8), precipitation and air quality at 1×2, fixture with a `100%` primary.
+- When: page load.
+- Then: tiles 64×136; primary 16px, secondary 10px; no primary or secondary has `scrollWidth > clientWidth`; secondary at most 2 lines.
+- Verified by: E2E group 9.
+
+### AS-1X2-11 Resize an existing tile to 1×2 and back
+- Given: edit mode; a 2×1 link with free cells below it, and a second 2×1 link whose cell below is taken.
+- When: Edit link → Size 1×2 → Save for each; then reopen Edit link.
+- Then: the Size control preselects 1×2; the first link keeps its top-left cell; the second moves per `placeResized` (own row to the right, then rows below); no other tile changes its stored grid; Edit → 2×1 restores a 2×1 tile.
+- Verified by: E2E group 10; unit `placeResized` with `h: 2` already exists.
 
 ## Review focus
 
@@ -167,7 +183,8 @@ Common setup: harness **1280×800** unless noted; `gridMetrics` → cell **72**,
 - Precipitation/AQI **tall** parity with **wide** secondary fields.
 - Favorite text guard (`w === 2 || h === 2`).
 - `data-tileSize` fully removed from DOM; no CSS keyed on it.
-- Segmented control Phase A vs B at 320px.
+- Segmented control at 320 / 400 / 420px (Phase A expected).
+- 1×2 weather type sizes per cell (22 only at 72).
 - Regression: 1×1, 2×1, 2×2 tiles unchanged (checkpoint screenshots).
 
 ## Resolved decisions (owner)
