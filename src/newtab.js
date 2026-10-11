@@ -2288,6 +2288,27 @@ function showDialogError(root, message) {
 // Every explicit mutation goes through here. On failure nothing is persisted and the UI returns to the stored state.
 // `renderPending: false` skips the busy re-render (a drop keeps its tile on the target while the write runs);
 // `onFailure(message)` then owns the failure UI instead of the immediate re-render.
+// A stale tab touched a link that another tab deleted (docs/stale-link-and-host-contrast.md decision 2). All under the busy
+// lock: forget a pending drop, note where focus should go (the DOM still has the tile), re-read storage (no write; if that fails
+// the old state stays), end the busy state with one render from the fresh state, close the dialog or restore focus, say so in
+// the alert status. Never throws.
+async function recoverFromGoneLink(generation, error) {
+  pendingDrop = null;
+  const neighbours = error.id ? neighborTargets(error.id) : [SETTINGS_TILE_ID];
+  let fresh = null;
+  try {
+    fresh = await widgetsService.getState();
+  } catch {
+    // keep the old state: the message below is still shown
+  }
+  finishFavoritesAction(generation, () => {
+    if (fresh) widgetsState = fresh;
+  });
+  if (desktopDialogRoot) closeDesktopDialog({ restoreFocusTo: neighbours });
+  else focusWidgetTarget(neighbours);
+  showDesktopStatus(error.message);
+}
+
 async function runDesktopMutation(action, { dialogRoot = null, renderPending = true, onFailure = null } = {}) {
   if (favoritesBusy) return false;
   showDesktopStatus("");
@@ -2304,6 +2325,10 @@ async function runDesktopMutation(action, { dialogRoot = null, renderPending = t
     });
     return true;
   } catch (error) {
+    if (error?.code === "link-gone") {
+      await recoverFromGoneLink(generation, error);
+      return false;
+    }
     const message = error instanceof Error ? error.message : String(error);
     if (onFailure) {
       setFavoritesBusy(false);
