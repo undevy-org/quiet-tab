@@ -707,6 +707,13 @@ describe("1×2 tile edge cases (AS-TSF-07)", () => {
         assert.equal(canPlace(layout, "a", g(last + 1, 4, 1, 2), columns), false);
       });
 
+      it("canPlace at the bottom limit: y == maxDropRow is allowed for h = 2, one row lower is refused", () => {
+        const layout = layoutOf(["a", g(0, 0, 1, 2)], ["b", g(3, 1)]);
+        // short layout, first screen of 9 rows: maxDropRow = 9 − 2 = 7
+        assert.equal(canPlace(layout, "a", g(1, 7, 1, 2), columns, 9), true);
+        assert.equal(canPlace(layout, "a", g(1, 8, 1, 2), columns, 9), false);
+      });
+
       it("canPlace refuses an overlap with a neighbour through the second row of the 1×2 block", () => {
         const layout = layoutOf(["a", g(0, 0)], ["n", g(2, 1)]);
         assert.equal(canPlace(layout, "a", g(2, 0, 1, 2), columns), false);
@@ -721,7 +728,7 @@ describe("1×2 tile edge cases (AS-TSF-07)", () => {
         assert.deepEqual(layout.get("b"), g(2, 0, 1, 2));
       });
 
-      it("displayLayout moves a 1×2 that a stored neighbour overlaps to the first free block of its row, to the right", () => {
+      it("displayLayout: the stored 1×2 keeps its cell, the later stored neighbour that it overlaps takes the next free cell of its row", () => {
         const o = originOf(columns);
         const items = [fav("a", g(1 - o, 0, 1, 2)), fav("b", g(1 - o, 1))];
         const layout = displayLayout(items, columns);
@@ -730,6 +737,12 @@ describe("1×2 tile edge cases (AS-TSF-07)", () => {
       });
     });
   }
+
+  it("placeResized never looks left of the tile's own column in its row, although free blocks exist there (14 columns)", () => {
+    const layout = layoutOf(["a", g(5, 2)], ["below", g(5, 3)]);
+    const spot = placeResized(layout, "a", { w: 1, h: 2 }, 14);
+    assert.deepEqual(spot, g(6, 2, 1, 2)); // (0..4, 2..3) are free but lie left of column 5
+  });
 
   describe("maxDropRow for h = 2 (three separate terms)", () => {
     it("a short layout: viewportRows − h wins", () => {
@@ -740,6 +753,11 @@ describe("1×2 tile edge cases (AS-TSF-07)", () => {
     it("a tall layout: one row below the lowest other tile wins", () => {
       const layout = layoutOf(["a", g(0, 0, 1, 2)], ["b", g(3, 11)]);
       assert.equal(engine.maxDropRow(layout, "a", 2, 9), 12); // lowest other bottom 11 + 1 = 12 beats 7
+    });
+
+    it("a 1×2 as the lowest other tile counts by its bottom row", () => {
+      const layout = layoutOf(["a", g(0, 0, 1, 2)], ["b", g(3, 11, 1, 2)]);
+      assert.equal(engine.maxDropRow(layout, "a", 2, 9), 13); // b occupies rows 11..12, so the block may start at row 13
     });
 
     it("the own row below both wins", () => {

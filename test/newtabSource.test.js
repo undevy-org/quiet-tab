@@ -1170,9 +1170,9 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
 
   it("pins the forced-colors rule for the selected dialog segment (docs/tile-size-followups.md decision 6)", async () => {
     const surfaces = await readFile(new URL("../src/surfaces.css", import.meta.url), "utf8");
-    const at = surfaces.indexOf("@media (forced-colors: active)");
-    assert.ok(at > surfaces.indexOf(".desktop-dialog .segmented__option:has(input:checked) {"), "after the rule it overrides");
-    assert.match(surfaces.slice(at, at + 260), /\.desktop-dialog \.segmented__option:has\(input:checked\) \{\s*background: Highlight;\s*color: HighlightText;/);
+    const rule = /@media \(forced-colors: active\) \{\s*\.desktop-dialog \.segmented__option:has\(input:checked\) \{\s*background: Highlight;\s*color: HighlightText;\s*\}\s*\}/;
+    assert.match(surfaces, rule);
+    assert.ok(surfaces.search(rule) > surfaces.indexOf(".desktop-dialog .segmented__option:has(input:checked) {"), "after the rule it overrides");
   });
 
   it("pins the full text color on toned weather tiles (docs/tile-size-followups.md decision 4)", async () => {
