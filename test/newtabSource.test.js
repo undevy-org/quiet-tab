@@ -1168,6 +1168,12 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     assert.doesNotMatch(wrap, /segmented__option/);
   });
 
+  it("pins the full text color on toned weather tiles (docs/tile-size-followups.md decision 4)", async () => {
+    const styles = await css();
+    assert.match(styles, /\.weather-tile\[data-weather-tone\] \.weather-tile__city,\s*\.weather-tile\[data-weather-tone\] \.weather-tile__glyph \{\s*color: var\(--text\);\s*\}/);
+    assert.match(styles, /\.weather-tile__city \{[^}]*color: var\(--muted\);/s); // an untoned tile keeps the muted line
+  });
+
   it("pins the 1×2 city hint (docs/tile-size-1x2.md decision 4)", async () => {
     const code = await source();
     assert.match(fn(code, "createCityHintTile"), /else if \(cell\.h === 2\) button\.append\(createIconNode\("mapPin", \{ size: 18 \}\), createNode\("span", "city-hint-tile__text", "Set a city"\)\);/);
