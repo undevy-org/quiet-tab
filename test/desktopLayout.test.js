@@ -671,3 +671,88 @@ describe("vertically centered defaults (docs/vertically-centered-defaults.md; AS
     });
   });
 });
+
+// Run 27 (docs/tile-size-followups.md, AS-TSF-07): a 1-wide, 2-high tile at the edges. Displayed layouts are built by hand
+// (a Map of displayed cells), so the expectations come from the documented rules, not from the engine's output.
+describe("1×2 tile edge cases (AS-TSF-07)", () => {
+  const layoutOf = (...entries) => new Map(entries);
+  for (const columns of [14, 6, 4]) {
+    const last = columns - 1;
+    describe(`${columns} columns`, () => {
+      it("resize 1×1 → 1×2 keeps its cell when the cell below is free", () => {
+        const layout = layoutOf(["a", g(2, 3)], ["b", g(3, 3)]);
+        assert.deepEqual(placeResized(layout, "a", { w: 1, h: 2 }, columns), g(2, 3, 1, 2));
+      });
+
+      it("resize 1×1 → 1×2 with the cell below occupied takes the first free 1×2 block of its own row to the right", () => {
+        const layout = layoutOf(["a", g(1, 2)], ["below", g(1, 3)]);
+        assert.deepEqual(placeResized(layout, "a", { w: 1, h: 2 }, columns), g(2, 2, 1, 2));
+      });
+
+      it("a right neighbour in the own row and the row below pushes the block one more column right", () => {
+        const layout = layoutOf(["a", g(1, 2)], ["below", g(1, 3)], ["right", g(2, 2)]);
+        assert.deepEqual(placeResized(layout, "a", { w: 1, h: 2 }, columns), g(3, 2, 1, 2));
+      });
+
+      it("in the last column with the cell below occupied there is no block to the right: rows below from column 0", () => {
+        const layout = layoutOf(["a", g(last, 0)], ["below", g(last, 1)]);
+        // Row 0 offers no block to the right of the last column; row 1 from column 0: (0,1) and (0,2) are free.
+        assert.deepEqual(placeResized(layout, "a", { w: 1, h: 2 }, columns), g(0, 1, 1, 2));
+      });
+
+      it("a 1×2 in the last column fits when the two cells are free", () => {
+        const layout = layoutOf(["a", g(last, 4)]);
+        assert.deepEqual(placeResized(layout, "a", { w: 1, h: 2 }, columns), g(last, 4, 1, 2));
+        assert.equal(canPlace(layout, "a", g(last, 4, 1, 2), columns), true);
+        assert.equal(canPlace(layout, "a", g(last + 1, 4, 1, 2), columns), false);
+      });
+
+      it("canPlace refuses an overlap with a neighbour through the second row of the 1×2 block", () => {
+        const layout = layoutOf(["a", g(0, 0)], ["n", g(2, 1)]);
+        assert.equal(canPlace(layout, "a", g(2, 0, 1, 2), columns), false);
+        assert.equal(canPlace(layout, "a", g(3, 0, 1, 2), columns), true);
+      });
+
+      it("displayLayout keeps two adjacent stored 1×2 tiles", () => {
+        const o = originOf(columns);
+        const items = [fav("a", g(1 - o, 0, 1, 2)), fav("b", g(2 - o, 0, 1, 2))];
+        const layout = displayLayout(items, columns);
+        assert.deepEqual(layout.get("a"), g(1, 0, 1, 2));
+        assert.deepEqual(layout.get("b"), g(2, 0, 1, 2));
+      });
+
+      it("displayLayout moves a 1×2 that a stored neighbour overlaps to the first free block of its row, to the right", () => {
+        const o = originOf(columns);
+        const items = [fav("a", g(1 - o, 0, 1, 2)), fav("b", g(1 - o, 1))];
+        const layout = displayLayout(items, columns);
+        assert.deepEqual(layout.get("a"), g(1, 0, 1, 2));
+        assert.deepEqual(layout.get("b"), g(2, 1)); // (1,1) is taken by a's second row; b takes the next free cell of its row
+      });
+    });
+  }
+
+  describe("maxDropRow for h = 2 (three separate terms)", () => {
+    it("a short layout: viewportRows − h wins", () => {
+      const layout = layoutOf(["a", g(0, 0, 1, 2)], ["b", g(3, 1)]);
+      assert.equal(engine.maxDropRow(layout, "a", 2, 9), 7); // lowest other bottom 1 + 1 = 2, own y 0, screen 9 − 2 = 7
+    });
+
+    it("a tall layout: one row below the lowest other tile wins", () => {
+      const layout = layoutOf(["a", g(0, 0, 1, 2)], ["b", g(3, 11)]);
+      assert.equal(engine.maxDropRow(layout, "a", 2, 9), 12); // lowest other bottom 11 + 1 = 12 beats 7
+    });
+
+    it("the own row below both wins", () => {
+      const layout = layoutOf(["a", g(0, 20, 1, 2)], ["b", g(3, 1)]);
+      assert.equal(engine.maxDropRow(layout, "a", 2, 9), 20); // own y 20 beats 7 and 2
+    });
+  });
+
+  describe("clampDropCell for a 1-wide tile", () => {
+    it("keeps x ≤ columns − w and y ≤ maxY (h plays no part here)", () => {
+      assert.deepEqual(engine.clampDropCell({ x: 99, y: 99 }, { w: 1 }, 14, 7), { x: 13, y: 7 });
+      assert.deepEqual(engine.clampDropCell({ x: 99, y: 99 }, { w: 2 }, 14, 7), { x: 12, y: 7 });
+      assert.deepEqual(engine.clampDropCell({ x: -3, y: -3 }, { w: 1 }, 4, 7), { x: 0, y: 0 });
+    });
+  });
+});
