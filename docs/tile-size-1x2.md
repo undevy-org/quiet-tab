@@ -42,7 +42,7 @@ Terms: **footprint** = stored `grid.w` × `grid.h` (each 1 or 2). **1×2** = `w:
 
 3. **Favorite DOM rule.** `createFavoriteTile` appends `.favorite-tile__text` when **`cell.w === 2` OR `cell.h === 2`**, with host line when **`cell.h === 2`** (covers 2×2 and 1×2, not 2×1).
 
-4. **City hint at 1×2.** When `cell.w === 1 && cell.h === 2`: column layout — map-pin **18px**, then visible text **`Set a city`** (same copy as 2-wide), **11px** semibold, centered, may wrap to **2** lines (at the 56 px cell it does), dashed border unchanged. **1×1** pin-only and **2×1** text-only behaviours unchanged.
+4. **City hint at 1×2.** When `cell.w === 1 && cell.h === 2`: column layout — map-pin **18px**, then visible text **`Set a city`** (same copy as 2-wide), **11px** semibold, centered, one line at the **72px** cell, **2** lines at the **64px** and **56px** cells (measured), dashed border unchanged. **1×1** pin-only and **2×1** text-only behaviours unchanged.
 
 5. **Chrome (Settings, Add) — 1×1 only (owner OQ-1).** No change: store validator keeps **`w === 1 && h === 1`** only; placement/self-heal unchanged; **no** 1×2 layout CSS and **no** chrome work in this run. The brainstorming mockup showed chrome 1×2 for completeness; it is **not** implemented here.
 
@@ -56,19 +56,19 @@ Terms: **footprint** = stored `grid.w` × `grid.h` (each 1 or 2). **1×2** = `w:
    - **Air quality:** primary + **secondary** = PM2.5 line (same as wide).
    - Loading, error, stale, retry phases unchanged (`docs/weather-tile-retry.md`).
 
-7. **Weather tile DOM/CSS at 1×2.** `createWeatherMetricTile`: city line when `cell.h === 2` (already); retry glyph **12px** at 1-high, **14px** at 2-high (unchanged rule). CSS selectors use **`[data-w="1"][data-h="2"]`** for tall-only rules so **2×2** keeps existing rules. Approved layout:
+7. **Weather tile DOM/CSS at 1×2.** `createWeatherMetricTile`: city line when `cell.h === 2` (already); retry glyph **12px** at 1-high **and at 1×2**, **14px** only at **2×2** (`createIconNode("refresh", { size: cell.w === 2 && cell.h === 2 ? 14 : 12 })`; see the retry bullet below). CSS selectors use **`[data-w="1"][data-h="2"]`** for tall-only rules so **2×2** keeps existing rules. Approved layout:
    - Glyph top (**18px** SVG), flex-shrink 0.
    - `.weather-tile__values`: `flex: 1`, column, **justify-content: center** (values band vertically centered between glyph and city).
-   - Primary **22px**, secondary **11px**, centered — at the **72px** cell only. At **64px** and **56px** cells the 1×2 tile keeps the existing per-cell weather tokens (`--font-size-weather-primary-cell-64` 16px / `-secondary-cell-64` 10px; `-cell-56` 14px / 9px): the 22px primary does not fit a 1-wide column there (`100%` at 22px bold is about 60px wide against 54px / 46px of content width, design review L0-01).
+   - Primary **20px**, secondary **11px**, centered — at the **72px** cell. (The mockup's 22px leaves `100%` 60.4px wide in a 60px content box, clipped by a fraction of a pixel, design review r2; 20px is about 55px.) At **64px** and **56px** cells the 1×2 tile uses the existing per-cell weather tokens (`--font-size-weather-primary-cell-64` 16px / `-secondary-cell-64` 10px; `-cell-56` 14px / 9px). These need **explicit** 1×2 rules, e.g. `:root[data-cell="64"] .weather-tile[data-w="1"][data-h="2"] .weather-tile__primary`, because today's `.weather-tile[data-h="2"] .weather-tile__primary` (28px, specificity 0,3,0) beats the `:where(:root[data-cell])` token rules (0,1,0).
    - Secondary may wrap to **2** lines (e.g. `12.3 PM2.5` wraps at the 64px and 56px cells); it is never clipped.
    - City **10px**, up to **2** lines, bottom band.
    - Padding **8px 4px 6px**; tone borders/gradients unchanged.
    - Do **not** apply 2×2-only rules (`primary` 28px, glyph 24px) to 1×2.
-   - Retry corner glyph keeps today's offset (`6px`, `src/newtab.css` `.weather-tile[data-h="2"] .weather-tile__retry`); the mockup's 5px is not normative.
+   - Retry corner glyph at 1×2: **12px** at `top: 4px; right: 4px` (the 1-high rule), not the 2×2 rule (14px at 6px): in a 1-wide column the 14px glyph at 6px touches the centered 18px metric glyph at the 56px cell (0.25px of ink for wind, design review r2). With 12px at 4px the corner glyph starts at `tile width − 16` and the metric glyph ends at about `tile width / 2 + 9`, so their bounding boxes do not intersect at 72/64/56 (`docs/weather-tile-retry.md` decision 2 rule). Amend that doc's size table in the implementation PR: "12 px in a 1-high tile and a 1×2 tile, 14 px in a 2×2 tile".
 
 8. **Remove DOM `data-tileSize` (owner OQ-2).** `placeTile` sets only CSS vars `--w` / `--h` and **`data-w` / `data-h`** on each tile node. **Delete** `node.dataset.tileSize = …` and any read of `dataset.tileSize` or `[data-tileSize]` in `src/`. (The DOM attribute is `data-tile-size`; every check of its absence uses that name.) Tile layout CSS and runtime logic use **`data-w` and `data-h` only** so future footprints (beyond today’s 1–2 span) do not need a parallel naming scheme. **Storage:** optional `tileSize` on very old migrated items may remain in `sizeOf` / v1→v2 paths as a read fallback when `grid` is missing — **non-goal** to remove that field from validators or migrations in this run (no users); new writes already omit it (`widgetsService` deletes `tileSize`).
 
-9. **Tooltips, retry, edit mode, drag.** No behaviour change: tooltips still use full `description` text; retry corner glyph and `aria-label` unchanged; edit dialogs gain the fourth size only; drag highlight and `maxDropRow` already respect `h`. **Hide weather** / **delete link** unchanged.
+9. **Tooltips, retry, edit mode, drag.** No behaviour change: tooltips still use full `description` text; retry `aria-label` and behaviour unchanged (corner glyph size per decision 7); edit dialogs gain the fourth size only; drag highlight and `maxDropRow` already respect `h`. **Hide weather** / **delete link** unchanged.
 
 10. **Narrow windows / `data-cell`.** Tall rules use the same cell box as other sizes (`--cell-size` from `gridMetrics`). At **56px** cells (gap 6), 1×2 tile is **56×118** px; at **64px** cells (gap 8) **64×136** px; weather typography per decision 7 (22px / 11px only at the 72px cell; the per-cell tokens at 64 and 56). City hint text: one line at the 72px cell, two lines at 64 and 56.
 
@@ -103,7 +103,7 @@ Full UI pipeline (spec review, plan in notes, E2E-first implementation, checkpoi
 ## Accepted exceptions
 
 - **Size radiogroup** may switch to Phase B (2×2 segment grid) only if the AS-1X2-08 measurement fails.
-- **Keyboard, focus, edit mode, large data:** unchanged mechanisms (the segmented radiogroup's arrow keys, tile focus rings, jiggle, the 200-link cap) apply to the new option and the new footprint as they are; covered by the existing E2E (`dg-23`, `dg-32`, `dg-38`, `dg-40`, `dg-44`), not repeated here.
+- **Keyboard, focus, edit mode, large data:** unchanged mechanisms (the segmented radiogroup's arrow keys, tile focus rings, jiggle, the 200-link cap) apply to the new option and the new footprint as they are; no existing E2E seeds a 1×2 tile, so AS-1X2-12 checks keyboard focus once; jiggle and the cap are footprint-independent and not repeated.
 - **Letter fallback** on 1×2 uses the same 32×32 box as favicon (not 40×40 of 2×2).
 
 ## Acceptance scenarios
@@ -138,8 +138,8 @@ Common setup: harness **1280×800** unless noted; `gridMetrics` → cell **72**,
 ### AS-1X2-05 Weather retry on 1×2 matches 2-high retry chrome
 - Given: stale/error fixture, metric 1×2.
 - When: tile in retry state.
-- Then: dashed border, corner refresh **14px**, behaviour per `docs/weather-tile-retry.md`.
-- Verified by: E2E group 5 or unit + spot E2E.
+- Then: dashed border, corner refresh **12px** at `top/right 4px`; its bounding box does not intersect the metric glyph's at 1280×800, 500×800 and 320×800 (cells 72/64/56) for all four metrics; behaviour per `docs/weather-tile-retry.md`.
+- Verified by: E2E group 5.
 
 ### AS-1X2-06 Drag and drop preserves 1×2 footprint
 - Given: edit mode, a 1×2 link on grid.
@@ -172,10 +172,22 @@ Common setup: harness **1280×800** unless noted; `gridMetrics` → cell **72**,
 - Verified by: E2E group 9.
 
 ### AS-1X2-11 Resize an existing tile to 1×2 and back
-- Given: edit mode; a 2×1 link with free cells below it, and a second 2×1 link whose cell below is taken.
+- Given: 1280×800 (14 columns, origin 7); seeded storage (stored frame) with the six system tiles in row 0 and links A `{x:-5,y:5,w:2,h:1}`, B `{x:1,y:5,w:2,h:1}`, C `{x:1,y:6,w:1,h:1}` (displayed A (2,5), B (8,5), C (8,6)); edit mode.
 - When: Edit link → Size 1×2 → Save for each; then reopen Edit link.
-- Then: the Size control preselects 1×2; the first link keeps its top-left cell; the second moves per `placeResized` (own row to the right, then rows below); no other tile changes its stored grid; Edit → 2×1 restores a 2×1 tile.
+- Then: A is stored `{x:-5,y:5,w:1,h:2}` (keeps its top-left cell); B cannot keep (8,5) because C is at (8,6), so `placeResized` scans its row from column 8 and puts it at displayed (9,5): stored `{x:2,y:5,w:1,h:2}`; reopening Edit link preselects 1×2; C and the system tiles keep their stored grids; Edit A → 2×1 restores `{x:-5,y:5,w:2,h:1}`.
 - Verified by: E2E group 10; unit `placeResized` with `h: 2` already exists.
+
+### AS-1X2-12 Keyboard focus on a 1×2 tile
+- Given: 1280×800, a 1×2 favorite and a 1×2 weather tile.
+- When: Tab through the grid.
+- Then: each 1×2 tile receives focus in `(y, x)` order and its focus ring follows the 72×152 tile box.
+- Verified by: E2E group 11.
+
+### AS-1X2-13 Loading and error content at 1×2
+- Given: a 1×2 precipitation tile; (a) weather loading, (b) error without a stored location.
+- When: page load.
+- Then: no city line; the values band is vertically centered between the glyph's bottom and the tile's bottom padding edge (±1 px); content as at 1×1 (decision 6).
+- Verified by: E2E group 12.
 
 ## Review focus
 
@@ -199,7 +211,7 @@ Common setup: harness **1280×800** unless noted; `gridMetrics` → cell **72**,
 
 ## Visual reference
 
-Pixel-perfect mockup (owner-approved 2026-10-10): `widget-1x2-pixel-perfect.html`, archived next to the CSS in notes `superpowers/mockups/2026-10-10-tile-1x2/`; CSS source of truth for implementation: `.private/superpowers/mockups/2026-10-10-tile-1x2/widget-1x2-proposed.css`. Weather values band: **centered vertically** between glyph and city (approved adjustment).
+Pixel-perfect mockup (owner-approved 2026-10-10): `widget-1x2-pixel-perfect.html`, archived next to the CSS in notes `superpowers/mockups/2026-10-10-tile-1x2/`; CSS reference for implementation: `.private/superpowers/mockups/2026-10-10-tile-1x2/widget-1x2-proposed.css`, drawn for the 72px cell only; where it differs from decisions 4, 7 and 10 (primary 22px, retry glyph 14px at 5px, one type size for every cell) **this spec wins**. Weather values band: **centered vertically** between glyph and city (approved adjustment).
 
 ## Copy (user-visible)
 
