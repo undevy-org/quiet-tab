@@ -19,7 +19,8 @@ const STALE_PREFIX = "Couldn't refresh - showing saved data. ";
 const TRYING_AGAIN = "Trying again…";
 
 function readyModel(metricKey, data, size) {
-  const wide = size === "wide";
+  // A 2-wide tile and a 1×2 (tall) tile both have room for the secondary line (docs/tile-size-1x2.md decision 6).
+  const wide = size === "wide" || size === "tall";
   if (metricKey === "temperature") {
     return {
       primary: formatTemperature(data.temperature),
@@ -55,7 +56,7 @@ function readyModel(metricKey, data, size) {
   };
 }
 
-// `result` is null while loading, else a weatherService result. Returns null when no tile
+// `size` is "square" | "wide" | "tall" (1×2). `result` is null while loading, else a weatherService result. Returns null when no tile
 // should exist (no city). `retry` ("ready" | "retrying" | "cooldown", default "ready") only matters for
 // error and stale results: the model's `retry` is the phase for those and null for every other state;
 // while retrying it is `busy`, an error tile shows "…" and the description says it is trying again.

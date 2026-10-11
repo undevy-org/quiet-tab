@@ -13,6 +13,37 @@ const failed = { status: "error", data: null, error: "boom" };
 const keys = ["temperature", "precipitation", "airQuality", "uv"];
 
 describe("describeWeatherMetric", () => {
+  it("tall: precipitation and air quality carry the same secondary as wide", () => {
+    for (const k of ["precipitation", "airQuality"]) {
+      const wide = describeWeatherMetric({ metricKey: k, result: ready, size: "wide" });
+      const tall = describeWeatherMetric({ metricKey: k, result: ready, size: "tall" });
+      assert.deepEqual(tall, wide, k);
+      assert.notEqual(tall.secondary, null, k);
+    }
+  });
+
+  it("tall: temperature and uv have no secondary", () => {
+    for (const k of ["temperature", "uv"]) {
+      const tall = describeWeatherMetric({ metricKey: k, result: ready, size: "tall" });
+      assert.equal(tall.secondary, null, k);
+      assert.deepEqual(tall, describeWeatherMetric({ metricKey: k, result: ready, size: "square" }), k);
+    }
+  });
+
+  it("tall: loading, error and stale keep the shape of the other sizes", () => {
+    for (const k of keys) {
+      assert.deepEqual(
+        describeWeatherMetric({ metricKey: k, result: null, size: "tall" }),
+        describeWeatherMetric({ metricKey: k, result: null, size: "square" })
+      );
+      assert.deepEqual(
+        describeWeatherMetric({ metricKey: k, result: failed, size: "tall" }),
+        describeWeatherMetric({ metricKey: k, result: failed, size: "square" })
+      );
+      assert.equal(describeWeatherMetric({ metricKey: k, result: stale, size: "tall" }).stale, true);
+    }
+  });
+
   it("returns null when there is nothing to render (no city)", () => {
     for (const k of keys) assert.equal(describeWeatherMetric({ metricKey: k, result: { status: "no-location", data: null }, size: "wide" }), null);
   });
