@@ -496,11 +496,12 @@ function createDialogErrorSlot() {
 
 const SIZE_OPTIONS = [
   ["1x1", "1×1"],
+  ["1x2", "1×2"],
   ["2x1", "2×1"],
   ["2x2", "2×2"]
 ];
 
-// Size radiogroup (name "size", values 1x1|2x1|2x2) shared by the link and weather edit dialogs.
+// Size radiogroup (name "size", values 1x1|1x2|2x1|2x2) shared by the link and weather edit dialogs.
 function createSizeControl({ w, h }) {
   return createSegmentedControl("size", SIZE_OPTIONS, `${w}x${h}`);
 }

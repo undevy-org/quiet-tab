@@ -946,8 +946,8 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     assert.match(build, /createIconButton\("button button--primary", "Hide", "eyeOff"\)/);
     assert.doesNotMatch(fn(code, "handleEditModeClick"), /hideWeatherMetric\(/);
     assert.match(fn(code, "handleEditModeClick"), /confirm-hide-weather/);
-    // Size radiogroup: one shared control, values 1x1|2x1|2x2, shown as 1×1 / 2×1 / 2×2.
-    assert.match(code, /const SIZE_OPTIONS = \[\s*\["1x1", "1×1"\],\s*\["2x1", "2×1"\],\s*\["2x2", "2×2"\]\s*\];/);
+    // Size radiogroup: one shared control, values 1x1|1x2|2x1|2x2 (docs/tile-size-1x2.md decision 1).
+    assert.match(code, /const SIZE_OPTIONS = \[\s*\["1x1", "1×1"\],\s*\["1x2", "1×2"\],\s*\["2x1", "2×1"\],\s*\["2x2", "2×2"\]\s*\];/);
     assert.match(fn(code, "createSizeControl"), /createSegmentedControl\("size", SIZE_OPTIONS,/);
     assert.match(
       fn(code, "createFavoriteForm"),
