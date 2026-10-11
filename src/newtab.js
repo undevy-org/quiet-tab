@@ -1796,7 +1796,8 @@ function createWeatherMetricTile(item, cell, view) {
   return tile;
 }
 
-// Spec § Weather / city: the hint takes the first enabled metric's cell and size; the map-pin glyph at 1-wide (the plus belongs to Add), text when wider.
+// Spec § Weather / city: the hint takes the first enabled metric's cell and size; the map-pin glyph at 1×1 (the plus
+// belongs to Add), text when 2-wide, pin above text at 1×2 (docs/tile-size-1x2.md decision 4).
 function createCityHintTile(cell, item) {
   const button = createNode("button", "city-hint-tile");
   button.type = "button";
@@ -1805,6 +1806,7 @@ function createCityHintTile(cell, item) {
   button.dataset.metricId = item.id;
   button.setAttribute("aria-label", "Set a city");
   if (cell.w === 2) button.textContent = "Set a city";
+  else if (cell.h === 2) button.append(createIconNode("mapPin", { size: 18 }), createNode("span", "city-hint-tile__text", "Set a city"));
   else button.appendChild(createIconNode("mapPin"));
   return button;
 }
