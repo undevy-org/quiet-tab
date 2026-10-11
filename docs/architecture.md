@@ -363,6 +363,8 @@ with the Web Locks API using one extension-wide lock name. A promise-chain
 fallback provides deterministic behavior in environments without Web Locks
 and in Node.js tests.
 
+An open tab never listens to storage changes. When its next mutation (Save, Delete, a drop) targets a link that another tab deleted, the service throws `LinkGoneError`; `runDesktopMutation` then re-reads storage without writing, redraws from it, closes the dialog, focuses the neighbouring tile and shows the message in the alert status (`recoverFromGoneLink`).
+
 ## Stylesheets (new tab)
 
 The new tab page loads CSS in dependency order from `src/newtab.html`:

@@ -70,6 +70,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A tab that was open while another tab deleted a link no longer shows `Favorite not found` on Save, on Delete or on a drop of that link: it re-reads storage, closes the dialog, redraws the grid without the link, moves focus to the neighbouring tile and says `This link was deleted in another tab.` (alert status). E2E `dg-67-stale-link-and-host-contrast.mjs` (docs/stale-link-and-host-contrast.md).
+- The host line of a link tile is a little closer to the text color (`color-mix(in srgb, var(--muted) 70%, var(--text))`): it was 4.09–4.31:1 on the red, black and dark accents in the light theme, it is at least 5.98:1 now.
 - City dialog: when you move through the city suggestions with the arrow keys or Tab and
   the list (or the dialog, in a short window) scrolls, the focus ring is no longer cut off
   on its top or bottom edge. This also covers the field and the clear button, and the
