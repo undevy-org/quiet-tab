@@ -505,6 +505,15 @@
   box-shadow: inset 0 0 0 1px var(--border-control);
 }
 
+/* Forced colors drop the soft fill and the inset ring, which left the selected segment marked by weight alone
+   (docs/tile-size-followups.md decision 6d): it takes the system selection colors (the shape glyph follows through currentColor). */
+@media (forced-colors: active) {
+  .desktop-dialog .segmented__option:has(input:checked) {
+    background: Highlight;
+    color: HighlightText;
+  }
+}
+
 /* Add menu (edit mode, >= 1 hidden metric): a popover anchored to the Add tile, placed by newtab.js. */
 .add-menu {
   position: absolute;
