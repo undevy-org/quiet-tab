@@ -617,6 +617,15 @@ describe("widgetsService with weather metrics", () => {
     await assert.rejects(service.updateWeatherMetric("f0", { enabled: true }, COLS), /Weather tile not found/);
   });
 
+  it("restoring a hidden metric keeps its 1×2 footprint (docs/tile-size-1x2.md, spec gate carry-over L0-06)", async () => {
+    const { service } = await serviceWithMetrics();
+    await service.updateWeatherMetric("weather:temperature", { w: 1, h: 2 }, COLS);
+    await service.updateWeatherMetric("weather:temperature", { enabled: false }, COLS);
+    const state = await service.updateWeatherMetric("weather:temperature", { enabled: true }, COLS);
+    const t = state.items.find((i) => i.id === "weather:temperature");
+    assert.deepEqual([t.enabled, t.grid.w, t.grid.h], [true, 1, 2]);
+  });
+
   it("does not let favorite operations touch a metric", async () => {
     const { service } = await serviceWithMetrics();
     await assert.rejects(service.deleteFavorite("weather:uv", COLS), /Favorite not found/);

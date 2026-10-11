@@ -1736,9 +1736,10 @@ function showOnboardingWizard() {
   return true;
 }
 
-// R6: a 2-wide tile uses the `wide` model; a 2-high tile gets larger type (CSS keys off data-h="2") and the city name.
+// R6: a 2-wide tile uses the `wide` model, a 1×2 tile the `tall` model (docs/tile-size-1x2.md decision 6); a 2-high
+// tile gets the city name. Type sizes come from CSS keyed on data-w/data-h.
 function createWeatherMetricTile(item, cell, view) {
-  const size = cell.w === 2 ? "wide" : "square";
+  const size = cell.w === 2 ? "wide" : cell.h === 2 ? "tall" : "square";
   const model = describeWeatherMetric({ metricKey: weatherMetricKey(item.id), result: view, size, retry: weatherRetryPhase(weatherUi, Date.now()) });
   if (!model) return null;
 
@@ -1789,7 +1790,7 @@ function createWeatherMetricTile(item, cell, view) {
     // A direct child of the tile (never of .weather-tile__values, which clips): the corner glyph that says "press to try again".
     const retryGlyph = createNode("span", "weather-tile__retry");
     retryGlyph.setAttribute("aria-hidden", "true");
-    retryGlyph.appendChild(createIconNode("refresh", { size: cell.h === 2 ? 14 : 12 }));
+    retryGlyph.appendChild(createIconNode("refresh", { size: cell.w === 2 && cell.h === 2 ? 14 : 12 }));
     tile.appendChild(retryGlyph);
   }
   return tile;

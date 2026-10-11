@@ -844,7 +844,7 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
 
   it("uses the wide weather model for 2-wide tiles and adds the city line only at 2 high (R6)", async () => {
     const tile = fn(await source(), "createWeatherMetricTile");
-    assert.match(tile, /const size = cell\.w === 2 \? "wide" : "square";/);
+    assert.match(tile, /const size = cell\.w === 2 \? "wide" : cell\.h === 2 \? "tall" : "square";/); // docs/tile-size-1x2.md decision 6
     assert.match(tile, /if \(cell\.h === 2 && cityName\) tile\.appendChild\(createNode\("span", "weather-tile__city", cityName\)\);/);
   });
 
@@ -1137,6 +1137,12 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     assert.match(fn(code, "createFavoriteTile"), /if \(cell\.h === 2\) text\.appendChild\(createNode\("span", "favorite-tile__host", item\.domain\)\);/);
     assert.match(styles, /\.favorite-tile\[data-w="1"\]\[data-h="2"\] \.favorite-tile__label\s*\{[^}]*-webkit-line-clamp: 3;/s);
   });
+
+  it("pins the 1×2 weather tile (docs/tile-size-1x2.md)", async () => {
+    const code = await source();
+    assert.match(fn(code, "createWeatherMetricTile"), /const size = cell\.w === 2 \? "wide" : cell\.h === 2 \? "tall" : "square";/);
+    assert.match(fn(code, "createWeatherMetricTile"), /createIconNode\("refresh", \{ size: cell\.w === 2 && cell\.h === 2 \? 14 : 12 \}\)/);
+  });
 });
 
 // AS-MO-11 and AS-MO-15 (docs/modal-overlay-design.md): unit-only CSS and token pins.
@@ -1237,4 +1243,5 @@ describe("use my location: reverse lookup timer", () => {
     assert.ok(timer > position && timer < reverse, "the timer is armed after the position and before the reverse request");
     assert.ok(body.indexOf("new AbortController()") > position, "the controller is created after the position resolves");
   });
+
 });
