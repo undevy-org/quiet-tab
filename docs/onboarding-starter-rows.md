@@ -18,8 +18,8 @@ Related: `docs/onboarding-wizard.md` (decision 5, AS-OB-04, AS-OB-17, AS-OB-26),
 |------|------------------|---------|-----------|
 | 2026-10-10 | Step 2: the cell **is** the control — full width, check **right**, vertically centered; no duplicate row label. | `confirmed` | Companion To-Be panel. |
 | 2026-10-10 | OQ-P3-5: unchecked = mute the **entire** row. OQ-P3-6: checked = filled check only, **no** primary border on the row. | `confirmed` | § Decision log. |
-| 2026-10-10 | Footprint hints (OQ-P3-2/3/4/7/8) superseded by part 2's island table. | `default` (spec review) | `docs/post-onboarding-grid.md` revision 2. |
-| 2026-10-10 | Unchecked mute keeps text and check contrast (WCAG 1.4.3 / 1.4.11): grayscale on the whole row, opacity only on the icon. | `default` (spec review I7; owner may override) | § Default decision 3. |
+| 2026-10-10 | Footprint hints (OQ-P3-2/3/4/7/8) superseded by part 2's island table. | `confirmed` (owner, 2026-10-11) | `docs/post-onboarding-grid.md` revision 2. |
+| 2026-10-10 | Unchecked mute keeps text and check contrast (WCAG 1.4.3 / 1.4.11): grayscale on the whole row, opacity only on the icon. | `confirmed` (owner, 2026-10-11) | § Default decision 3. |
 
 ## Current behaviour (`main` at review time)
 

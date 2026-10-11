@@ -20,8 +20,8 @@ Related: `docs/onboarding-wizard.md` (Finish), `docs/vertically-centered-default
 | 2026-10-10 | Acceptance covers **all** valid post-onboarding outcomes (k 0…8, city saved / skipped). | `confirmed` | Owner chat. |
 | 2026-10-10 | OQ-1…OQ-8 answered (full repack, k = added, temperature chosen per layout, no fixed k = 8 recipe, escalate then fall back, soft first-screen height, on-desk members only, local pack + one shift). | `confirmed`, then **revised** | § Decision log. |
 | 2026-10-10 | Review answers: k = 3 → **4×4 with tall temperature** (not B1 5×3); Settings and Add **always the bottom-right corner**; city skipped → **same geometry**, the reserved metric cells stay empty until a city is set; k = 8 → **4×4 of 1×1 icons** is fine. | `confirmed` | Owner answers to the spec review, 2026-10-10. |
-| 2026-10-10 | Layout depends only on k (j semantics), so the 9 islands are a hand-drawn table checked by tests, not a runtime solver. | `default` (reviewer recommendation; owner may override) | Spec review, main proposal. |
-| 2026-10-10 | Link footprints differ from the brainstorm hints at k = 2 (2×1, 2×1 → 1×2, 2×1), k = 3 (order: ChatGPT 2×2, YouTube 1×2, X 1×1) and k = 6 (2×1, 2×1 → 2×1, 1×2): with the owner's chrome corner the old sets have **no** solid layout under R2–R4 (brute force, spec review 2). | `default` (forced by R2–R4; owner may override) | Notes `pipeline/reports/onboarding-grid-initiative-spec-review-2.md`. |
+| 2026-10-10 | Layout depends only on k (j semantics), so the 9 islands are a hand-drawn table checked by tests, not a runtime solver. | `confirmed` (owner, 2026-10-11) | Spec review, main proposal. |
+| 2026-10-10 | Link footprints differ from the brainstorm hints at k = 2 (2×1, 2×1 → 1×2, 2×1), k = 3 (order: ChatGPT 2×2, YouTube 1×2, X 1×1) and k = 6 (2×1, 2×1 → 2×1, 1×2): with the owner's chrome corner the old sets have **no** solid layout under R2–R4 (brute force, spec review 2). | `confirmed` (owner, 2026-10-11; forced by R2–R4) | Notes `pipeline/reports/onboarding-grid-initiative-spec-review-2.md`. |
 
 ## Current behaviour (`main` at review time)
 
