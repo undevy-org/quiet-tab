@@ -819,7 +819,7 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     const render = fn(code, "renderDesktop");
     assert.match(render, /view\?\.status === "no-location"\) \{\s*if \(!hintPlaced\) \{\s*tile = createCityHintTile\(cell, item\);/);
     const hint = fn(code, "createCityHintTile");
-    assert.match(hint, /if \(cell\.w === 2\) button\.textContent = "Set a city";\s*else if \(cell\.h === 2\) button\.append\([^\n]*\);\s*else button\.appendChild\(createIconNode\("mapPin"\)\);/);
+    assert.match(hint, /if \(cell\.w === 2\) button\.textContent = "Set a city";\s*else if \(cell\.h === 2\) button\.append\(createIconNode\("mapPin", \{ size: 18 \}\), createNode\("span", "city-hint-tile__text", "Set a city"\)\);\s*else button\.appendChild\(createIconNode\("mapPin"\)\);/);
     assert.match(hint, /button\.setAttribute\("aria-label", "Set a city"\);/);
     assert.doesNotMatch(hint, /createIconNode\("plus"\)/, "the plus glyph belongs to the Add tile");
   });
@@ -1142,6 +1142,7 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     const code = await source();
     assert.match(fn(code, "createWeatherMetricTile"), /const size = cell\.w === 2 \? "wide" : cell\.h === 2 \? "tall" : "square";/);
     assert.match(fn(code, "createWeatherMetricTile"), /createIconNode\("refresh", \{ size: cell\.w === 2 && cell\.h === 2 \? 14 : 12 \}\)/);
+    assert.match(await css(), /\.weather-tile\[data-w="1"\]\[data-h="2"\] \.weather-tile__city\s*\{[^}]*overflow-wrap: anywhere;/s);
   });
 
   it("pins the 1×2 city hint (docs/tile-size-1x2.md decision 4)", async () => {

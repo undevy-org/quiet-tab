@@ -561,6 +561,7 @@ button.weather-tile {
   line-height: 1.2;
   text-align: center;
   white-space: normal;
+  overflow-wrap: anywhere;
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
