@@ -105,7 +105,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- The city line and the metric glyph of a toned weather tile use the full text color (they were muted: 2.59:1 on a rain-5 tile); the Size segments use narrower padding and glyph unit 4 px up to 451 px windows.
+- The city line and the metric glyph of a toned weather tile use the full text color (they were muted: 2.59:1 on a rain-5 tile); the dialog segments (Icon, Color, Size) use `padding: 0 5px` and no wrapping up to 451 px windows (was 6 px up to 400 px), and the Size shape glyph uses unit 4 px there.
 - Tiles no longer carry the data-tile-size attribute; layout CSS uses data-w / data-h only.
 - The six starting tiles (the four weather tiles, Settings and Add) now appear in the
   middle of the first screen, not at its top. This happens only at their first

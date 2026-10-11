@@ -39,7 +39,7 @@
 - `src/newtab.js`: `SIZE_OPTIONS` (glyph and accessible-name elements), `createSegmentedControl` (optional `aria-label` element).
 - `src/controls.css`: `.segmented__glyph` and `--size-*` rules.
 - `src/surfaces.css`: a new `@media (max-width: 451px)` block for the Size segments (`padding: 0 5px`, `white-space: nowrap`, glyph unit 4); the `@media (max-width: 400px)` block keeps the row-wrap rules; an `@media (forced-colors: active)` rule for the selected segment (`forced-color-adjust: none`, Highlight, HighlightText).
-- `src/newtab.css`: `--text` on toned weather tiles (city, secondary, glyph); any dark-theme fix of 1×2 surfaces found by AS-TSF-04.
+- `src/newtab.css`: `--text` on toned weather tiles (city and glyph; the secondary line is already `--text`); any dark-theme fix of 1×2 surfaces found by AS-TSF-04.
 - `src/design-tokens.css`: only if AS-TSF-04 finds a failing token on a 1×2 surface.
 - `test/newtabSource.test.js`: the `SIZE_OPTIONS` pin (today an exact regexp over two-element tuples, line ~950) is rewritten for the new tuples; new pins for the aria-label, glyph classes and `--text` rules. `test/desktopLayout.test.js` (decision 8).
 - E2E: new `dg-66-tile-size-followups.mjs` (`dg-65` is reserved by run 25); `dg-64`, `dg-04`, `dg-29` expectations only if the Size row markup change breaks them.
@@ -63,6 +63,7 @@ Full UI pipeline (`quiet-tab-pipeline`): spec review and spec gate → plan in n
 
 - In forced colors the UA replaces tile backgrounds and tone colors; only the items of decision 6 are required.
 - An open tab stays stale until its next mutation or reload; a stale tab editing the same tile overwrites it (last write wins, decision 7).
+- With `prefers-reduced-motion`, a stale tile in the busy state dims its values (primary, secondary) to opacity 0.7 (`docs/weather-tile-retry.md`, existing transient state); the contrast matrix of AS-TSF-03 measures the resting states only.
 - The 1×1 shape glyph at unit 4 (4×4 with a 1 px border at device pixel ratio 1) reads as a small ring, not a square (checkpoint L1-01 / V2-02); the sizes are fixed by decisions 1 and 3.
 - In the Icon row of the same dialog the free room at 401 px is 1 px (measured, checkpoint V2R2-01): the label does not clip and that row is not changed by this run except for the narrower padding.
 - **Backlog 65 (checkpoint L2-01, L2-02).** The 1×2 link tile centers the whole icon + label + host block (owner-approved mockup, `docs/tile-size-1x2.md` decision 2), so the icons of two adjacent 1×2 links sit at different heights when their labels wrap to a different number of lines; and on a 56 px cell a long word is broken inside the word (`overflow-wrap: anywhere`) instead of being clipped. Both stay as designed.
