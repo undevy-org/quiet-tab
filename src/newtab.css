@@ -311,7 +311,9 @@ button.weather-tile {
 .favorite-tile__host {
   font-size: 12px;
   line-height: 1.3;
-  color: var(--muted);
+  /* A little closer to the text color than --muted: on a tinted link tile the plain muted line fell to 4.09-4.31:1 for the
+     red, black and dark accents in the light theme (docs/stale-link-and-host-contrast.md decision 4). */
+  color: color-mix(in srgb, var(--muted) 70%, var(--text));
 }
 
 .favorite-tile:hover:not(:disabled),

@@ -1175,6 +1175,11 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     assert.ok(surfaces.search(rule) > surfaces.indexOf(".desktop-dialog .segmented__option:has(input:checked) {"), "after the rule it overrides");
   });
 
+  it("pins the link host color: 70 % muted, 30 % text (docs/stale-link-and-host-contrast.md decision 4)", async () => {
+    const styles = await css();
+    assert.match(styles, /\.favorite-tile__host \{[^}]*color: color-mix\(in srgb, var\(--muted\) 70%, var\(--text\)\);/s);
+  });
+
   it("pins the full text color on toned weather tiles (docs/tile-size-followups.md decision 4)", async () => {
     const styles = await css();
     assert.match(styles, /\.weather-tile\[data-weather-tone\] \.weather-tile__city,\s*\.weather-tile\[data-weather-tone\] \.weather-tile__glyph \{\s*color: var\(--text\);\s*\}/);
