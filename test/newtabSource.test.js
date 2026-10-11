@@ -215,7 +215,7 @@ describe("newtab favorites source", () => {
   it("derives tile size from the displayed cell and reuses the shared icon module for the chrome tiles and the badge", async () => {
     const code = await source();
     assert.match(code, /from "\.\/icons\.js"/);
-    assert.match(code, /node\.dataset\.tileSize = cell\.w === 2 \? "wide" : "square";/);
+    assert.doesNotMatch(code, /dataset\.tileSize/); // docs/tile-size-1x2.md decision 8: data-w / data-h only
     assert.match(code, /createIconNode\(settings \? "settings" : "plus", \{ size: 20 \}\)/);
     assert.match(code, /createIconNode\("minus", \{ size: 12 \}\)/);
     assert.doesNotMatch(code, /tileSpan/);

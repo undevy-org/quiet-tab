@@ -2350,7 +2350,6 @@ function placeTile(node, cell) {
   node.style.setProperty("--h", String(cell.h));
   node.dataset.w = String(cell.w);
   node.dataset.h = String(cell.h);
-  node.dataset.tileSize = cell.w === 2 ? "wide" : "square";
 }
 
 function focusedWidgetId() {
