@@ -194,6 +194,22 @@ export class PlacementError extends Error {
   }
 }
 
+// A stale tab touched a link that another tab deleted (docs/stale-link-and-host-contrast.md): the UI refreshes and says so
+// instead of showing a technical form error. Only an id that no item has is "gone"; an id of another kind of item is a bug.
+export class LinkGoneError extends Error {
+  constructor(id) {
+    super("This link was deleted in another tab.");
+    this.name = "LinkGoneError";
+    this.code = "link-gone";
+    this.id = id;
+  }
+}
+
+function assertFavoriteExists(items, id) {
+  if (items.some((item) => item.type === "favorite" && item.id === id)) return;
+  throw items.some((item) => item.id === id) ? new Error("Favorite not found") : new LinkGoneError(id);
+}
+
 function withGrid(items, id, grid) {
   return items.map((item) => (item.id === id ? { ...item, grid } : item));
 }
@@ -316,7 +332,7 @@ export function createWidgetsService({
       return mutate(options, ({ base, columns, updatedAt }) => {
         const index = base.items.findIndex((item) => item.type === "favorite" && item.id === id);
         if (index === -1) {
-          throw new Error("Favorite not found");
+          assertFavoriteExists(base.items, id);
         }
 
         const nextItem = { ...base.items[index] };
@@ -362,9 +378,7 @@ export function createWidgetsService({
 
     deleteFavorite(id, options) {
       return mutate(options, ({ base }) => {
-        if (!base.items.some((item) => item.type === "favorite" && item.id === id)) {
-          throw new Error("Favorite not found");
-        }
+        assertFavoriteExists(base.items, id);
         return base.items.filter((item) => item.id !== id);
       });
     },
@@ -416,7 +430,8 @@ export function createWidgetsService({
         const layout = displayLayout(base.items, columns);
         const current = layout.get(id);
         if (!current) {
-          throw new Error("Widget not found");
+          // Gone (no item has the id) is the stale-tab case; an existing item that is off the grid (a hidden metric) keeps the old text.
+          throw base.items.some((item) => item.id === id) ? new Error("Widget not found") : new LinkGoneError(id);
         }
         const next = { x: target?.x, y: target?.y, w: current.w, h: current.h };
         if (!isValidGrid(next) || !canPlace(layout, id, next, columns, sanitizeViewportRows(options?.viewportRows))) {
