@@ -205,9 +205,9 @@ export class LinkGoneError extends Error {
   }
 }
 
-function assertFavoriteExists(items, id) {
-  if (items.some((item) => item.type === "favorite" && item.id === id)) return;
-  throw items.some((item) => item.id === id) ? new Error("Favorite not found") : new LinkGoneError(id);
+// The error for an update/delete of a favorite that is not there: gone (nobody has the id) or a wrong kind of item.
+function missingFavoriteError(items, id) {
+  return items.some((item) => item.id === id) ? new Error("Favorite not found") : new LinkGoneError(id);
 }
 
 function withGrid(items, id, grid) {
@@ -332,7 +332,7 @@ export function createWidgetsService({
       return mutate(options, ({ base, columns, updatedAt }) => {
         const index = base.items.findIndex((item) => item.type === "favorite" && item.id === id);
         if (index === -1) {
-          assertFavoriteExists(base.items, id);
+          throw missingFavoriteError(base.items, id);
         }
 
         const nextItem = { ...base.items[index] };
@@ -378,7 +378,9 @@ export function createWidgetsService({
 
     deleteFavorite(id, options) {
       return mutate(options, ({ base }) => {
-        assertFavoriteExists(base.items, id);
+        if (!base.items.some((item) => item.type === "favorite" && item.id === id)) {
+          throw missingFavoriteError(base.items, id);
+        }
         return base.items.filter((item) => item.id !== id);
       });
     },

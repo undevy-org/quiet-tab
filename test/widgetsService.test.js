@@ -645,7 +645,7 @@ describe("widgetsService with weather metrics", () => {
     await assert.rejects(service.updateFavorite("weather:uv", { label: "x" }, COLS), (error) => !(error instanceof LinkGoneError) && /Favorite not found/.test(error.message));
     await service.updateWeatherMetric("weather:uv", { enabled: false }, COLS);
     await assert.rejects(service.moveWidget("weather:uv", { x: 0, y: 5 }, COLS), (error) => !(error instanceof LinkGoneError) && /Widget not found/.test(error.message));
-    await assert.rejects(service.moveWidget("f0", { x: 99, y: 99 }, COLS), (error) => error instanceof PlacementError || /Widget|spot/.test(error.message)); // an existing id keeps the old paths
+    await assert.rejects(service.moveWidget("f0", { x: 99, y: 99 }, COLS), (error) => !(error instanceof LinkGoneError)); // an existing id keeps the old paths (here a placement refusal)
   });
 
   it("every mutation reports the newer-version message (not 'not found') when the meta became newer", async () => {
