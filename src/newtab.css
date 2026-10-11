@@ -355,6 +355,40 @@ button.weather-tile {
   align-self: center;
 }
 
+/* 1×2 link (docs/tile-size-1x2.md decision 2): centered column, icon 32, label up to 3 lines, host one line. */
+.favorite-tile[data-w="1"][data-h="2"] {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 8px 6px;
+}
+
+.favorite-tile[data-w="1"][data-h="2"] .favorite-icon,
+.favorite-tile[data-w="1"][data-h="2"] .favorite-letter {
+  width: 32px;
+  height: 32px;
+}
+
+.favorite-tile[data-w="1"][data-h="2"] .favorite-tile__text {
+  flex: 0 1 auto;
+  width: 100%;
+  text-align: center;
+}
+
+.favorite-tile[data-w="1"][data-h="2"] .favorite-tile__label {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.25;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+}
+
+.favorite-tile[data-w="1"][data-h="2"] .favorite-tile__host {
+  font-size: 10px;
+  line-height: 1.2;
+}
+
 /* .status sets display: -webkit-box, which would otherwise defeat [hidden]. */
 .status[hidden] {
   display: none;

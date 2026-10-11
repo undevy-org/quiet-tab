@@ -331,7 +331,8 @@ function createFavoriteTile(item, cell) {
     hexToRgbChannels(normalizeAccentLightness(item.backgroundColor))
   );
   button.appendChild(createFavoriteIconNode(iconModel, item));
-  if (cell.w === 2) {
+  // 2-wide tiles and 1×2 tiles show the label; 2-high tiles (2×2, 1×2) also show the host (docs/tile-size-1x2.md decision 3).
+  if (cell.w === 2 || cell.h === 2) {
     const text = createNode("span", "favorite-tile__text");
     text.appendChild(createNode("span", "favorite-tile__label", item.label));
     if (cell.h === 2) text.appendChild(createNode("span", "favorite-tile__host", item.domain));

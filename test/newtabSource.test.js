@@ -799,7 +799,7 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     const tile = fn(await source(), "createFavoriteTile");
     assert.match(tile, /editing \? `Edit \$\{item\.label\}` : `Open \$\{item\.label\}`/);
     assert.match(tile, /button\.dataset\.favoriteAction = editing \? "edit" : "open";/);
-    assert.match(tile, /if \(cell\.w === 2\) \{/); // 1-wide tiles carry no label text, the label is the accessible name
+    assert.match(tile, /if \(cell\.w === 2 \|\| cell\.h === 2\) \{/); // 1×1 tiles carry no label text (the label is the accessible name); 2-wide and 1×2 tiles do
     assert.match(tile, /createNode\("span", "favorite-tile__label", item\.label\)/);
     assert.match(tile, /if \(cell\.h === 2\) text\.appendChild\(createNode\("span", "favorite-tile__host", item\.domain\)\);/);
   });
@@ -1128,6 +1128,14 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     const code = await source();
     assert.doesNotMatch(code, /innerHTML/);
     assert.doesNotMatch(code, /chrome\.storage\.onChanged|storage\.onChanged/);
+  });
+
+  it("pins the 1×2 link tile (docs/tile-size-1x2.md)", async () => {
+    const code = await source();
+    const styles = await css();
+    assert.match(fn(code, "createFavoriteTile"), /if \(cell\.w === 2 \|\| cell\.h === 2\) \{/);
+    assert.match(fn(code, "createFavoriteTile"), /if \(cell\.h === 2\) text\.appendChild\(createNode\("span", "favorite-tile__host", item\.domain\)\);/);
+    assert.match(styles, /\.favorite-tile\[data-w="1"\]\[data-h="2"\] \.favorite-tile__label\s*\{[^}]*-webkit-line-clamp: 3;/s);
   });
 });
 
