@@ -310,6 +310,8 @@ retry; a retry only writes the cache that `initialize()` already writes.
 
 ## Desktop grid UI
 
+Tiles take one of four footprints (1×1, 1×2, 2×1, 2×2; chrome tiles 1×1 only), exposed on the DOM as `data-w` / `data-h`.
+
 - **Normal mode.** A link tile opens its URL; the hint tile opens the city modal;
   Settings enters edit mode; Add opens the add-link dialog. A click on the
   background does nothing.

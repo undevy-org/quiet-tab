@@ -293,11 +293,11 @@ Modal titles: `--font-size-title`, `margin: 0 0 var(--title-margin-bottom)` (**1
 
 | Screen | Controls (all **40px** outer, **8px** radius unless noted) |
 |--------|--------------------------------------------------------------|
-| Add link | Link, Name inputs; Icon / Color segmented; Cancel, Add |
-| Edit link | Above + Size segmented; Cancel, Save; color swatch **40px** tall |
+| Add link | Link, Name inputs; Icon / Color / Size segmented (1×1, 1×2, 2×1, 2×2); Cancel, Add |
+| Edit link | Above (Size: 1×1, 1×2, 2×1, 2×2); Cancel, Save; color swatch **40px** tall |
 | Delete link? | Cancel, Delete |
 | Hide <metric>? | Cancel, Hide (primary, `eyeOff`) |
-| Edit weather | City-field **40px**; Size segmented; Cancel, Save |
+| Edit weather | City-field **40px**; Size segmented (1×1, 1×2, 2×1, 2×2); Cancel, Save |
 | Change city / Set a city | Search input **40px**; clear **36px** inset **2px**; suggestion rows **40px**; Cancel or Not now, Save |
 | Add menu | Each menu item **40px** |
 

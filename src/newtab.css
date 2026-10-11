@@ -355,6 +355,40 @@ button.weather-tile {
   align-self: center;
 }
 
+/* 1×2 link (docs/tile-size-1x2.md decision 2): centered column, icon 32, label up to 3 lines, host one line. */
+.favorite-tile[data-w="1"][data-h="2"] {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 8px 6px;
+}
+
+.favorite-tile[data-w="1"][data-h="2"] .favorite-icon,
+.favorite-tile[data-w="1"][data-h="2"] .favorite-letter {
+  width: 32px;
+  height: 32px;
+}
+
+.favorite-tile[data-w="1"][data-h="2"] .favorite-tile__text {
+  flex: 0 1 auto;
+  width: 100%;
+  text-align: center;
+}
+
+.favorite-tile[data-w="1"][data-h="2"] .favorite-tile__label {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.25;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+}
+
+.favorite-tile[data-w="1"][data-h="2"] .favorite-tile__host {
+  font-size: 10px;
+  line-height: 1.2;
+}
+
 /* .status sets display: -webkit-box, which would otherwise defeat [hidden]. */
 .status[hidden] {
   display: none;
@@ -485,6 +519,66 @@ button.weather-tile {
   font-size: 13px;
 }
 
+/* 1×2 weather (docs/tile-size-1x2.md decision 7): glyph on top, values band centered, city at the bottom. Keyed on
+   [data-w="1"][data-h="2"] so 2×2 keeps its rules; these selectors (0,4,0) beat the 2-high ones (0,3,0). */
+.weather-tile[data-w="1"][data-h="2"] {
+  justify-content: flex-start;
+  gap: 0;
+  padding: 8px 4px 6px;
+}
+
+.weather-tile[data-w="1"][data-h="2"] .weather-tile__glyph svg {
+  width: 18px;
+  height: 18px;
+}
+
+.weather-tile[data-w="1"][data-h="2"] .weather-tile__values {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  min-height: 0;
+  white-space: normal;
+  text-align: center;
+}
+
+.weather-tile[data-w="1"][data-h="2"] .weather-tile__primary {
+  font-size: 20px;
+  line-height: 1.1;
+}
+
+.weather-tile[data-w="1"][data-h="2"] .weather-tile__secondary {
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.weather-tile[data-w="1"][data-h="2"] .weather-tile__city {
+  flex: 0 0 auto;
+  padding: 0 4px;
+  font-size: 10px;
+  line-height: 1.2;
+  text-align: center;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+/* The 1-high corner glyph (12px at 4px): the 14px one at 6px touches the centered 18px metric glyph at the 56px cell. */
+.weather-tile[data-w="1"][data-h="2"] .weather-tile__retry {
+  top: 4px;
+  right: 4px;
+}
+
+.weather-tile[data-w="1"][data-h="2"] .weather-tile__retry svg {
+  width: 12px;
+  height: 12px;
+}
+
 .weather-tile__city {
   max-width: 100%;
   padding: 0 var(--space-grid-10);
@@ -588,6 +682,17 @@ button.weather-tile {
   cursor: pointer;
 }
 
+/* 1×2 city hint (docs/tile-size-1x2.md decision 4): pin above the text; one line at the 72px cell, two at 64 / 56. */
+.city-hint-tile[data-w="1"][data-h="2"] {
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: center;
+}
+
 .weather-tile__values {
   display: inline-flex;
   align-items: baseline;
@@ -639,6 +744,11 @@ button.weather-tile {
 :where(:root[data-cell="64"]) .weather-tile__secondary { font-size: var(--font-size-weather-secondary-cell-64); }
 :where(:root[data-cell="56"]) .weather-tile__primary { font-size: var(--font-size-weather-primary-cell-56); }
 :where(:root[data-cell="56"]) .weather-tile__secondary { font-size: var(--font-size-weather-secondary-cell-56); }
+/* 1×2 at the 64 / 56 cells: the per-cell tokens, stated explicitly because the 1×2 rules above outrank :where(). */
+:root[data-cell="64"] .weather-tile[data-w="1"][data-h="2"] .weather-tile__primary { font-size: var(--font-size-weather-primary-cell-64); }
+:root[data-cell="64"] .weather-tile[data-w="1"][data-h="2"] .weather-tile__secondary { font-size: var(--font-size-weather-secondary-cell-64); }
+:root[data-cell="56"] .weather-tile[data-w="1"][data-h="2"] .weather-tile__primary { font-size: var(--font-size-weather-primary-cell-56); }
+:root[data-cell="56"] .weather-tile[data-w="1"][data-h="2"] .weather-tile__secondary { font-size: var(--font-size-weather-secondary-cell-56); }
 
 /* The − badge of a tile being dragged is hidden (the hidden attribute must win over display:inline-flex). */
 .desktop-grid > .tile-remove[hidden] { display: none; }

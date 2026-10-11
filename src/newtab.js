@@ -331,7 +331,8 @@ function createFavoriteTile(item, cell) {
     hexToRgbChannels(normalizeAccentLightness(item.backgroundColor))
   );
   button.appendChild(createFavoriteIconNode(iconModel, item));
-  if (cell.w === 2) {
+  // 2-wide tiles and 1×2 tiles show the label; 2-high tiles (2×2, 1×2) also show the host (docs/tile-size-1x2.md decision 3).
+  if (cell.w === 2 || cell.h === 2) {
     const text = createNode("span", "favorite-tile__text");
     text.appendChild(createNode("span", "favorite-tile__label", item.label));
     if (cell.h === 2) text.appendChild(createNode("span", "favorite-tile__host", item.domain));
@@ -496,11 +497,12 @@ function createDialogErrorSlot() {
 
 const SIZE_OPTIONS = [
   ["1x1", "1×1"],
+  ["1x2", "1×2"],
   ["2x1", "2×1"],
   ["2x2", "2×2"]
 ];
 
-// Size radiogroup (name "size", values 1x1|2x1|2x2) shared by the link and weather edit dialogs.
+// Size radiogroup (name "size", values 1x1|1x2|2x1|2x2) shared by the link and weather edit dialogs.
 function createSizeControl({ w, h }) {
   return createSegmentedControl("size", SIZE_OPTIONS, `${w}x${h}`);
 }
@@ -1734,9 +1736,10 @@ function showOnboardingWizard() {
   return true;
 }
 
-// R6: a 2-wide tile uses the `wide` model; a 2-high tile gets larger type (CSS keys off data-h="2") and the city name.
+// R6: a 2-wide tile uses the `wide` model, a 1×2 tile the `tall` model (docs/tile-size-1x2.md decision 6); a 2-high
+// tile gets the city name. Type sizes come from CSS keyed on data-w/data-h.
 function createWeatherMetricTile(item, cell, view) {
-  const size = cell.w === 2 ? "wide" : "square";
+  const size = cell.w === 2 ? "wide" : cell.h === 2 ? "tall" : "square";
   const model = describeWeatherMetric({ metricKey: weatherMetricKey(item.id), result: view, size, retry: weatherRetryPhase(weatherUi, Date.now()) });
   if (!model) return null;
 
@@ -1787,13 +1790,14 @@ function createWeatherMetricTile(item, cell, view) {
     // A direct child of the tile (never of .weather-tile__values, which clips): the corner glyph that says "press to try again".
     const retryGlyph = createNode("span", "weather-tile__retry");
     retryGlyph.setAttribute("aria-hidden", "true");
-    retryGlyph.appendChild(createIconNode("refresh", { size: cell.h === 2 ? 14 : 12 }));
+    retryGlyph.appendChild(createIconNode("refresh", { size: cell.w === 2 && cell.h === 2 ? 14 : 12 }));
     tile.appendChild(retryGlyph);
   }
   return tile;
 }
 
-// Spec § Weather / city: the hint takes the first enabled metric's cell and size; the map-pin glyph at 1-wide (the plus belongs to Add), text when wider.
+// Spec § Weather / city: the hint takes the first enabled metric's cell and size; the map-pin glyph at 1×1 (the plus
+// belongs to Add), text when 2-wide, pin above text at 1×2 (docs/tile-size-1x2.md decision 4).
 function createCityHintTile(cell, item) {
   const button = createNode("button", "city-hint-tile");
   button.type = "button";
@@ -1802,6 +1806,7 @@ function createCityHintTile(cell, item) {
   button.dataset.metricId = item.id;
   button.setAttribute("aria-label", "Set a city");
   if (cell.w === 2) button.textContent = "Set a city";
+  else if (cell.h === 2) button.append(createIconNode("mapPin", { size: 18 }), createNode("span", "city-hint-tile__text", "Set a city"));
   else button.appendChild(createIconNode("mapPin"));
   return button;
 }
@@ -2345,7 +2350,6 @@ function placeTile(node, cell) {
   node.style.setProperty("--h", String(cell.h));
   node.dataset.w = String(cell.w);
   node.dataset.h = String(cell.h);
-  node.dataset.tileSize = cell.w === 2 ? "wide" : "square";
 }
 
 function focusedWidgetId() {

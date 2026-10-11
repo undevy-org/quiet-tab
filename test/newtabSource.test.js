@@ -215,7 +215,7 @@ describe("newtab favorites source", () => {
   it("derives tile size from the displayed cell and reuses the shared icon module for the chrome tiles and the badge", async () => {
     const code = await source();
     assert.match(code, /from "\.\/icons\.js"/);
-    assert.match(code, /node\.dataset\.tileSize = cell\.w === 2 \? "wide" : "square";/);
+    assert.doesNotMatch(code, /dataset\.tileSize/); // docs/tile-size-1x2.md decision 8: data-w / data-h only
     assert.match(code, /createIconNode\(settings \? "settings" : "plus", \{ size: 20 \}\)/);
     assert.match(code, /createIconNode\("minus", \{ size: 12 \}\)/);
     assert.doesNotMatch(code, /tileSpan/);
@@ -799,7 +799,7 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     const tile = fn(await source(), "createFavoriteTile");
     assert.match(tile, /editing \? `Edit \$\{item\.label\}` : `Open \$\{item\.label\}`/);
     assert.match(tile, /button\.dataset\.favoriteAction = editing \? "edit" : "open";/);
-    assert.match(tile, /if \(cell\.w === 2\) \{/); // 1-wide tiles carry no label text, the label is the accessible name
+    assert.match(tile, /if \(cell\.w === 2 \|\| cell\.h === 2\) \{/); // 1×1 tiles carry no label text (the label is the accessible name); 2-wide and 1×2 tiles do
     assert.match(tile, /createNode\("span", "favorite-tile__label", item\.label\)/);
     assert.match(tile, /if \(cell\.h === 2\) text\.appendChild\(createNode\("span", "favorite-tile__host", item\.domain\)\);/);
   });
@@ -819,7 +819,7 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     const render = fn(code, "renderDesktop");
     assert.match(render, /view\?\.status === "no-location"\) \{\s*if \(!hintPlaced\) \{\s*tile = createCityHintTile\(cell, item\);/);
     const hint = fn(code, "createCityHintTile");
-    assert.match(hint, /if \(cell\.w === 2\) button\.textContent = "Set a city";\s*else button\.appendChild\(createIconNode\("mapPin"\)\);/);
+    assert.match(hint, /if \(cell\.w === 2\) button\.textContent = "Set a city";\s*else if \(cell\.h === 2\) button\.append\(createIconNode\("mapPin", \{ size: 18 \}\), createNode\("span", "city-hint-tile__text", "Set a city"\)\);\s*else button\.appendChild\(createIconNode\("mapPin"\)\);/);
     assert.match(hint, /button\.setAttribute\("aria-label", "Set a city"\);/);
     assert.doesNotMatch(hint, /createIconNode\("plus"\)/, "the plus glyph belongs to the Add tile");
   });
@@ -844,7 +844,7 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
 
   it("uses the wide weather model for 2-wide tiles and adds the city line only at 2 high (R6)", async () => {
     const tile = fn(await source(), "createWeatherMetricTile");
-    assert.match(tile, /const size = cell\.w === 2 \? "wide" : "square";/);
+    assert.match(tile, /const size = cell\.w === 2 \? "wide" : cell\.h === 2 \? "tall" : "square";/); // docs/tile-size-1x2.md decision 6
     assert.match(tile, /if \(cell\.h === 2 && cityName\) tile\.appendChild\(createNode\("span", "weather-tile__city", cityName\)\);/);
   });
 
@@ -946,8 +946,8 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     assert.match(build, /createIconButton\("button button--primary", "Hide", "eyeOff"\)/);
     assert.doesNotMatch(fn(code, "handleEditModeClick"), /hideWeatherMetric\(/);
     assert.match(fn(code, "handleEditModeClick"), /confirm-hide-weather/);
-    // Size radiogroup: one shared control, values 1x1|2x1|2x2, shown as 1×1 / 2×1 / 2×2.
-    assert.match(code, /const SIZE_OPTIONS = \[\s*\["1x1", "1×1"\],\s*\["2x1", "2×1"\],\s*\["2x2", "2×2"\]\s*\];/);
+    // Size radiogroup: one shared control, values 1x1|1x2|2x1|2x2 (docs/tile-size-1x2.md decision 1).
+    assert.match(code, /const SIZE_OPTIONS = \[\s*\["1x1", "1×1"\],\s*\["1x2", "1×2"\],\s*\["2x1", "2×1"\],\s*\["2x2", "2×2"\]\s*\];/);
     assert.match(fn(code, "createSizeControl"), /createSegmentedControl\("size", SIZE_OPTIONS,/);
     assert.match(
       fn(code, "createFavoriteForm"),
@@ -1129,6 +1129,26 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     assert.doesNotMatch(code, /innerHTML/);
     assert.doesNotMatch(code, /chrome\.storage\.onChanged|storage\.onChanged/);
   });
+
+  it("pins the 1×2 link tile (docs/tile-size-1x2.md)", async () => {
+    const code = await source();
+    const styles = await css();
+    assert.match(fn(code, "createFavoriteTile"), /if \(cell\.w === 2 \|\| cell\.h === 2\) \{/);
+    assert.match(fn(code, "createFavoriteTile"), /if \(cell\.h === 2\) text\.appendChild\(createNode\("span", "favorite-tile__host", item\.domain\)\);/);
+    assert.match(styles, /\.favorite-tile\[data-w="1"\]\[data-h="2"\] \.favorite-tile__label\s*\{[^}]*-webkit-line-clamp: 3;/s);
+  });
+
+  it("pins the 1×2 weather tile (docs/tile-size-1x2.md)", async () => {
+    const code = await source();
+    assert.match(fn(code, "createWeatherMetricTile"), /const size = cell\.w === 2 \? "wide" : cell\.h === 2 \? "tall" : "square";/);
+    assert.match(fn(code, "createWeatherMetricTile"), /createIconNode\("refresh", \{ size: cell\.w === 2 && cell\.h === 2 \? 14 : 12 \}\)/);
+    assert.match(await css(), /\.weather-tile\[data-w="1"\]\[data-h="2"\] \.weather-tile__city\s*\{[^}]*overflow-wrap: anywhere;/s);
+  });
+
+  it("pins the 1×2 city hint (docs/tile-size-1x2.md decision 4)", async () => {
+    const code = await source();
+    assert.match(fn(code, "createCityHintTile"), /else if \(cell\.h === 2\) button\.append\(createIconNode\("mapPin", \{ size: 18 \}\), createNode\("span", "city-hint-tile__text", "Set a city"\)\);/);
+  });
 });
 
 // AS-MO-11 and AS-MO-15 (docs/modal-overlay-design.md): unit-only CSS and token pins.
@@ -1229,4 +1249,5 @@ describe("use my location: reverse lookup timer", () => {
     assert.ok(timer > position && timer < reverse, "the timer is armed after the position and before the reverse request");
     assert.ok(body.indexOf("new AbortController()") > position, "the controller is created after the position resolves");
   });
+
 });
