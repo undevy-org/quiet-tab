@@ -1170,7 +1170,7 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
 
   it("pins the forced-colors rule for the selected dialog segment (docs/tile-size-followups.md decision 6)", async () => {
     const surfaces = await readFile(new URL("../src/surfaces.css", import.meta.url), "utf8");
-    const rule = /@media \(forced-colors: active\) \{\s*\.desktop-dialog \.segmented__option:has\(input:checked\) \{\s*background: Highlight;\s*color: HighlightText;\s*\}\s*\}/;
+    const rule = /@media \(forced-colors: active\) \{\s*\.desktop-dialog \.segmented__option:has\(input:checked\) \{\s*forced-color-adjust: none;[^\n]*\n\s*background: Highlight;\s*color: HighlightText;\s*\}\s*\}/;
     assert.match(surfaces, rule);
     assert.ok(surfaces.search(rule) > surfaces.indexOf(".desktop-dialog .segmented__option:has(input:checked) {"), "after the rule it overrides");
   });

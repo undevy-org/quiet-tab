@@ -509,6 +509,7 @@
    (docs/tile-size-followups.md decision 6d): it takes the system selection colors (the shape glyph follows through currentColor). */
 @media (forced-colors: active) {
   .desktop-dialog .segmented__option:has(input:checked) {
+    forced-color-adjust: none; /* otherwise Chromium paints a Canvas backplate under the label and HighlightText vanishes on it */
     background: Highlight;
     color: HighlightText;
   }
