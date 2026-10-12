@@ -72,7 +72,7 @@ export function isFreshDesk(items) {
     if (!item || !isValidGrid(item.grid)) return false;
     const size = defaultSize(id);
     if (item.grid.w !== size.w || item.grid.h !== size.h) return false;
-    if (id.startsWith("weather:") && (item.type !== "weather-metric" || item.enabled !== true)) return false;
+    if (id.startsWith("weather:") ? item.type !== "weather-metric" || item.enabled !== true : item.type !== "chrome") return false;
   }
   const firstMetric = items.find((item) => item.type === "weather-metric");
   return firstMetric?.id === "weather:temperature";
@@ -83,6 +83,8 @@ export function isFreshDesk(items) {
 export function islandPlacements({ k, linkIds, rows, columns }) {
   if (!Number.isInteger(k) || k < 0 || k > MAX_ISLAND_LINKS) return null;
   if (!Array.isArray(linkIds) || linkIds.length !== k) return null;
+  // the ids become map keys: a repeated id or a system id would silently overwrite a member
+  if (new Set(linkIds).size !== k || linkIds.some((id) => SYSTEM_IDS.has(id))) return null;
   const island = ISLANDS[k];
   if (!Number.isInteger(columns) || island.W > columns) return null;
   const dx = -Math.floor(island.W / 2);

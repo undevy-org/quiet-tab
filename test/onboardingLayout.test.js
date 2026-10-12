@@ -186,6 +186,16 @@ describe("islandPlacements", () => {
     assert.equal(islandPlacements({ k: 1.5, linkIds: ids(1), rows: 9, columns: 14 }), null);
   });
 
+  it("rows 4096 is the largest valid value, 4097 means dy = 0", () => {
+    assert.equal(islandPlacements({ k: 3, linkIds: ids(3), rows: 4096, columns: 14 }).get("weather:temperature").y, centeredDefaultRow(4096, 4));
+    assert.equal(islandPlacements({ k: 3, linkIds: ids(3), rows: 4097, columns: 14 }).get("weather:temperature").y, 0);
+  });
+
+  it("returns null for repeated link ids or a link id equal to a system id", () => {
+    assert.equal(islandPlacements({ k: 2, linkIds: ["a", "a"], rows: 9, columns: 14 }), null);
+    assert.equal(islandPlacements({ k: 1, linkIds: ["weather:uv"], rows: 9, columns: 14 }), null);
+  });
+
   it("an invalid rows value gives dy = 0 (AS-POG-17)", () => {
     for (const rows of [0, -3, 1.5, "9", NaN, undefined, null, 5000]) {
       const map = islandPlacements({ k: 3, linkIds: ids(3), rows, columns: 14 });
@@ -243,6 +253,16 @@ describe("isFreshDesk", () => {
     const items = fresh();
     const [t, p, ...rest] = items;
     assert.equal(isFreshDesk([p, t, ...rest]), false);
+  });
+
+  it("false for a foreign or duplicate id among six items, a null item, a wrong type, enabled not true", () => {
+    assert.equal(isFreshDesk([...without(fresh(), "chrome:add"), favorite()]), false);
+    assert.equal(isFreshDesk([...without(fresh(), "chrome:add"), { ...fresh()[0] }]), false, "duplicate id");
+    assert.equal(isFreshDesk([...without(fresh(), "chrome:add"), null]), false);
+    assert.equal(isFreshDesk(patch(fresh(), "chrome:add", { type: "favorite" })), false);
+    assert.equal(isFreshDesk(patch(fresh(), "weather:uv", { type: "chrome" })), false);
+    assert.equal(isFreshDesk(patch(fresh(), "weather:uv", { enabled: "true" })), false);
+    assert.equal(isFreshDesk([]), false);
   });
 
   it("false for non-arrays and unknown extra items", () => {
