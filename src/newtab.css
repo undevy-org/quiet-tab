@@ -221,6 +221,7 @@ button.weather-tile {
 .desktop-status__reload:focus-visible {
   background: var(--soft-fill-strong);
   box-shadow: 0 0 0 2px var(--focus-overlay-ring);
+  outline-color: transparent; /* one ring, as in the dialogs (transparent still shows as a system outline in forced colors) */
 }
 
 .chrome-tile {
