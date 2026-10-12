@@ -10,6 +10,7 @@ import {
   toStored
 } from "./desktopLayout.js";
 import { MAX_FAVORITE_WIDGETS } from "./widgetsShared.js";
+import { isFreshDesk, islandPlacements } from "./onboardingLayout.js";
 import {
   BACKGROUND_COLOR_SOURCES,
   HEX_COLOR_VALIDATION_PATTERN,
@@ -227,6 +228,8 @@ export function createWidgetsService({
       const base = rebase(await store.getState(), columns);
       const updatedAt = now();
       const items = build({ base, columns, updatedAt });
+      // A builder that returns null decided there is nothing to write (docs/post-onboarding-grid.md decision 2, no-op rule).
+      if (items === null) return store.getState();
       return store.setState({ ...base, items, updatedAt });
     });
   }
@@ -237,11 +240,15 @@ export function createWidgetsService({
     },
 
     // input.w / input.h (1 or 2, default 1×1). The new link takes the free block nearest to the center line.
-    // One mutate: placeNew per row in order; skip URLs already on the grid (normalized); one MAX_FAVORITE_WIDGETS check.
+    // options.island = { rows } (first-screen rows at call time) applies the post-onboarding island on a fresh desk that fits;
+    // see src/onboardingLayout.js. One mutate: placeNew per row in order; skip URLs already on the grid (normalized); one MAX_FAVORITE_WIDGETS check.
     async addFavorites(inputs, options) {
       const list = Array.isArray(inputs) ? inputs : [];
       const addedIds = [];
+      const island = options?.island ?? null;
       await mutate(options, ({ base, columns, updatedAt }) => {
+        // decided on the state BEFORE the adds (decision 3); only when the caller asks for the island
+        const fresh = island != null && isFreshDesk(base.items);
         const existingUrls = new Set(
           base.items
             .filter((item) => item.type === "favorite")
@@ -289,7 +296,12 @@ export function createWidgetsService({
           layout = displayLayout(items, columns);
           addedIds.push(id);
         }
-        return items;
+        if (island == null) return items;
+        const placements = fresh
+          ? islandPlacements({ k: addedIds.length, linkIds: addedIds, rows: island.rows, columns })
+          : null;
+        if (placements === null) return addedIds.length === 0 ? null : items;
+        return items.map((item) => (placements.has(item.id) ? { ...item, grid: placements.get(item.id) } : item));
       });
       return addedIds;
     },

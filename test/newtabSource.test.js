@@ -774,6 +774,38 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     assert.doesNotMatch(markup, /favorites-panel|favorites-bar|data-position/);
   });
 
+  it("pins the scroll-margin of the tiles (post-onboarding-grid L0-05)", async () => {
+    const styles = await css();
+    assert.match(styles, /(^|\n)\.desktop-grid > \[data-widget-id\]\s*\{[^}]*scroll-margin:\s*6px/, "a focused tile scrolls ring + offset + 1 px clear of the window edge");
+  });
+
+  it("pins the Finish island call (docs/post-onboarding-grid.md)", async () => {
+    const code = await source();
+    const finish = fn(code, "finishOnboardingWizard");
+    const island = fn(code, "layOutFinishIsland");
+    assert.match(finish, /await layOutFinishIsland\(inputs\);/, "Finish delegates to the island function");
+    assert.doesNotMatch(finish, /inputs\.length > 0 && widgetsService/, "the call also runs for zero links");
+    assert.ok(finish.indexOf("layOutFinishIsland(inputs)") < finish.indexOf("markComplete()"), "island call before the completion flag");
+    assert.equal(island.split("addFavorites(").length, 2, "exactly one addFavorites call");
+    assert.match(island, /island: \{ rows: viewportRows\(document\.documentElement\.clientHeight, viewportWidth\(\)\) \}/, "island option with the first-screen rows");
+    assert.match(island, /columns: currentColumns\(\)/, "columns read at Finish");
+    assert.match(island, /if \(inputs\.length >= 1\) throw error;/, "k >= 1 rethrows");
+    assert.equal(island.split("healClearedDesk(").length, 2, "exactly one heal");
+  });
+
+  it("Finish island: committed flag right after the call for k >= 1, none and no heal for k = 0", async () => {
+    const island = fn(await source(), "layOutFinishIsland");
+    const k0Start = island.indexOf("if (inputs.length === 0) {");
+    const committed = island.indexOf("onboardingStartersCommitted = true;");
+    const heal = island.indexOf("healClearedDesk(");
+    const reread = island.indexOf("widgetsService.getState()", committed);
+    assert.ok(k0Start > -1 && committed > k0Start, "k = 0 branch comes first");
+    const k0 = island.slice(k0Start, committed);
+    assert.doesNotMatch(k0, /healClearedDesk|onboardingStartersCommitted = true/, "k = 0 never heals and never marks committed");
+    assert.equal(island.split("onboardingStartersCommitted = true").length, 2, "the flag is set once");
+    assert.ok(committed < reread && reread < heal, "flag, then re-read, then heal");
+  });
+
   it("pins the DOM contract names: desktop-grid, chrome role, remove badge, per-tile cell variables", async () => {
     const code = await source();
     assert.match(code, /createNode\("div", "desktop-grid"\)/);
@@ -1263,8 +1295,9 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     assert.match(dismiss, /favoritesRoot\.focus\(\{ preventScroll: true \}\)/);
     // decision 3: the wizard heals after its starters are written and shows the kept outcome on both closing exits
     const finish = fn(code, "finishOnboardingWizard");
-    assert.match(finish, /const outcome = await healClearedDesk\(widgetsState\);/);
-    assert.match(finish, /onboardingHealOutcome = outcome;/);
+    const island = fn(code, "layOutFinishIsland");
+    assert.match(island, /const outcome = await healClearedDesk\(widgetsState\);/);
+    assert.match(island, /onboardingHealOutcome = outcome;/);
     assert.equal(finish.split("showWizardHealOutcome();").length - 1, 2);
     const shown = fn(code, "showWizardHealOutcome");
     assert.match(shown, /leaveEditModeAfterFailedHeal\(\);\s*showLayoutRestoreFailure\(\);/);
