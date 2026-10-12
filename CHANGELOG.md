@@ -70,6 +70,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A tab that was open while another tab cleared the extension storage no longer ends its recovery from a deleted link with an empty grid: when the re-read finds no Settings tile, the desk is healed like a fresh install (Settings, Add and the weather tiles come back in the cells of the current window) and focus goes to Settings (docs/stale-tab-empty-state.md). If that fails the grid stays empty until a reload. E2E `dg-68-stale-tab-empty-state.mjs`.
 - A tab that was open while another tab deleted a link no longer shows `Favorite not found` on Save, on Delete or on a drop of that link: it re-reads storage, closes the dialog, redraws the grid without the link, moves focus to the neighbouring tile and says `This link was deleted in another tab.` (alert status). E2E `dg-67-stale-link-and-host-contrast.mjs` (docs/stale-link-and-host-contrast.md).
 - The host line of a link tile is a little closer to the text color (`color-mix(in srgb, var(--muted) 70%, var(--text))`): it was 4.09–4.31:1 on the red, black and dark accents in the light theme, and `dg-67` now asserts at least 4.5:1 for every accent, size and theme.
 - City dialog: when you move through the city suggestions with the arrow keys or Tab and

@@ -2285,21 +2285,32 @@ function showDialogError(root, message) {
   if (field instanceof HTMLElement && !field.matches(":disabled")) field.focus();
 }
 
-// Every explicit mutation goes through here. On failure nothing is persisted and the UI returns to the stored state.
-// `renderPending: false` skips the busy re-render (a drop keeps its tile on the target while the write runs);
-// `onFailure(message)` then owns the failure UI instead of the immediate re-render.
 // A stale tab touched a link that another tab deleted (docs/stale-link-and-host-contrast.md decision 2). All under the busy
-// lock: forget a pending drop, note where focus should go (the DOM still has the tile), re-read storage (no write; if that fails
-// the old state stays), end the busy state with one render from the fresh state, close the dialog or restore focus, say so in
-// the alert status. Never throws.
+// lock: forget a pending drop, note where focus should go (the DOM still has the tile), re-read storage, end the busy state with
+// one render from the fresh state, close the dialog or restore focus, say so in the alert status. Never throws.
+// The re-read writes nothing, except when it finds no Settings tile: the storage was cleared in another tab, so the desk is healed
+// like a fresh install (docs/stale-tab-empty-state.md) with `ensureWidgetsLayout` for the first screen of NOW (the one exception to
+// "first screen read once at boot"), the state is read again and focus goes to Settings (the neighbour list was read from the old DOM
+// and would find a just-created tile first). If the re-read or the heal fails the old/empty state stays; a reload heals it.
 async function recoverFromGoneLink(generation, error) {
   pendingDrop = null;
-  const neighbours = error.id ? neighborTargets(error.id) : [SETTINGS_TILE_ID];
+  let neighbours = error.id ? neighborTargets(error.id) : [SETTINGS_TILE_ID];
   let fresh = null;
   try {
     fresh = await widgetsService.getState();
   } catch {
     // keep the old state: the message below is still shown
+  }
+  if (fresh && !fresh.items.some((item) => item.id === SETTINGS_TILE_ID)) {
+    try {
+      const healed = await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });
+      if (healed.changed) {
+        fresh = await widgetsService.getState();
+        neighbours = [SETTINGS_TILE_ID];
+      }
+    } catch {
+      // keep what we have: the grid stays as it is until a reload
+    }
   }
   finishFavoritesAction(generation, () => {
     if (fresh) widgetsState = fresh;
@@ -2309,6 +2320,9 @@ async function recoverFromGoneLink(generation, error) {
   showDesktopStatus(error.message);
 }
 
+// Every explicit mutation goes through here. On failure nothing is persisted and the UI returns to the stored state.
+// `renderPending: false` skips the busy re-render (a drop keeps its tile on the target while the write runs);
+// `onFailure(message)` then owns the failure UI instead of the immediate re-render.
 async function runDesktopMutation(action, { dialogRoot = null, renderPending = true, onFailure = null } = {}) {
   if (favoritesBusy) return false;
   showDesktopStatus("");
@@ -2354,7 +2368,7 @@ function currentColumns() {
 }
 
 // The first screen of this boot (docs/vertically-centered-defaults.md decision 2): the same rows the drag uses for its drop area
-// (`viewportRows` of the same two inputs) and the page's column count. Read once, right before `ensureWidgetsLayout`; never again.
+// (`viewportRows` of the same two inputs) and the page's column count. Read right before `ensureWidgetsLayout` at boot, and again by `recoverFromGoneLink` when it heals a cleared storage; nowhere else.
 function firstScreen() {
   return { rows: viewportRows(document.documentElement.clientHeight, viewportWidth()), columns: currentColumns() };
 }

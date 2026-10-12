@@ -1028,8 +1028,10 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     assert.match(body, /columns: currentColumns\(\)/);
     // the same call and the same two inputs as the drag (docs/widget-drag-limits.md)
     assert.match(code, /const screenRows = viewportRows\(document\.documentElement\.clientHeight, viewportWidth\(\)\);/);
-    // exactly one definition and one call: nothing re-reads the first screen later (no resize hook, no re-render)
-    assert.equal(code.split("firstScreen(").length - 1, 2);
+    // one definition, the boot call and the heal of a cleared storage in recoverFromGoneLink (docs/stale-tab-empty-state.md decision 2):
+    // nothing else re-reads the first screen (no resize hook, no re-render)
+    assert.equal(code.split("firstScreen(").length - 1, 3);
+    assert.equal(fn(code, "recoverFromGoneLink").split("firstScreen(").length - 1, 1);
     const boot = code.slice(code.indexOf("if (favoritesRoot) {\n  void (async () => {"), code.indexOf("})();", code.indexOf("if (favoritesRoot)")));
     const call = boot.indexOf("await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });");
     assert.ok(call > boot.indexOf("await migrateWidgetsToV3(") && call < boot.indexOf("widgetsState = await widgetsService.getState();"));
@@ -1185,12 +1187,22 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     const run = fn(code, "runDesktopMutation");
     assert.match(run, /error\?\.code === "link-gone"/);
     assert.ok(run.indexOf('"link-gone"') < run.indexOf("if (onFailure)"), "checked before onFailure and the dialog error");
+    // backlog 69: each function carries its own comment (the mutation comment above runDesktopMutation, the recovery one above recoverFromGoneLink)
+    assert.match(code, /\/\/ `onFailure\(message\)` then owns the failure UI instead of the immediate re-render\.\nasync function runDesktopMutation\(/);
+    assert.match(code, /\/\/ and would find a just-created tile first\)\. If the re-read or the heal fails the old\/empty state stays; a reload heals it\.\nasync function recoverFromGoneLink\(/);
     const recover = fn(code, "recoverFromGoneLink");
     assert.match(recover, /pendingDrop = null;/);
     assert.match(recover, /neighborTargets\(error\.id\)/);
     assert.match(recover, /await widgetsService\.getState\(\)/);
     assert.match(recover, /finishFavoritesAction\(generation, \(\) => \{\s*if \(fresh\) widgetsState = fresh;/);
     assert.match(recover, /closeDesktopDialog\(\{ restoreFocusTo: neighbours \}\)/);
+    // the heal (docs/stale-tab-empty-state.md decisions 1, 3, 4): only without a Settings tile, only a changed layout is re-read and
+    // moves focus to Settings, a failure keeps what we have, and the heal comes before the render of the fresh state
+    assert.match(recover, /!fresh\.items\.some\(\(item\) => item\.id === SETTINGS_TILE_ID\)/);
+    assert.match(recover, /await ensureWidgetsLayout\(syncStorageArea, \{ screen: firstScreen\(\) \}\)/);
+    assert.match(recover, /if \(healed\.changed\) \{\s*fresh = await widgetsService\.getState\(\);\s*neighbours = \[SETTINGS_TILE_ID\];/);
+    assert.match(recover, /\} catch \{\s*\/\/ keep what we have/);
+    assert.ok(recover.indexOf("ensureWidgetsLayout(") < recover.indexOf("finishFavoritesAction("), "healed before the one render");
     assert.match(recover, /showDesktopStatus\(error\.message\)/);
     assert.doesNotMatch(recover, /announce\(/); // the alert status announces it once
   });
