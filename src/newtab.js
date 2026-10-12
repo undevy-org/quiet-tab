@@ -76,13 +76,17 @@ const ENSURE_FAILED_MESSAGE =
 const desktopLive = document.querySelector("#desktop-live");
 const DESKTOP_STATUS_MS = 8000;
 let desktopStatusTimer = 0;
+let layoutFailureChipShown = false; // the chip with the Reload button is up: Escape dismisses it (the `status` layer)
 let desktopStatusPersistent = false; // the shown message is a `persist` one (the ensure failure): a retry failure must not displace it
 
 // Page-level status line (role="alert"), text only. It clears after 8 s or at the next action. `persist` skips the
 // 8 s clear (the ensure failure: a Settings/Add tile may be missing, so its explanation stays until the next action).
-function showDesktopStatus(text, { persist = false } = {}) {
+// `tone: "info"` is the neutral look (a reset notice); every other call is the danger look, set on each call so it never sticks.
+function showDesktopStatus(text, { persist = false, tone = "error" } = {}) {
   if (!desktopStatus) return;
   clearTimeout(desktopStatusTimer);
+  layoutFailureChipShown = false;
+  desktopStatus.classList.toggle("desktop-status--info", tone === "info");
   desktopStatus.textContent = text;
   desktopStatus.hidden = text === "";
   desktopStatusPersistent = persist && text !== "";
@@ -1652,6 +1656,20 @@ function hideOnboardingWizard({ completed = false } = {}) {
   }
 }
 
+// The heal of a cleared storage that Finish performed (kept until the wizard closes: the first Finish may stop on the completion flag).
+let onboardingHealOutcome = null;
+function showWizardHealOutcome() {
+  const outcome = onboardingHealOutcome;
+  onboardingHealOutcome = null;
+  if (!outcome) return;
+  if (outcome.failed) {
+    leaveEditModeAfterFailedHeal();
+    showLayoutRestoreFailure();
+  } else {
+    showDesktopStatus(LAYOUT_RESET_MESSAGE, { tone: "info" });
+  }
+}
+
 async function finishOnboardingWizard() {
   if (!onboardingWizardRoot || onboardingStep !== 2 || favoritesBusy) return;
   onboardingFinishError = "";
@@ -1667,6 +1685,10 @@ async function finishOnboardingWizard() {
     if (!onboardingStartersCommitted && inputs.length > 0 && widgetsService) {
       const addedIds = await widgetsService.addFavorites(inputs, { columns: currentColumns() });
       widgetsState = await widgetsService.getState();
+      // the storage may have been cleared in another tab while the wizard was open: heal it like Add link does (the starters stay)
+      const outcome = await healClearedDesk(widgetsState);
+      widgetsState = outcome.state;
+      if (outcome.healed || outcome.failed) onboardingHealOutcome = outcome;
       onboardingStartersCommitted = true;
       for (const id of addedIds) {
         const item = widgetsState.items.find((row) => row.id === id);
@@ -1682,6 +1704,7 @@ async function finishOnboardingWizard() {
           hideOnboardingWizard({ completed: true });
           finishFavoritesAction(generation, () => {});
           renderFavorites();
+          showWizardHealOutcome();
           return;
         }
         onboardingFlagWriteFailedOnce = true;
@@ -1695,6 +1718,7 @@ async function finishOnboardingWizard() {
     hideOnboardingWizard({ completed: true });
     finishFavoritesAction(generation, () => {});
     renderFavorites();
+    showWizardHealOutcome();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     onboardingFinishError = onboardingFinishErrorForAddFailure(message);
@@ -2303,7 +2327,29 @@ async function healClearedDesk(state) {
     // keep what we have: the grid stays as it is until a reload
   }
   const healed = result.items.some((item) => item.id === SETTINGS_TILE_ID);
+  if (healed) await dropCityClearedElsewhere();
   return { state: result, healed, failed: !healed };
+}
+
+// After a heal of a cleared storage a city kept in this tab's memory is stale when the storage has none: drop it like a reload would
+// (the "city removed elsewhere" path of the retry: the hint tile takes the metric cells). A throw while reading keeps the city (as at
+// boot); a location still stored (only the widget keys were lost) stays. Never throws.
+async function dropCityClearedElsewhere() {
+  if (!weatherLocationStore || !weatherLocation) return;
+  let stored;
+  try {
+    stored = await weatherLocationStore.getLocation();
+  } catch {
+    return;
+  }
+  if (stored) return;
+  weatherGeneration += 1;
+  weatherRetryToken += 1;
+  weatherUi = resetWeatherRetry(weatherUi);
+  clearTimeout(weatherRetryTimer);
+  weatherResult = { status: "no-location", location: null, data: null, error: null };
+  weatherLocation = null;
+  weatherLocationError = "";
 }
 
 // A failed heal leaves no Settings to leave edit mode with and nothing to act on: drop edit mode and every transient layer (not
@@ -2325,6 +2371,22 @@ function showLayoutRestoreFailure() {
     favoritesRoot.focus({ preventScroll: true });
   }
   showDesktopStatus(LAYOUT_RESTORE_FAILED_MESSAGE, { persist: true });
+  if (!desktopStatus) return;
+  const reload = createNode("button", "button desktop-status__reload", "Reload");
+  reload.type = "button";
+  reload.addEventListener("click", () => location.reload());
+  desktopStatus.append(reload);
+  layoutFailureChipShown = true;
+}
+
+// Escape on the failure chip: hide it; if focus was inside (on Reload) it returns to the desk container, never to body.
+function dismissLayoutFailureChip() {
+  const focusWasInside = Boolean(desktopStatus?.contains(document.activeElement));
+  showDesktopStatus("");
+  if (focusWasInside && favoritesRoot) {
+    favoritesRoot.setAttribute("tabindex", "-1");
+    favoritesRoot.focus({ preventScroll: true });
+  }
 }
 
 // A stale tab touched a link that another tab deleted (docs/stale-link-and-host-contrast.md decision 2). All under the busy
@@ -2355,7 +2417,8 @@ async function recoverFromGoneLink(generation, error) {
   }
   if (desktopDialogRoot) closeDesktopDialog({ restoreFocusTo: neighbours });
   else focusWidgetTarget(neighbours);
-  showDesktopStatus(outcome.healed ? LAYOUT_RESET_MESSAGE : error.message);
+  if (outcome.healed) showDesktopStatus(LAYOUT_RESET_MESSAGE, { tone: "info" });
+  else showDesktopStatus(error.message);
 }
 
 // Every explicit mutation goes through here. On failure nothing is persisted and the UI returns to the stored state.
@@ -2379,7 +2442,7 @@ async function runDesktopMutation(action, { dialogRoot = null, renderPending = t
       widgetsState = outcome.state;
     });
     if (outcome.failed) showLayoutRestoreFailure();
-    else if (outcome.healed) showDesktopStatus(LAYOUT_RESET_MESSAGE);
+    else if (outcome.healed) showDesktopStatus(LAYOUT_RESET_MESSAGE, { tone: "info" });
     return true;
   } catch (error) {
     if (error?.code === "link-gone") {
@@ -3108,7 +3171,8 @@ if (favoritesRoot) {
       tooltip: !tooltipLayer.hidden,
       citySuggestions: isSuggestionsOpen(weatherUi) && Boolean(onboardingWizardRoot ?? cityModalRoot),
       onboardingWizard: Boolean(onboardingWizardRoot),
-      cityModal: Boolean(cityModalRoot)
+      cityModal: Boolean(cityModalRoot),
+      status: layoutFailureChipShown
     });
     if (layer === "drag") {
       event.preventDefault();
@@ -3140,6 +3204,8 @@ if (favoritesRoot) {
       closeAddMenu({ focusAdd: true });
     } else if (layer === "exitEdit") {
       setEditMode(false);
+    } else if (layer === "status") {
+      dismissLayoutFailureChip();
     }
   });
 

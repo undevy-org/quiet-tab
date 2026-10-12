@@ -54,7 +54,7 @@ export function endDrag(state) {
 // Which layer one Escape press closes, topmost first. `flags` comes from the DOM-owning caller.
 export function escapeLayer(
   state,
-  { tooltip = false, citySuggestions = false, onboardingWizard = false, cityModal = false } = {}
+  { tooltip = false, citySuggestions = false, onboardingWizard = false, cityModal = false, status = false } = {}
 ) {
   if (state.drag) return "drag";
   if (tooltip) return "tooltip";
@@ -64,5 +64,6 @@ export function escapeLayer(
   if (state.dialog) return "dialog";
   if (state.menu) return "menu";
   if (state.editMode) return "exitEdit";
+  if (status) return "status"; // the layout-failure chip (docs/stale-tab-closeout.md): nothing above it is open
   return null;
 }

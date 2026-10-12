@@ -1200,7 +1200,7 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     assert.match(recover, /const outcome = await healClearedDesk\(fresh\);/);
     assert.match(recover, /if \(outcome\.healed\) neighbours = \[SETTINGS_TILE_ID\];/);
     assert.match(recover, /closeDesktopDialog\(\{ restoreFocusTo: neighbours \}\)/);
-    assert.match(recover, /showDesktopStatus\(outcome\.healed \? LAYOUT_RESET_MESSAGE : error\.message\)/);
+    assert.match(recover, /if \(outcome\.healed\) showDesktopStatus\(LAYOUT_RESET_MESSAGE, \{ tone: "info" \}\);\s*else showDesktopStatus\(error\.message\);/);
     assert.ok(recover.indexOf("healClearedDesk(") < recover.indexOf("finishFavoritesAction("), "healed before the one render");
     assert.doesNotMatch(recover, /announce\(/); // the alert status announces it once
     // the heal helper (docs/stale-tab-recovery-followups.md decision 1): only without Settings, guarded against null, always re-reads, never throws
@@ -1220,13 +1220,19 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     assert.match(failure, /focus\(\{ preventScroll: true \}\)/);
     assert.match(failure, /showDesktopStatus\(LAYOUT_RESTORE_FAILED_MESSAGE, \{ persist: true \}\)/);
     assert.ok(failure.indexOf("focus(") < failure.indexOf("showDesktopStatus("));
+    // docs/stale-tab-closeout.md decision 1: the Reload button (a real button, textContent) after the text, the chip is dismissable
+    assert.match(failure, /createNode\("button", "button desktop-status__reload", "Reload"\)/);
+    assert.match(failure, /reload\.type = "button";/);
+    assert.match(failure, /location\.reload\(\)/);
+    assert.match(failure, /layoutFailureChipShown = true;/);
+    assert.ok(failure.indexOf("showDesktopStatus(") < failure.indexOf("desktopStatus.append(reload)"), "the button after the text (showDesktopStatus resets the chip)");
     assert.match(recover, /if \(outcome\.failed\) leaveEditModeAfterFailedHeal\(\);/);
     assert.ok(recover.indexOf("leaveEditModeAfterFailedHeal(") < recover.indexOf("finishFavoritesAction("), "layers left before the render");
     assert.match(recover, /if \(outcome\.failed\) \{\s*showLayoutRestoreFailure\(\);\s*return;/);
     // the post-action check of runDesktopMutation (decision 3) and the strings (Copy)
     assert.match(run, /const outcome = await healClearedDesk\(next\);/);
     assert.match(run, /if \(outcome\.failed\) leaveEditModeAfterFailedHeal\(\);/);
-    assert.match(run, /else if \(outcome\.healed\) showDesktopStatus\(LAYOUT_RESET_MESSAGE\);/);
+    assert.match(run, /else if \(outcome\.healed\) showDesktopStatus\(LAYOUT_RESET_MESSAGE, \{ tone: "info" \}\);/);
     assert.ok(run.indexOf("healClearedDesk(next)") < run.indexOf("leaveEditModeAfterFailedHeal()") && run.indexOf("leaveEditModeAfterFailedHeal()") < run.indexOf("finishFavoritesAction(generation"), "healed and layers left before the render");
     assert.ok(run.indexOf("finishFavoritesAction(generation") < run.indexOf("showLayoutRestoreFailure()"), "the failure message after the render");
     assert.match(code, /const LAYOUT_RESET_MESSAGE = "Your layout was reset in another tab\.";/);
@@ -1235,6 +1241,41 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     assert.match(code, /if \(widgetsState\?\.items\.some\(\(entry\) => entry\.id === SETTINGS_TILE_ID\)\) announce\("Link added"\);/);
     const styles = await css();
     assert.match(styles, /\.desktop\[tabindex="-1"\]:focus \{\s*outline: none;\s*\}/);
+  });
+
+  it("pins the failure chip close-out (docs/stale-tab-closeout.md)", async () => {
+    const code = await source();
+    const styles = await css();
+    // decision 2: the tone is set on every call, so it never sticks; only the reset message is neutral
+    const show = fn(code, "showDesktopStatus");
+    assert.match(show, /tone = "error"/);
+    assert.match(show, /classList\.toggle\("desktop-status--info", tone === "info"\)/);
+    assert.match(show, /layoutFailureChipShown = false;/); // any new message ends the chip state
+    assert.match(styles, /\.desktop-status--info \{\s*border-color: var\(--border\);\s*color: var\(--text\);\s*\}/);
+    assert.match(styles, /\.desktop-status__reload \{[^}]*display: flex;/s);
+    assert.match(styles, /\.desktop-status__reload:focus-visible \{\s*background: var\(--soft-fill-strong\);\s*box-shadow: 0 0 0 2px var\(--focus-overlay-ring\);\s*outline-color: transparent;[^}]*\}/);
+    // decision 1: Escape, the lowest layer, dismisses only the chip and returns focus from Reload to #favorites
+    assert.match(code, /status: layoutFailureChipShown/);
+    assert.match(code, /else if \(layer === "status"\) \{\s*dismissLayoutFailureChip\(\);/);
+    const dismiss = fn(code, "dismissLayoutFailureChip");
+    assert.match(dismiss, /desktopStatus\?\.contains\(document\.activeElement\)/);
+    assert.ok(dismiss.indexOf("contains(") < dismiss.indexOf('showDesktopStatus("")'), "focus is read before the chip is emptied");
+    assert.match(dismiss, /favoritesRoot\.focus\(\{ preventScroll: true \}\)/);
+    // decision 3: the wizard heals after its starters are written and shows the kept outcome on both closing exits
+    const finish = fn(code, "finishOnboardingWizard");
+    assert.match(finish, /const outcome = await healClearedDesk\(widgetsState\);/);
+    assert.match(finish, /onboardingHealOutcome = outcome;/);
+    assert.equal(finish.split("showWizardHealOutcome();").length - 1, 2);
+    const shown = fn(code, "showWizardHealOutcome");
+    assert.match(shown, /leaveEditModeAfterFailedHeal\(\);\s*showLayoutRestoreFailure\(\);/);
+    assert.match(shown, /showDesktopStatus\(LAYOUT_RESET_MESSAGE, \{ tone: "info" \}\)/);
+    // decision 4: after a heal a city kept in memory is dropped only when the storage has none; a throwing read keeps it
+    const drop = fn(code, "dropCityClearedElsewhere");
+    assert.match(drop, /await weatherLocationStore\.getLocation\(\)/);
+    assert.match(drop, /\} catch \{\s*return;\s*\}\s*if \(stored\) return;/);
+    assert.match(drop, /weatherResult = \{ status: "no-location", location: null, data: null, error: null \};/);
+    assert.match(drop, /weatherGeneration \+= 1;[\s\S]*weatherRetryToken \+= 1;/);
+    assert.match(fn(code, "healClearedDesk"), /if \(healed\) await dropCityClearedElsewhere\(\);/);
   });
 
   it("pins the full text color on toned weather tiles (docs/tile-size-followups.md decision 4)", async () => {

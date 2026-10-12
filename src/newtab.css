@@ -204,6 +204,26 @@ button.weather-tile {
   display: none;
 }
 
+/* A neutral notice (docs/stale-tab-closeout.md decision 2): the reset message; errors keep the danger look above. */
+.desktop-status--info {
+  border-color: var(--border);
+  color: var(--text);
+}
+
+/* The Reload button of the failure chip: the shared .button look, below the text on a narrow window. */
+.desktop-status__reload {
+  display: flex;
+  width: max-content;
+  margin-top: 8px;
+}
+
+/* The same soft focus ring as the dialog buttons (the plain .button ring is only 1.8:1 on the panel). */
+.desktop-status__reload:focus-visible {
+  background: var(--soft-fill-strong);
+  box-shadow: 0 0 0 2px var(--focus-overlay-ring);
+  outline-color: transparent; /* one ring, as in the dialogs (transparent still shows as a system outline in forced colors) */
+}
+
 .chrome-tile {
   display: inline-flex;
   align-items: center;
