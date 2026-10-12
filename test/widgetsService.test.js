@@ -788,6 +788,22 @@ describe("addFavorites island (docs/post-onboarding-grid.md)", () => {
     }
   });
 
+  it("island: null behaves as no island option", async () => {
+    const { service, store } = await harness(FRESH());
+    const ids = await service.addFavorites([starter(1)], { columns: 12, island: null });
+    assert.equal(ids.length, 1);
+    assert.equal((await store.getState()).items.find((x) => x.id === "weather:temperature").grid.h, 1);
+  });
+
+  it("k counts the links really added: a repeated URL on a fresh desk gives k = 1", async () => {
+    const { service, store } = await harness(FRESH());
+    const ids = await service.addFavorites([starter(1), starter(1)], { columns: 12, island: { rows: 9 } });
+    assert.equal(ids.length, 1);
+    const state = await store.getState();
+    assert.equal(state.items.length, 7);
+    assert.deepEqual(storedGridsOf(state)["weather:temperature"], { x: -1, y: 3, w: 1, h: 1 }, "k = 1 island: W = 3");
+  });
+
   it("more than 8 links: no island (AS-POG-17)", async () => {
     const { service, store } = await harness(FRESH());
     const ids = await service.addFavorites(Array.from({ length: 9 }, (_, i) => starter(i + 1)), { columns: 12, island: { rows: 9 } });

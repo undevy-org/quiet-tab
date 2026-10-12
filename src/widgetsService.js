@@ -245,10 +245,10 @@ export function createWidgetsService({
     async addFavorites(inputs, options) {
       const list = Array.isArray(inputs) ? inputs : [];
       const addedIds = [];
-      const island = options?.island;
+      const island = options?.island ?? null;
       await mutate(options, ({ base, columns, updatedAt }) => {
         // decided on the state BEFORE the adds (decision 3); only when the caller asks for the island
-        const fresh = island !== undefined && isFreshDesk(base.items);
+        const fresh = island != null && isFreshDesk(base.items);
         const existingUrls = new Set(
           base.items
             .filter((item) => item.type === "favorite")
@@ -296,7 +296,7 @@ export function createWidgetsService({
           layout = displayLayout(items, columns);
           addedIds.push(id);
         }
-        if (island === undefined) return items;
+        if (island == null) return items;
         const placements = fresh
           ? islandPlacements({ k: addedIds.length, linkIds: addedIds, rows: island.rows, columns })
           : null;
