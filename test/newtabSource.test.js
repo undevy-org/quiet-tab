@@ -1195,6 +1195,8 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     assert.match(recover, /pendingDrop = null;/);
     assert.match(recover, /neighborTargets\(error\.id\)/);
     assert.match(recover, /await widgetsService\.getState\(\)/);
+    assert.match(recover, /finishFavoritesAction\(generation, \(\) => \{\s*if \(fresh\) widgetsState = fresh;/);
+    assert.match(recover, /fresh = outcome\.state;/);
     assert.match(recover, /const outcome = await healClearedDesk\(fresh\);/);
     assert.match(recover, /if \(outcome\.healed\) neighbours = \[SETTINGS_TILE_ID\];/);
     assert.match(recover, /closeDesktopDialog\(\{ restoreFocusTo: neighbours \}\)/);
@@ -1225,6 +1227,8 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     assert.match(run, /const outcome = await healClearedDesk\(next\);/);
     assert.match(run, /if \(outcome\.failed\) leaveEditModeAfterFailedHeal\(\);/);
     assert.match(run, /else if \(outcome\.healed\) showDesktopStatus\(LAYOUT_RESET_MESSAGE\);/);
+    assert.ok(run.indexOf("healClearedDesk(next)") < run.indexOf("leaveEditModeAfterFailedHeal()") && run.indexOf("leaveEditModeAfterFailedHeal()") < run.indexOf("finishFavoritesAction(generation"), "healed and layers left before the render");
+    assert.ok(run.indexOf("finishFavoritesAction(generation") < run.indexOf("showLayoutRestoreFailure()"), "the failure message after the render");
     assert.match(code, /const LAYOUT_RESET_MESSAGE = "Your layout was reset in another tab\.";/);
     assert.match(code, /const LAYOUT_RESTORE_FAILED_MESSAGE = "Couldn't restore your layout\. Reload this tab\.";/);
     // the Add link handler speaks "Link added" only when Settings is there (after a failed heal the alert speaks)

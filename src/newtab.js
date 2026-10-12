@@ -2307,8 +2307,8 @@ async function healClearedDesk(state) {
 }
 
 // A failed heal leaves no Settings to leave edit mode with and nothing to act on: drop edit mode and every transient layer (not
-// `setEditMode(false)`: it announces and clears the status), keep the live region quiet (the alert speaks once). The caller closes
-// any dialog first, without restoring focus (`#favorites` is inert while one is open and the opener tile does not exist).
+// `setEditMode(false)`: it announces and clears the status), keep the live region quiet (the alert speaks once). Any open dialog is
+// closed first, without restoring focus (`#favorites` is inert while one is open and the opener tile does not exist).
 function leaveEditModeAfterFailedHeal() {
   if (desktopDialogRoot) closeDesktopDialog({ restoreFocusTo: null });
   desktopUi = exitEditMode(desktopUi);
