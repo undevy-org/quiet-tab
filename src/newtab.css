@@ -204,6 +204,19 @@ button.weather-tile {
   display: none;
 }
 
+/* A neutral notice (docs/stale-tab-closeout.md decision 2): the reset message; errors keep the danger look above. */
+.desktop-status--info {
+  border-color: var(--border);
+  color: var(--text);
+}
+
+/* The Reload button of the failure chip: the shared .button look, below the text on a narrow window. */
+.desktop-status__reload {
+  display: flex;
+  width: max-content;
+  margin-top: 8px;
+}
+
 .chrome-tile {
   display: inline-flex;
   align-items: center;

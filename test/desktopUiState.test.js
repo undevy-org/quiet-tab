@@ -79,6 +79,14 @@ describe("escapeLayer (AS-11)", () => {
     assert.equal(escapeLayer(openMenu(s, "add")), "menu");
     assert.equal(escapeLayer(createDesktopUiState()), null);
   });
+  it("the layout-failure chip is the lowest layer (docs/stale-tab-closeout.md decision 1)", () => {
+    const s = edit();
+    assert.equal(escapeLayer(createDesktopUiState(), { status: true }), "status");
+    assert.equal(escapeLayer(s, { status: true }), "exitEdit"); // edit mode leaves first
+    assert.equal(escapeLayer(openMenu(s, "add"), { status: true }), "menu");
+    assert.equal(escapeLayer(openDialog(s, { kind: "add-link" }), { status: true }), "dialog");
+    assert.equal(escapeLayer(createDesktopUiState(), { status: false }), null);
+  });
   it("a drag in progress is cancelled before anything else", () => {
     const s = startDrag(edit(), { id: "a", grab: { x: 0, y: 0 }, size: { w: 1, h: 1 }, pointerId: 1 });
     assert.equal(escapeLayer(s, { tooltip: true }), "drag");
