@@ -776,7 +776,7 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
 
   it("pins the scroll-margin of the tiles (post-onboarding-grid L0-05)", async () => {
     const styles = await css();
-    assert.match(styles, /\.desktop-grid > \[data-widget-id\]\s*\{[^}]*scroll-margin:\s*6px/, "a focused tile scrolls ring + offset + 1 px clear of the window edge");
+    assert.match(styles, /(^|\n)\.desktop-grid > \[data-widget-id\]\s*\{[^}]*scroll-margin:\s*6px/, "a focused tile scrolls ring + offset + 1 px clear of the window edge");
   });
 
   it("pins the Finish island call (docs/post-onboarding-grid.md)", async () => {

@@ -68,7 +68,7 @@ html {
   width: calc(var(--w) * var(--cell-size) + (var(--w) - 1) * var(--grid-gap));
   height: calc(var(--h) * var(--cell-size) + (var(--h) - 1) * var(--grid-gap));
   box-sizing: border-box;
-  /* A focused tile scrolls its ring (3px + 2px offset) and one more pixel into view (docs/post-onboarding-grid.md AS-POG-07). */
+  /* A focused tile scrolls its ring (up to 3px + 2px offset) and one more pixel into view (docs/post-onboarding-grid.md AS-POG-07). */
   scroll-margin: 6px;
 }
 
