@@ -1198,7 +1198,7 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     assert.match(recover, /closeDesktopDialog\(\{ restoreFocusTo: neighbours \}\)/);
     // the heal (docs/stale-tab-empty-state.md decisions 1, 3, 4): only without a Settings tile, only a changed layout is re-read and
     // moves focus to Settings, a failure keeps what we have, and the heal comes before the render of the fresh state
-    assert.match(recover, /!fresh\.items\.some\(\(item\) => item\.id === SETTINGS_TILE_ID\)/);
+    assert.match(recover, /if \(fresh && !fresh\.items\.some\(\(item\) => item\.id === SETTINGS_TILE_ID\)\)/); // guarded: a failed re-read (null) never heals or throws
     assert.match(recover, /await ensureWidgetsLayout\(syncStorageArea, \{ screen: firstScreen\(\) \}\)/);
     assert.match(recover, /if \(healed\.changed\) \{\s*fresh = await widgetsService\.getState\(\);\s*neighbours = \[SETTINGS_TILE_ID\];/);
     assert.match(recover, /\} catch \{\s*\/\/ keep what we have/);
