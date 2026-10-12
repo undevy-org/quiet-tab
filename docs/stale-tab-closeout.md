@@ -34,7 +34,7 @@
 ## Scope
 
 - `src/newtab.js`: `showDesktopStatus` (tone), `showLayoutRestoreFailure` (button), the Escape layer and its flag, `healClearedDesk` (weather resync), `finishOnboardingWizard`; `src/desktopUiState.js`: `escapeLayer` layer `status`; `src/newtab.css`: `.desktop-status--info`, `.desktop-status__reload`. Tests: `test/desktopUiState.test.js` (the layer), `test/newtabSource.test.js` pins.
-- `docs/stale-tab-closeout.md` (this spec → `implemented`), `docs/stale-tab-recovery-followups.md` and `docs/stale-tab-empty-state.md` (Accepted-exception updates), `docs/architecture.md`, `docs/design-system.md` (status chip tones), `CHANGELOG.md`; notes `agent-config/CLAUDE.md`, backlog 73–75 closed.
+- `docs/stale-tab-closeout.md` (this spec → `implemented`), `docs/stale-tab-recovery-followups.md` (Accepted-exception updates), `docs/architecture.md`, `docs/design-system.md` (status chip tones), `CHANGELOG.md`; notes `agent-config/CLAUDE.md`, backlog 73–75 closed.
 - E2E: new `dg-71-stale-tab-closeout.mjs`; harness `failStorageSetAfter(..., { skip })`; `dg-68`/`dg-70` adjusted (decision 7); `dg-60` (wizard) and `dg-67` stay green.
 
 ## Non-goals
@@ -64,7 +64,7 @@ Common Given (as `docs/stale-tab-recovery-followups.md`): tabs A and B on the sa
 ### AS-STC-02 The reset message is neutral, errors stay red (74)
 - Given: common Given, a successful heal (Save on f0); and a failed heal in a second run.
 - When: read `#desktop-status` styles.
-- Then: reset: text color equals the page text color, border color equals `--border-control`, contrast text on panel ≥ 4.5:1 in light and dark themes, `role="alert"`, hidden after 8 s; failed heal and an ordinary error (the gone-link text `This link was deleted in another tab.`) keep the danger color; in one run a reset message followed by an error shows the error in the danger color (the tone does not stick).
+- Then: reset: text color equals the page text color, border color equals `--border`, contrast text on panel ≥ 4.5:1 in light and dark themes, `role="alert"`; it disappears after 8 s (checked in AS-STC-03b and in `dg-70`); failed heal and an ordinary error (the gone-link text `This link was deleted in another tab.`) keep the danger color; in one run a reset message followed by an error shows the error in the danger color (the tone does not stick).
 - Verified by: E2E `dg-71` group 2.
 
 ### AS-STC-03 The wizard heals and keeps the starter links (73)
