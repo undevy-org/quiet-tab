@@ -217,6 +217,12 @@ button.weather-tile {
   margin-top: 8px;
 }
 
+/* The same soft focus ring as the dialog buttons (the plain .button ring is only 1.8:1 on the panel). */
+.desktop-status__reload:focus-visible {
+  background: var(--soft-fill-strong);
+  box-shadow: 0 0 0 2px var(--focus-overlay-ring);
+}
+
 .chrome-tile {
   display: inline-flex;
   align-items: center;

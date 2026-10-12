@@ -1253,6 +1253,7 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     assert.match(show, /layoutFailureChipShown = false;/); // any new message ends the chip state
     assert.match(styles, /\.desktop-status--info \{\s*border-color: var\(--border\);\s*color: var\(--text\);\s*\}/);
     assert.match(styles, /\.desktop-status__reload \{[^}]*display: flex;/s);
+    assert.match(styles, /\.desktop-status__reload:focus-visible \{\s*background: var\(--soft-fill-strong\);\s*box-shadow: 0 0 0 2px var\(--focus-overlay-ring\);\s*\}/);
     // decision 1: Escape, the lowest layer, dismisses only the chip and returns focus from Reload to #favorites
     assert.match(code, /status: layoutFailureChipShown/);
     assert.match(code, /else if \(layer === "status"\) \{\s*dismissLayoutFailureChip\(\);/);
