@@ -812,6 +812,7 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     const tail = island.slice(committed);
     assert.match(tail, /try \{[\s\S]*widgetsService\.getState\(\)[\s\S]*healClearedDesk\([\s\S]*\} catch \{[\s\S]*outcome = \{ state: widgetsState, healed: false, failed: true \};/, "re-read and heal in a try, a catch gives the failed outcome");
     assert.doesNotMatch(island, /addedIds === null/, "no unreachable null check: addFavorites always returns an array");
+    assert.match(tail, /if \(outcome\.healed \|\| outcome\.failed\) onboardingHealOutcome = outcome;/, "the failed outcome is kept for the closing exits");
   });
 
   it("a failed Finish puts the focus back on Finish (backlog 77)", async () => {
