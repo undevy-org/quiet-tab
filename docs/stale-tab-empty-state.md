@@ -19,7 +19,7 @@
 
 ## Default decisions (owner can override)
 
-1. **Heal only when the system tiles are gone.** In `recoverFromGoneLink`, after the busy-held re-read (step (c) of `docs/stale-link-and-host-contrast.md` decision 2), if the fresh state has **no** `chrome:settings` item, the recovery calls `ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() })` once. Only when it reports `changed: true` does it re-read with `widgetsService.getState()` (a `changed: false` result, e.g. a `newer` or `invalid` meta, writes and re-reads nothing and the recovery goes on with the empty fresh state). A fresh state that still has Settings (the usual case: one link gone, the desk intact, or another tab already healed the storage) is not touched and nothing is written (AS-SLH-01 of the previous run stays as it is).
+1. **Heal only when the system tiles are gone.** In `recoverFromGoneLink`, after the busy-held re-read (step (c) of `docs/stale-link-and-host-contrast.md` decision 2), if the fresh state has **no** `chrome:settings` item, the recovery calls `ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() })` once. Only when it reports `changed: true` does it re-read with `widgetsService.getState()`. `changed: false` can only come from a race between the first read and the heal (another tab healed in between; a `newer` or `invalid` meta never gets here, because `assertWritable()` refuses the action first): the recovery then keeps the fresh state it has. Covered by a source pin, not by E2E. The condition is "no Settings", also when only some system tiles were lost; `ensureWidgetsLayout` then appends the missing ones (row 0 when the lost set is partial) and the next boot changes nothing. If the first re-read itself fails (`fresh` is null) there is no heal. A fresh state that still has Settings (the usual case: one link gone, the desk intact, or another tab already healed the storage) is not touched and nothing is written (AS-SLH-01 of the previous run stays as it is).
 2. **Screen at heal time.** `firstScreen()` is read at the moment of the heal (an intentional exception to "read once at boot", `docs/vertically-centered-defaults.md` decision 2: after a wipe the desk is a fresh install). The result equals the layout of a fresh install in the same window, not the layout the tab had when it opened (AS-STE-07). Documented as a new entry in that spec's "Accepted exceptions" plus one sentence in its decision 2.
 3. **Failure.** If `ensureWidgetsLayout` or the second re-read throws, the recovery keeps what it has (the empty fresh state or the old state), still closes the dialog and shows the message; the grid then stays empty until a reload (the boot path heals it, also when only some of the keys were written). No page error. The recovery never throws out of `runDesktopMutation`. With no tile on the grid there is nothing to focus: focus is on `body` (accepted, see "Accepted exceptions").
 4. **Focus after a heal.** After a successful heal (`changed: true`) focus goes to **Settings**, forced: the recovery uses `[SETTINGS_TILE_ID]` as the focus target instead of the neighbour list read from the old DOM (that list would find a freshly created tile such as Add first). Without a heal the neighbour list stays as in the previous run. Edit mode stays on (`data-edit="true"`).
@@ -31,10 +31,10 @@
 ## Scope
 
 - `src/newtab.js`: `recoverFromGoneLink` (heal step, forced focus on Settings, comments) and the comment of `firstScreen()` (now also read at a heal).
-- `test/newtabSource.test.js`: the pin that counts `firstScreen(` occurrences (now 3: definition, boot, recovery) and pins for the heal call (only inside `recoverFromGoneLink`, guarded by the missing Settings, `changed` check).
+- `test/newtabSource.test.js`: the pin that counts `firstScreen(` occurrences (now 3: definition, boot, recovery), the pin of `recoverFromGoneLink` that requires `closeDesktopDialog({ restoreFocusTo: neighbours })` (updated to the forced-Settings focus target) and pins for the heal call (only inside `recoverFromGoneLink`, guarded by the missing Settings, `changed` check).
 - `docs/stale-tab-empty-state.md` (this spec → `implemented`), `docs/stale-link-and-host-contrast.md` (AS-SLH-06 wording), `docs/architecture.md` (one sentence in the concurrency paragraph), `docs/vertically-centered-defaults.md` ("Accepted exceptions" entry, decision 2 sentence), `CHANGELOG.md`.
 - Notes: `agent-config/CLAUDE.md` (concurrency), backlog 68–69 closed.
-- E2E: new `dg-68-stale-tab-empty-state.mjs` with a new harness helper `failStorageSetAfter(page, { area, key })` (wraps `chrome.storage.<area>.set` in the page to reject when the written object has `key`; a reload drops it, unlike `failStorageInit`); `dg-67` stays green.
+- E2E: new `dg-68-stale-tab-empty-state.mjs` with a new harness helper `failStorageSetAfter(page, { area, key, ms })` (wraps `chrome.storage.<area>.set` in the page for calls whose written object has `key`: with `ms` omitted it rejects, with `ms > 0` it answers successfully after `ms`; a rejected call is not recorded by `recordSyncSets`; a reload drops the wrapper, unlike `failStorageInit`); `dg-67` stays green.
 
 ## Process
 
@@ -45,7 +45,7 @@ Full UI pipeline (`quiet-tab-pipeline`): spec review and gate → plan (given) �
 - Healing in any other situation (a missing Settings tile without a wipe, hidden metrics, a stale tab that is not recovering from a gone link).
 - Cross-tab live sync; changing the message text (it names one link although everything is gone: owner decision, text unchanged); changing `ensureWidgetsLayout` itself.
 - A reset action in the UI.
-- Weather content after the wipe (a city or a cache kept in the memory of the stale tab), and the onboarding wizard on the next reload (its flag lives in `chrome.storage.local`, which the wipe also clears; the E2E harness presets it).
+- Weather content after the wipe (a city or a cache kept in the memory of the stale tab), and the onboarding wizard on the next reload (its flag lives in `chrome.storage.local`, which the wipe also clears; the E2E harness only answers the prompt-dismissed read, it does not write the wizard flag).
 
 ## Accepted exceptions
 
@@ -80,7 +80,7 @@ Common Given for AS-STE-01…03, 05, 07…09: tabs A and B on the same profile, 
 - Verified by: E2E `dg-68` group 4 (and `dg-67` unchanged).
 
 ### AS-STE-05 The heal's write is rejected
-- Given: common Given and `failStorageSetAfter(B, { area: "sync", key })` set after B's load; two variants: `key: "quietTabWidgetsMeta"` (second `set()` rejected) and `key: "quietTabWidget:chrome:add"` (first `set()` rejected).
+- Given: common Given and `failStorageSetAfter(B, { area: "sync", key })` (rejecting) set after B's load; two variants: `key: "quietTabWidgetsMeta"` (second `set()` rejected) and `key: "quietTabWidget:chrome:add"` (first `set()` rejected).
 - When: Save on f0 in B.
 - Then: the dialog closes; `#desktop-status` shows the message; no page error; the grid has no tile; focus is on `body`; `data-edit="true"`; B is not busy (Escape sets `data-edit="false"`); sync holds six item keys without a meta (variant 1) or no keys (variant 2). After B reloads (the fault is gone with the page) the three default tiles are there and sync holds the seven keys.
 - Verified by: E2E `dg-68` group 5.
@@ -96,13 +96,13 @@ Common Given for AS-STE-01…03, 05, 07…09: tabs A and B on the same profile, 
 - Verified by: E2E `dg-68` group 6.
 
 ### AS-STE-08 A slow heal
-- Given: common Given and a response delayed by 1.5 s (longer than every action timer) but successful: `failStorageGetAfter`-style delay on the meta read of the heal's re-read, and a delayed `sync.set`.
+- Given: common Given and `failStorageSetAfter(B, { area: "sync", key: "quietTabWidgetsMeta", ms: 1500 })` and a second wrapper with `key: "quietTabWidget:chrome:add"`, `ms: 1500`: each of the heal's two `set()` calls answers successfully after 1.5 s (longer than any action timer in `newtab.js`).
 - When: Save on f0 in B; during the wait press Save again and Escape.
 - Then: the dialog stays until the heal ends (repeat Save and Escape do nothing); exactly two `set()` calls happen; afterwards as AS-STE-01; the message stays its full 8 s from the moment it is shown.
 - Verified by: E2E `dg-68` group 7.
 
 ### AS-STE-09 The second read after the heal fails
-- Given: common Given and `failStorageGetAfter(B, { key: "quietTabWidgetsMeta", skip: 3 })` (the heal adds meta reads: the count is measured in the first red run and recorded in the test).
+- Given: common Given and `failStorageGetAfter(B, { key: "quietTabWidgetsMeta", skip: 4 })`: the Save with a heal makes five meta reads (the fifth is the re-read after the heal; `skip: 3` would fail the read inside `ensureWidgetsLayout` before any write and `skip: 2` is AS-SLH-06); the count is checked in the first red run and recorded in the test.
 - When: Save on f0 in B.
 - Then: the heal wrote its two `set()` calls, the dialog closes, the message is shown, no page error, the grid stays empty, focus on `body`; after a reload the three tiles are there.
 - Verified by: E2E `dg-68` group 8.
