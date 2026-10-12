@@ -31,6 +31,7 @@ forecast cache and a per-device "city prompt dismissed" flag persist to
 | `src/weatherStore.js` | Validates, reads, and writes the chosen location and the forecast cache, and reads/writes the per-device city-prompt-dismissed flag. |
 | `src/cityPrompt.js` | Pure rules for whether the onboarding wizard may open on this page load (`onboardingWizardPossible` / `shouldShowOnboardingWizard`). |
 | `src/onboardingWizard.js` / `src/onboardingStore.js` | First-run two-step wizard (city, then starter links) and the `quietTabOnboardingWizardComplete` local flag. |
+| `src/onboardingLayout.js` | Pure: the island table per starter-link count (k = 0…8), `isFreshDesk(items)` and `islandPlacements({ k, linkIds, rows, columns })` for wizard Finish. |
 | `src/weatherService.js` | Serves a fresh cached forecast or fetches and caches a new one; resolves a typed city name to a location. |
 | `src/weatherPresentation.js` | Formats readings and picks each tile's color tone. |
 | `src/weatherTiles.js` | Pure presentation of one weather tile (label, primary and secondary text, tone, description) for the loading, ready, stale and error states; for error and stale it also carries the retry phase (`ready`, `retrying`, `cooldown`) and the busy text. |
@@ -257,6 +258,16 @@ retry; a retry only writes the cache that `initialize()` already writes.
   writes `quietTabOnboardingWizardComplete` and never writes the weather dismissed flag.
   Reload or a new tab before completion reopens step 1 (no persisted step or checkbox
   draft). Spec: `docs/onboarding-wizard.md`.
+- **Finish island.** Finish makes one `widgetsService.addFavorites(inputs, { columns, island: { rows } })`
+  call (also with zero links) in `layOutFinishIsland` (`src/newtab.js`). On a fresh desk (no favorite, all
+  six system tiles at their default sizes, all metrics enabled, temperature first; `isFreshDesk`) that fits
+  the window (`W <= columns`), the one `setState` writes the system tiles and the new links in the cells of
+  the fixed island table (`src/onboardingLayout.js`, `islandPlacements`), centered with the stored `dx` and
+  `centeredDefaultRow(rows, H)`; otherwise the links go by `placeNew` as 2×1 and nothing else moves. A call
+  that adds nothing and applies no island is a no-op (no write). With zero links a failed call is swallowed
+  (the desk keeps the boot strip) and no heal runs, so a wiped storage stays unwritten. Reload and resize
+  never re-pack. CSS: `scroll-margin: 6px` on `.desktop-grid > [data-widget-id]` keeps a focused tile's ring
+  in the window. Spec: `docs/post-onboarding-grid.md`.
 - **Veil and reveal.** While the wizard is open the desk uses the same veil/reveal as
   `docs/first-run-empty-desk.md` (`showOnboardingWizard` / `hideOnboardingWizard`).
 - **Change-mode city modal.** Unchanged: `#city-modal` from the hint tile or weather

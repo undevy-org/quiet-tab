@@ -10,7 +10,7 @@ Owner decisions (2026-10-07):
 
 - **Skip on step 1** means **only** skip setting a city and go to step 2; it does **not** dismiss the wizard and does **not** write `quietTabWeatherPromptDismissed`.
 - Step 2 has **no Skip**; footer is **Back** | **Finish** only.
-- **Finish with zero links selected** is allowed (user gets the default desk only).
+- **Finish with zero links selected** is allowed (user gets the default desk only: the system tiles form the k = 0 island, `docs/post-onboarding-grid.md`).
 - **Escape and backdrop on step 2** (after the 300 ms guard) run the same path as **Finish**: apply checked starters, set `quietTabOnboardingWizardComplete`, close the wizard. They do **not** set `quietTabWeatherPromptDismissed`.
 - The wizard **never** writes `quietTabWeatherPromptDismissed` on any path (there is no Not now). Users without a city keep the hint tile after completion.
 - **Reload or new tab before completion:** if `quietTabOnboardingWizardComplete` is false, the wizard auto-opens again at **step 1** only. No persisted step index or checkbox selections. If a city is already in sync (user had Continue earlier), step 1 reflects that stored location (`chosenCity` / field state) so they can Skip to step 2 or Continue without retyping.
@@ -49,13 +49,13 @@ When `shouldAutoShowCityPrompt` allows, boot opens `showCityModal("first-run", n
 | 7 | Reddit | `reddit.com` | `https://www.reddit.com/` | auto |
 | 8 | Amazon | `amazon.com` | `https://www.amazon.com/` | auto |
 
-Favicons via `/_favicon/`. On **Finish**, call **`widgetsService.addFavorites(inputs, { columns })`**: one `mutate`, `placeNew` per checked row in table order, single `MAX_FAVORITE_WIDGETS` check, **skip URLs already present** among favorites (normalized URL dedup). Returns added widget ids. Each input: `w: 2`, `h: 1`, url, label, `backgroundColor` / `backgroundColorSource` (`manual` + `#1a73e8` for Gmail). Then write `quietTabOnboardingWizardComplete` and close the wizard; **`refreshAutoAccent`** for `auto` rows runs **`void` after close** (same as Add link, do not block UI). If the batch fails, stay on step 2 with inline error (copy: **"Couldn't add links. Try again."**), **Finish** re-enabled, flag false; desk stays veiled until success or user clears all checks and finishes with zero links. If the batch succeeded but flag write fails: show error, allow one retry; after a second flag failure **close the wizard** (best-effort, like `onFirstRunDismissed`); in-memory **`startersCommitted`** prevents duplicate adds on retry in the same session. Footer **50/50**: **Back** (`arrowLeft`) | **Finish** (`check`). **Step-2 entry guard:** for **300 ms** after entering step 2, ignore Finish, Back, Escape, and backdrop. **Finish** disabled while finish runs (`favoritesBusy` / `runDesktopMutation` pattern).
+Favicons via `/_favicon/`. On **Finish**, call **`widgetsService.addFavorites(inputs, { columns, island: { rows } })`** (also with zero links, `inputs = []`): one `mutate`; on a fresh desk that fits the window the system tiles and the new links are laid out as one island by the `docs/post-onboarding-grid.md` § Island table; otherwise `placeNew` per checked row in table order (2×1) as before; a zero-link call that adds nothing and finds no island to apply writes nothing; a failed call with zero links is swallowed (Finish goes on, no message, desk keeps the boot strip), with links it shows the inline error below. Single `MAX_FAVORITE_WIDGETS` check, **skip URLs already present** among favorites (normalized URL dedup). Returns added widget ids. Each input: `w: 2`, `h: 1` (the size on a not-fresh desk; on an island the table footprint), url, label, `backgroundColor` / `backgroundColorSource` (`manual` + `#1a73e8` for Gmail). Then write `quietTabOnboardingWizardComplete` and close the wizard; **`refreshAutoAccent`** for `auto` rows runs **`void` after close** (same as Add link, do not block UI). If the batch fails, stay on step 2 with inline error (copy: **"Couldn't add links. Try again."**), **Finish** re-enabled, flag false; desk stays veiled until success or user clears all checks and finishes with zero links. If the batch succeeded but flag write fails: show error, allow one retry; after a second flag failure **close the wizard** (best-effort, like `onFirstRunDismissed`); in-memory **`startersCommitted`** prevents duplicate adds on retry in the same session. Footer **50/50**: **Back** (`arrowLeft`) | **Finish** (`check`). **Step-2 entry guard:** for **300 ms** after entering step 2, ignore Finish, Back, Escape, and backdrop. **Finish** disabled while finish runs (`favoritesBusy` / `runDesktopMutation` pattern).
 6. **Dismissal semantics.** No **Not now**, no `quietTabWeatherPromptDismissed`. **Step 1:** Escape (ignore `keydown.repeat`) and backdrop (300 ms after wizard open) like **Skip** when not busy. **Step 2:** Escape (ignore repeat) and backdrop like **Finish** when not busy and outside the step-2 entry guard. **Back** only return to step 1. Tab trap on active step.
 7. **Focus.** Step 1: same as today's first-run city modal (no auto-focus steal). On entering step 2, focus moves to the first checkbox (or the list container if empty). **Back** from step 2: focus returns to step 1 title (`tabindex="-1"`) or **Continue**, not the city field. Tab order: all checkboxes, then **Back**, then **Finish**. On close after successful completion, focus rules match today's first-run close (`docs/first-run-empty-desk.md` decision 5) adapted to `#onboarding-wizard`.
 8. **Completion flag.** `chrome.storage.local` key `quietTabOnboardingWizardComplete` = `true` only after decision 5 succeeds (including zero links). Boot uses decision 1; the wizard does not write `quietTabWeatherPromptDismissed`. Completing without a city leaves the hint tile as today.
 9. **No mid-wizard persistence.** Step index and checkbox selections live in memory only for the current page load. A new tab or reload before completion runs the boot path again: wizard at **step 1**, defaults for checkboxes, city field reflects sync if a city was already saved on an earlier load.
 10. **Starter link data is code constants** mirroring the table in decision 5 (single exported list in `src/`). No migration.
-11. **Nothing else changes** for change-mode city, desktop dialogs, edit mode, weather retry, or grid layout defaults (`docs/vertically-centered-defaults.md`).
+11. **Nothing else changes** for change-mode city, desktop dialogs, edit mode, weather retry, or grid layout defaults (`docs/vertically-centered-defaults.md`), except that Finish on a fresh desk lays the system tiles and starter links out as one island (decision 5, `docs/post-onboarding-grid.md`).
 
 ## Scope
 
@@ -86,7 +86,7 @@ Full UI pipeline: spec review, spec gate, plan in notes, E2E-first implementatio
 
 - **Escape/backdrop on step 1 = Skip** (decision 6): users cannot one-click "never show again" without reaching Finish; they may still get the hint tile if they skip city.
 - **Starter list is fixed English labels** (product copy in English).
-- **Zero links on Finish** leaves only system tiles (owner approved).
+- **Zero links on Finish** leaves only system tiles (owner approved); they form the k = 0 island (3×3, temperature 1×2).
 - **Escape on step 2 = Finish** (owner approved): no separate cancel on step 2.
 - **Continue/Finish icons** (`arrowRight`, `check`, `arrowLeft`) are new footer chrome for this wizard only.
 - **Starter row click target:** implementation uses a wrapping `<label>` (whole row toggles). The development mockup uses a `button` preview where only the 22×22 checkbox toggles; **ship label semantics**, mock aligned at checkpoint.
@@ -119,16 +119,16 @@ Common setup: E2E harness 1280×800, fresh profile, `autoPrompt: true`, weather 
 - Then: ratio in **3.3..3.7**; footer and title fixed.
 - Verified by: E2E `dg-60` group 4.
 
-### AS-OB-05 Finish adds checked starters as 2×1 favorites
+### AS-OB-05 Finish adds checked starters as favorites
 - Given: step 2, default three checked, one unchecked toggled on (GitHub).
 - When: Finish is clicked.
-- Then: four new favorites 2×1 on grid; complete flag true; veil removed with reveal; hint absent if city was saved on step 1.
+- Then: four new favorites on grid with the k = 4 island footprints (2×2, 2×1, 1×1, 1×1) on a fresh desk; complete flag true; veil removed with reveal; hint absent if city was saved on step 1.
 - Verified by: E2E `dg-60` group 5.
 
 ### AS-OB-06 Finish with zero links selected is allowed
 - Given: step 2, all rows unchecked.
 - When: Finish is clicked.
-- Then: no new favorites; complete flag true; wizard closed; desk revealed.
+- Then: no new favorites; the system tiles form the k = 0 island; complete flag true; wizard closed; desk revealed.
 - Verified by: E2E `dg-60` group 6.
 
 ### AS-OB-07 Back from step 2 preserves step 1 city state
@@ -170,7 +170,7 @@ Common setup: E2E harness 1280×800, fresh profile, `autoPrompt: true`, weather 
 ### AS-OB-13 Escape on step 2 finishes like Finish
 - Given: step 2, two starters checked, ≥ **300 ms** after entering step 2.
 - When: Escape pressed once (or backdrop after wizard open guard).
-- Then: same storage outcome as Finish (two favorites, complete flag true, wizard closed); `quietTabWeatherPromptDismissed` unset.
+- Then: same storage outcome as Finish (two favorites, island included, complete flag true, wizard closed); `quietTabWeatherPromptDismissed` unset.
 - Verified by: E2E `dg-60` group 12.
 
 ### AS-OB-14 Reload after Continue, before complete, reopens step 1 with city shown
@@ -242,7 +242,7 @@ Common setup: E2E harness 1280×800, fresh profile, `autoPrompt: true`, weather 
 ### AS-OB-25 Backdrop after guards matches Skip or Finish
 - Given: wizard open ≥ **300 ms**; step 1 then step 2.
 - When: backdrop click on each step.
-- Then: step 1 → step 2 without city; step 2 → same outcome as **Finish** for current checkbox selection.
+- Then: step 1 → step 2 without city; step 2 → same outcome as **Finish** for current checkbox selection (island included).
 - Verified by: E2E `dg-60` group 24.
 
 ### AS-OB-26 Starter row toggles by click and Space
@@ -254,7 +254,7 @@ Common setup: E2E harness 1280×800, fresh profile, `autoPrompt: true`, weather 
 ### AS-OB-27 Finish dedupes URLs already on the grid
 - Given: step 2, profile already has ChatGPT favorite; ChatGPT row checked.
 - When: Finish.
-- Then: no duplicate ChatGPT tile; complete flag true; other checked starters still added.
+- Then: no duplicate ChatGPT tile; the existing favorite makes the desk not fresh, so other checked starters are added as 2×1 by `placeNew` and no system tile moves; complete flag true.
 - Verified by: E2E `dg-60` group 26; related harness `dg-26-two-tabs` optional stress.
 
 ### AS-OB-28 Favorite limit blocks Finish with Copy message
@@ -266,13 +266,13 @@ Common setup: E2E harness 1280×800, fresh profile, `autoPrompt: true`, weather 
 ### AS-OB-29 Skip then Finish without city leaves hint tile
 - Given: step 1, Skip to step 2; all starters unchecked.
 - When: Finish.
-- Then: complete flag true; hint weather tile still shown (no city); desk revealed per `docs/first-run-empty-desk.md`.
+- Then: complete flag true; hint weather tile still shown (no city) at 1×2 in the temperature cell of the k = 0 island; desk revealed per `docs/first-run-empty-desk.md`.
 - Verified by: E2E `dg-60` group 28.
 
-### AS-OB-30 New starters land as valid 2×1 without overlap
+### AS-OB-30 New starters land as a valid island without overlap
 - Given: step 2, default three checked, harness **1280×800** and **500×500**.
 - When: Finish.
-- Then: three new **2×1** favorites inside grid bounds; no overlap with chrome tiles; `placeNew` positions documented in run record.
+- Then: at both sizes (6 columns at 500×500) the k = 3 island (4×4) applies: three new favorites 2×2, 1×2, 1×1 inside grid bounds, no overlap with chrome tiles. The 2×1 `placeNew` outcome is covered by a not-fresh or too-narrow case (`docs/post-onboarding-grid.md` AS-POG-04, AS-POG-06).
 - Verified by: E2E `dg-60` group 29.
 
 ### AS-OB-31 Focus after wizard close matches first-run reveal
