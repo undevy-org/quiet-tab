@@ -81,7 +81,7 @@ Full UI pipeline: spec review and gate → plan → E2E-first → final code rev
 
 ### AS-SLH-06 The re-read fails
 - Given: as AS-SLH-01, and in B a new harness helper `failStorageGetAfter(page, { key, skip: 2 })` (`.private/e2e/lib/harness.mjs`) installed after B has loaded: it wraps `chrome.storage.sync.get`, lets the first two reads of the widgets meta key through (`assertWritable` and the read inside `mutate`) and rejects the third (the recovery's re-read).
-- When: Save on f0 in B; then, in a second run of the scenario with the third read delayed (`delayStorageInit`-style wrapper), press Save again (the form submit) and Escape once while the recovery runs; both are ignored (no write, the dialog stays until the recovery ends, `syncSetCalls` unchanged).
+- When: Save on f0 in B; then, in a second run of the scenario with the third read delayed (`failStorageGetAfter(page, { key, skip: 2, ms })`), press Save again (the form submit) and Escape once while the recovery runs; both are ignored (no write, the dialog stays until the recovery ends, `syncSetCalls` unchanged).
 - Then: the dialog still closes, the message is shown, no page error; B's grid keeps its old state (the tile of f0 stays, the focus goes to its neighbour); the second press starts no write while the busy lock is held; B is not busy afterwards (a later action works).
 - Verified by: E2E `dg-67` group 5 (new helpers in `harness.mjs`).
 
