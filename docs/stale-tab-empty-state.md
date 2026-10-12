@@ -4,6 +4,8 @@
 
 `implemented` — closes backlog 68 (found by the final design review of run 28) and 69 (verifier nits of run 28). Follow-up to `docs/stale-link-and-host-contrast.md` (`implemented`). **Data compatibility: not required** (no-users policy, `agent-config/CLAUDE.md`); storage shape unchanged.
 
+> **Changed by run 30** (`docs/stale-tab-recovery-followups.md`, `implemented`): the heal now always re-reads (also when `changed` is `false`, decision 1 and the Known gap below), runs for Hide, restore, Edit weather Save and Add link too (decision 5 below), a successful heal says `Your layout was reset in another tab.` (AS-STE-01…03, 07, 08), and a failed heal shows the persistent message `Couldn't restore your layout. Reload this tab.`, leaves edit mode and focuses `#favorites` instead of `body` (decision 3, Accepted exceptions, AS-STE-05, AS-STE-09, Review focus). The text below is the run 29 record; where it says otherwise, run 30 wins.
+
 ## Intake log
 
 | Date | Raw note (owner) | Verdict | Reference |
@@ -21,7 +23,7 @@
 
 1. **Heal only when the system tiles are gone.** In `recoverFromGoneLink`, after the busy-held re-read (step (c) of `docs/stale-link-and-host-contrast.md` decision 2), if the fresh state has **no** `chrome:settings` item, the recovery calls `ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() })` once. Only when it reports `changed: true` does it re-read with `widgetsService.getState()`. `changed: false` can only come from a race between the first read and the heal (another tab healed in between; a `newer` or `invalid` meta never gets here, because `assertWritable()` refuses the action first): the recovery then keeps the fresh state it has. Covered by a source pin, not by E2E. The condition is "no Settings", also when only some system tiles were lost; `ensureWidgetsLayout` then appends the missing ones (row 0 when the lost set is partial) and the next boot changes nothing. If the first re-read itself fails (`fresh` is null) there is no heal. A fresh state that still has Settings (the usual case: one link gone, the desk intact, or another tab already healed the storage) is not touched and nothing is written (AS-SLH-01 of the previous run stays as it is).
 2. **Screen at heal time.** `firstScreen()` is read at the moment of the heal (an intentional exception to "read once at boot", `docs/vertically-centered-defaults.md` decision 2: after a wipe the desk is a fresh install). The result equals the layout of a fresh install in the same window, not the layout the tab had when it opened (AS-STE-07). Documented as a new entry in that spec's "Accepted exceptions" plus one sentence in its decision 2.
-3. **Failure.** If `ensureWidgetsLayout` or the second re-read throws, the recovery keeps what it has (the empty fresh state or the old state), still closes the dialog and shows the message; the grid then stays empty until a reload (the boot path heals it, also when only some of the keys were written). No page error. The recovery never throws out of `runDesktopMutation`. With no tile on the grid there is nothing to focus: focus is on `body` (accepted, see "Accepted exceptions").
+3. **Failure.** If `ensureWidgetsLayout` or the second re-read throws, the recovery keeps what it has (the empty fresh state or the old state), still closes the dialog and shows the message; the grid then stays empty until a reload (the boot path heals it, also when only some of the keys were written). No page error. The recovery never throws out of `runDesktopMutation`. With no tile on the grid there is nothing to focus: focus was on `body` here; since run 30 (`docs/stale-tab-recovery-followups.md`, decision 5) a failed heal shows a persistent message, leaves edit mode and focuses `#favorites`; the success message became `Your layout was reset in another tab.` (decision 4 there) and the heal also runs for Hide, restore, Edit weather Save and Add link.
 4. **Focus after a heal.** After a successful heal (`changed: true`) focus goes to **Settings**, forced: the recovery uses `[SETTINGS_TILE_ID]` as the focus target instead of the neighbour list read from the old DOM (that list would find a freshly created tile such as Add first). Without a heal the neighbour list stays as in the previous run. Edit mode stays on (`data-edit="true"`).
 5. **Entry points.** Same three as the previous run: Edit link Save, Delete confirm, a drop. The heal is part of the shared recovery, no per-entry code.
 6. **Storage written by the heal.** `ensureWidgetsLayout` is not changed. It writes in **two** `set()` calls on `chrome.storage.sync`: the six item keys (`quietTabWidget:weather:temperature|precipitation|airQuality|uv`, `quietTabWidget:chrome:settings`, `quietTabWidget:chrome:add`), then `quietTabWidgetsMeta`. After the heal sync holds exactly those seven keys (`meta.order` = the six system ids in that order, version 3) and `chrome.storage.local` is empty.
@@ -49,7 +51,7 @@ Full UI pipeline (`quiet-tab-pipeline`): spec review and gate → plan (given) �
 
 ## Accepted exceptions
 
-- If the heal fails the grid stays empty until a reload and focus is on `body` (no tile exists to take it); edit mode stays on and Escape leaves it (decision 3).
+- If the heal fails the grid stays empty until a reload (decision 3); run 30: the persistent message, edit mode off and focus on `#favorites`, not `body`.
 - If the heal's first `set()` succeeds and the second (meta) is rejected, six item keys stay without a meta; the reload completes them (`ensureWidgetsLayout` on a missing meta).
 - Healing writes to storage (the system keys, once) in a recovery that otherwise writes nothing; this is the point of the decision.
 - The heal keeps the busy lock a little longer than the plain recovery (the lock wait plus two writes and a second read).
@@ -109,12 +111,12 @@ Common Given for AS-STE-01…03, 05, 07…09: tabs A and B on the same profile, 
 
 ## Known gap
 
-- If another tab healed the storage between the stale tab's first read and the heal's own read under the lock, `ensureWidgetsLayout` reports `changed: false` and the stale tab keeps its empty grid until a reload (milliseconds-wide race, nothing lost). A second `getState()` on `changed: false` would close it; kept out of this run (backlog).
+- If another tab healed the storage between the stale tab's first read and the heal's own read under the lock, `ensureWidgetsLayout` reports `changed: false` and the stale tab keeps its empty grid until a reload (milliseconds-wide race, nothing lost). A second `getState()` on `changed: false` would close it; closed by run 30 (the heal always re-reads).
 
 ## Review focus
 
 - The heal runs only when Settings is missing and `ensureWidgetsLayout` reports `changed`; an intact desk is never written.
-- After a successful heal focus lands on Settings (forced), never on `body`; edit mode and the busy lock are right afterwards. After a failed heal `body` is accepted, nothing else breaks.
+- After a successful heal focus lands on Settings (forced), never on `body`; edit mode and the busy lock are right afterwards. After a failed heal (run 30: persistent message, edit mode off, `#favorites` focused) nothing else breaks.
 - The heal's layout equals a fresh install's layout for the window at heal time.
 - A failing heal never throws out of the recovery; partial writes are completed by the next boot.
 
