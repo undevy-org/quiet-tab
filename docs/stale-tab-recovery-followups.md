@@ -66,8 +66,8 @@ Common Given (as `docs/stale-tab-empty-state.md`): tabs A and B on the same prof
 - Verified by: E2E `dg-70` group 2.
 
 ### AS-SFU-03 Edit weather Save after the storage was cleared
-- Given: common Given with a city set in B's memory and storage is not required: B's temperature tile is the hint tile (no city): use the hint's metric edit path available in edit mode (tap on the hint opens `edit-weather`); if the dialog's Save is disabled until the size changes, change the size first.
-- When: change the size and press Save.
+- Given: common Given; with no city the temperature metric is drawn as the hint tile (`weather:hint`), which opens `edit-weather` on a tap in edit mode.
+- When: tap the hint tile, change the size (Save is enabled only when the size changed) and press Save.
 - Then: the dialog closes; healed; the message of AS-SFU-01; focus on Settings; B not busy.
 - Verified by: E2E `dg-70` group 3.
 
