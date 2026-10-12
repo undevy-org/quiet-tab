@@ -774,6 +774,15 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     assert.doesNotMatch(markup, /favorites-panel|favorites-bar|data-position/);
   });
 
+  it("pins the Finish island call (docs/post-onboarding-grid.md)", async () => {
+    const code = await source();
+    const finish = fn(code, "finishOnboardingWizard");
+    assert.match(finish, /addFavorites\(inputs, \{\s*columns: currentColumns\(\),\s*island: \{ rows: viewportRows\(document\.documentElement\.clientHeight, viewportWidth\(\)\) \}/, "one call with the island option");
+    assert.doesNotMatch(finish, /inputs\.length > 0 && widgetsService/, "the call also runs for zero links");
+    assert.match(finish, /addedIds !== null && inputs\.length >= 1\)\s*\{[\s\S]*healClearedDesk[\s\S]*onboardingStartersCommitted = true/, "heal and committed flag only after a call with links");
+    assert.doesNotMatch(finish.split("else if (addedIds !== null)")[1] ?? "", /healClearedDesk|onboardingStartersCommitted = true/, "k = 0 never heals and never marks committed");
+  });
+
   it("pins the DOM contract names: desktop-grid, chrome role, remove badge, per-tile cell variables", async () => {
     const code = await source();
     assert.match(code, /createNode\("div", "desktop-grid"\)/);

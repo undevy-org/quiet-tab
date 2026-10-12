@@ -1259,6 +1259,8 @@ let onboardingStep2EnteredAt = 0;
 /** @type {boolean[]} */
 let onboardingStarterChecks = defaultStarterChecks();
 let onboardingFinishError = "";
+// True only after a successful addFavorites call with at least one link (a retry after a flag-write failure must not add the links again);
+// a zero-link Finish never sets it, its call is an idempotent layout no-op the second time.
 let onboardingStartersCommitted = false;
 let onboardingFlagWriteFailedOnce = false;
 
@@ -1670,6 +1672,8 @@ function showWizardHealOutcome() {
   }
 }
 
+// Finish on step 2: one widgets call (also for zero links) that lays the island out on a fresh desk (docs/post-onboarding-grid.md), then the
+// completion flag. Zero links: a failed call is swallowed and nothing is healed or marked committed; with links the failure shows inline.
 async function finishOnboardingWizard() {
   if (!onboardingWizardRoot || onboardingStep !== 2 || favoritesBusy) return;
   onboardingFinishError = "";
@@ -1682,17 +1686,39 @@ async function finishOnboardingWizard() {
   const generation = startFavoritesAction({ render: false });
   syncOnboardingWizardUi();
   try {
-    if (!onboardingStartersCommitted && inputs.length > 0 && widgetsService) {
-      const addedIds = await widgetsService.addFavorites(inputs, { columns: currentColumns() });
-      widgetsState = await widgetsService.getState();
-      // the storage may have been cleared in another tab while the wizard was open: heal it like Add link does (the starters stay)
-      const outcome = await healClearedDesk(widgetsState);
-      widgetsState = outcome.state;
-      if (outcome.healed || outcome.failed) onboardingHealOutcome = outcome;
-      onboardingStartersCommitted = true;
-      for (const id of addedIds) {
-        const item = widgetsState.items.find((row) => row.id === id);
-        if (item?.backgroundColorSource === "auto") void refreshAutoAccent(id);
+    if (!onboardingStartersCommitted && widgetsService) {
+      // ONE call, also for zero links: on a fresh desk that fits it lays the system tiles and the new links out as the island
+      // (docs/post-onboarding-grid.md). columns, rows and freshness are read now, not at load.
+      let addedIds = null;
+      try {
+        addedIds = await widgetsService.addFavorites(inputs, {
+          columns: currentColumns(),
+          island: { rows: viewportRows(document.documentElement.clientHeight, viewportWidth()) }
+        });
+      } catch (error) {
+        // k = 0: the layout is cosmetic and nothing was selected, so Finish goes on (decision 9); k >= 1 keeps the inline error
+        if (inputs.length >= 1) throw error;
+      }
+      if (addedIds !== null && inputs.length >= 1) {
+        widgetsState = await widgetsService.getState();
+        // the storage may have been cleared in another tab while the wizard was open: heal it like Add link does (the starters stay)
+        const outcome = await healClearedDesk(widgetsState);
+        widgetsState = outcome.state;
+        if (outcome.healed || outcome.failed) onboardingHealOutcome = outcome;
+        onboardingStartersCommitted = true;
+        for (const id of addedIds) {
+          const item = widgetsState.items.find((row) => row.id === id);
+          if (item?.backgroundColorSource === "auto") void refreshAutoAccent(id);
+        }
+      } else if (addedIds !== null) {
+        // k = 0: no heal (a wiped storage must stay unwritten, dg-71 AS-STC-03). Take the re-read only if it still has Settings
+        // (the island was written); a cleared storage keeps today's in-memory state. A failing read is swallowed like the call.
+        try {
+          const state = await widgetsService.getState();
+          if (state.items.some((item) => item.id === SETTINGS_TILE_ID)) widgetsState = state;
+        } catch {
+          // keep the previous state
+        }
       }
     }
     if (onboardingStore) {
