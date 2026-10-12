@@ -664,3 +664,164 @@ describe("widgetsService with weather metrics", () => {
     assert.deepEqual(await area.get(null), snapshot);
   });
 });
+
+describe("addFavorites island (docs/post-onboarding-grid.md)", () => {
+  const starter = (n) => ({ url: `https://site${n}.example/`, label: `Site ${n}`, w: 2, h: 1 });
+  const FRESH = () => [
+    metric("weather:temperature", { grid: g(2, 4) }),
+    metric("weather:precipitation", { grid: g(3, 4, 2, 1) }),
+    metric("weather:airQuality", { grid: g(5, 4, 2, 1) }),
+    metric("weather:uv", { grid: g(7, 4) }),
+    { id: "chrome:settings", type: "chrome", role: "settings", grid: g(8, 4) },
+    { id: "chrome:add", type: "chrome", role: "add", grid: g(9, 4) }
+  ];
+
+  async function harness(items) {
+    const area = createMemoryStorageArea();
+    const sets = [];
+    const set = area.set.bind(area);
+    area.set = async (values) => {
+      sets.push(Object.keys(values));
+      return set(values);
+    };
+    const store = createWidgetsStore(area, { now: () => NOW });
+    let id = 0;
+    const service = createWidgetsService({ store, now: () => NOW, createId: () => `fav-${++id}`, defaultBackgroundColor: () => "#24292f" });
+    await seed(store, items);
+    sets.length = 0;
+    return { service, store, sets };
+  }
+
+  it("fresh desk, k = 3: one set(), the table grids (rows 9: dx -2, dy 2), 3 ids", async () => {
+    const { service, store, sets } = await harness(FRESH());
+    const ids = await service.addFavorites([starter(1), starter(2), starter(3)], { columns: 12, island: { rows: 9 } });
+    assert.deepEqual(ids, ["fav-1", "fav-2", "fav-3"]);
+    assert.equal(sets.length, 1, "exactly one chrome.storage.sync.set");
+    assert.deepEqual(storedGridsOf(await store.getState()), {
+      "weather:temperature": { x: -2, y: 2, w: 1, h: 2 },
+      "weather:precipitation": { x: -1, y: 2, w: 2, h: 1 },
+      "weather:airQuality": { x: -1, y: 3, w: 2, h: 1 },
+      "weather:uv": { x: 0, y: 4, w: 1, h: 1 },
+      "chrome:settings": { x: 0, y: 5, w: 1, h: 1 },
+      "chrome:add": { x: 1, y: 5, w: 1, h: 1 },
+      "fav-1": { x: -2, y: 4, w: 2, h: 2 },
+      "fav-2": { x: 1, y: 2, w: 1, h: 2 },
+      "fav-3": { x: 1, y: 4, w: 1, h: 1 }
+    });
+  });
+
+  it("fresh desk, k = 0: the system-only island is written (temperature 1×2), one set(), no ids", async () => {
+    const { service, store, sets } = await harness(FRESH());
+    assert.deepEqual(await service.addFavorites([], { columns: 12, island: { rows: 9 } }), []);
+    assert.equal(sets.length, 1);
+    const grids = storedGridsOf(await store.getState());
+    assert.deepEqual(grids["weather:temperature"], { x: -1, y: 3, w: 1, h: 2 });
+    assert.deepEqual(grids["chrome:add"], { x: 1, y: 5, w: 1, h: 1 });
+  });
+
+  it("fresh desk keeps the added links as favorites with their data (island only moves grids)", async () => {
+    const { service, store } = await harness(FRESH());
+    await service.addFavorites([starter(1)], { columns: 12, island: { rows: 9 } });
+    const item = (await store.getState()).items.find((x) => x.id === "fav-1");
+    assert.equal(item.type, "favorite");
+    assert.equal(item.url, "https://site1.example/");
+    assert.equal(item.label, "Site 1");
+  });
+
+  it("not fresh (an existing favorite): 2×1 placeNew links, no system tile moves, no island", async () => {
+    const { service, store } = await harness([...FRESH(), favorite({ id: "old", url: "https://old.example/", grid: g(2, 9) })]);
+    const before = storedGridsOf(await store.getState());
+    const ids = await service.addFavorites([starter(1), starter(2)], { columns: 12, island: { rows: 9 } });
+    const after = storedGridsOf(await store.getState());
+    for (const key of Object.keys(before)) assert.deepEqual(after[key], before[key], key);
+    for (const id of ids) assert.deepEqual([after[id].w, after[id].h], [2, 1], id);
+  });
+
+  it("not fresh and no link added: nothing is written and the state is returned (no-op rule)", async () => {
+    const { service, store, sets } = await harness([...FRESH(), favorite({ id: "old", url: "https://old.example/", grid: g(2, 9) })]);
+    const before = JSON.stringify(await store.getState());
+    assert.deepEqual(await service.addFavorites([], { columns: 12, island: { rows: 9 } }), []);
+    assert.equal(sets.length, 0, "no set()");
+    assert.equal(JSON.stringify(await store.getState()), before);
+  });
+
+  it("a dedupe-only call on a not-fresh desk writes nothing (AS-POG-19 shape)", async () => {
+    const { service, sets } = await harness([...FRESH(), favorite({ id: "old", url: "https://site1.example/", grid: g(2, 9) })]);
+    assert.deepEqual(await service.addFavorites([starter(1)], { columns: 12, island: { rows: 9 } }), []);
+    assert.equal(sets.length, 0);
+  });
+
+  it("a hidden metric or a resized temperature is not fresh (AS-POG-05)", async () => {
+    const hiddenUv = FRESH().map((item) => (item.id === "weather:uv" ? { ...item, enabled: false } : item));
+    // temperature 2×1 pushes the rest one cell right so the seed has no overlap
+    const wideTemperature = FRESH().map((item) =>
+      item.id === "weather:temperature" ? { ...item, grid: g(2, 4, 2, 1) } : { ...item, grid: { ...item.grid, x: item.grid.x + 1 } });
+    for (const items of [hiddenUv, wideTemperature]) {
+      const { service, store } = await harness(items);
+      const before = storedGridsOf(await store.getState());
+      const ids = await service.addFavorites([starter(1), starter(2), starter(3)], { columns: 12, island: { rows: 9 } });
+      const after = storedGridsOf(await store.getState());
+      for (const key of Object.keys(before)) assert.deepEqual(after[key], before[key], key);
+      for (const id of ids) assert.deepEqual([after[id].w, after[id].h], [2, 1]);
+    }
+  });
+
+  it("too narrow: k = 6 at 4 columns falls back (links 2×1, system grids = the usual rebase), k = 3 still applies", async () => {
+    const six = Array.from({ length: 6 }, (_, i) => starter(i + 1));
+    {
+      const { service, store } = await harness(FRESH());
+      const state = await store.getState();
+      const ids = await service.addFavorites(six, { columns: 4, island: { rows: 9 } });
+      const after = await store.getState();
+      assert.equal(ids.length, 6);
+      for (const id of ids) {
+        const grid = after.items.find((x) => x.id === id).grid;
+        assert.deepEqual([grid.w, grid.h], [2, 1]);
+      }
+      assert.equal(after.items.find((x) => x.id === "weather:temperature").grid.h, 1, "no island: temperature stays 1×1");
+      assert.equal(state.items.length + 6, after.items.length);
+    }
+    {
+      const { service, store } = await harness(FRESH());
+      await service.addFavorites(six.slice(0, 3), { columns: 4, island: { rows: 9 } });
+      assert.equal((await store.getState()).items.find((x) => x.id === "weather:temperature").grid.h, 2, "k = 3 (W = 4) fits 4 columns");
+    }
+  });
+
+  it("more than 8 links: no island (AS-POG-17)", async () => {
+    const { service, store } = await harness(FRESH());
+    const ids = await service.addFavorites(Array.from({ length: 9 }, (_, i) => starter(i + 1)), { columns: 12, island: { rows: 9 } });
+    assert.equal(ids.length, 9);
+    assert.equal((await store.getState()).items.find((x) => x.id === "weather:temperature").grid.h, 1);
+  });
+
+  it("invalid rows: dy = 0 (AS-POG-17)", async () => {
+    for (const rows of [0, 1.5, "9", undefined]) {
+      const { service, store } = await harness(FRESH());
+      await service.addFavorites([starter(1), starter(2), starter(3)], { columns: 12, island: { rows } });
+      assert.equal((await store.getState()).items.find((x) => x.id === "weather:temperature").grid.y, 0, String(rows));
+    }
+  });
+
+  it("without `island` addFavorites behaves as before (links by placeNew, system tiles untouched)", async () => {
+    const { service, store } = await harness(FRESH());
+    const before = storedGridsOf(await store.getState());
+    const ids = await service.addFavorites([starter(1), starter(2)], COLS);
+    const after = storedGridsOf(await store.getState());
+    for (const key of Object.keys(before)) assert.deepEqual(after[key], before[key], key);
+    for (const id of ids) assert.deepEqual([after[id].w, after[id].h], [2, 1]);
+  });
+
+  it("the cap error still wins and nothing is written", async () => {
+    const { service, sets } = await harness(FRESH());
+    await assert.rejects(service.addFavorites(Array.from({ length: MAX_FAVORITE_WIDGETS + 1 }, (_, i) => starter(i + 1)), { columns: 12, island: { rows: 9 } }));
+    assert.equal(sets.length, 0);
+  });
+
+  it("assertWritable runs before the no-op path (a locked store refuses a zero-link call)", async () => {
+    const area = createMemoryStorageArea({ quietTabWidgetsMeta: { version: 99 } });
+    const store = createWidgetsStore(area, { now: () => NOW });
+    const service = createWidgetsService({ store, now: () => NOW, createId: () => "x" });
+    await assert.rejects(service.addFavorites([], { columns: 12, island: { rows: 9 } }));
+  });
+});
