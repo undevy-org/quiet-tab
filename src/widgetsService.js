@@ -392,7 +392,9 @@ export function createWidgetsService({
       return mutate(options, ({ base, columns }) => {
         const index = base.items.findIndex((item) => item.type === "weather-metric" && item.id === id);
         if (index === -1) {
-          throw new Error("Weather tile not found");
+          // Nobody has the id: gone elsewhere (the storage was cleared in another tab, docs/stale-tab-recovery-followups.md);
+          // an id of another kind of item is a bug.
+          throw base.items.some((item) => item.id === id) ? new Error("Weather tile not found") : new LinkGoneError(id);
         }
 
         const current = base.items[index];

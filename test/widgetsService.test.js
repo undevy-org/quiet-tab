@@ -618,7 +618,8 @@ describe("widgetsService with weather metrics", () => {
     const state = await service.updateWeatherMetric("weather:temperature", { w: 2, enabled: false }, COLS);
     const t = state.items.find((i) => i.id === "weather:temperature");
     assert.deepEqual([t.grid.w, t.enabled], [2, false]);
-    await assert.rejects(service.updateWeatherMetric("weather:nope", { enabled: true }, COLS), /Weather tile not found/);
+    // docs/stale-tab-recovery-followups.md decision 2: an id nobody has is "gone" (a stale tab after the storage was cleared)
+    await assert.rejects(service.updateWeatherMetric("weather:nope", { enabled: true }, COLS), (error) => error instanceof LinkGoneError && error.code === "link-gone" && error.id === "weather:nope");
     await assert.rejects(service.updateWeatherMetric("weather:uv", { w: 3 }, COLS), /tile width/);
     await assert.rejects(service.updateWeatherMetric("weather:uv", { enabled: "yes" }, COLS), /whether the weather tile is shown/);
     await assert.rejects(service.updateWeatherMetric("f0", { enabled: true }, COLS), /Weather tile not found/);
