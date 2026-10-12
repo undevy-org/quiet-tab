@@ -46,10 +46,10 @@
 ## Accepted exceptions
 
 - Healing a desk that lost only Settings (a partial loss) is wider than the Non-goal of healing only a cleared storage, and its message says `Your layout was reset…` although nothing but Settings was lost (spec gate L0-01, Minor).
-- In windows lower than about 270 px a link added into a cleared storage takes cell (0,0) and pushes the centered system block one row down, so the layout differs from a fresh install there (L0-05).
-- No scenario checks that the busy lock is released after a failed heal (spec gate L0-02) or the keyboard path and what dismisses the persistent message (L0-06: only the next action or a reload; Escape does nothing because edit mode is already off, final review L3-02; with no tile there is no next action). The release is pinned by the order in `runDesktopMutation`/`recoverFromGoneLink` (`finishFavoritesAction` after the layers are left).
+- In windows lower than about 270 px a link added into a cleared storage takes cell (7,0) and the system block goes to row 1, so the layout differs from a fresh install followed by an Add link there (L0-05); run 31 (`docs/stale-tab-closeout.md`, decision 5) measured the threshold (between 260 and 270 px at 1280 wide) and pinned it with a scenario.
+- No scenario checks that the busy lock is released after a failed heal (spec gate L0-02) or the keyboard path and what dismisses the persistent message (L0-06: only the next action or a reload; Escape did nothing because edit mode is already off, final review L3-02; run 31 added Escape and a Reload button to the failure chip, `docs/stale-tab-closeout.md` decision 1). The release is pinned by the order in `runDesktopMutation`/`recoverFromGoneLink` (`finishFavoritesAction` after the layers are left).
 - When the heal fails after an action whose own write succeeded (Add link; or Edit link/drop on a desk that lost only Settings), the caller treats the action as done: it may speak its own announcement ("Link saved") or move focus to the dropped tile after the persistent message.
-- A rejected second write of the heal after Add link (the meta) is not covered by a scenario; the outcome is the failed-heal state and a reload completes it (L0-07).
+- A rejected second write of the heal after Add link (the meta) was not covered by a scenario; run 31 covers it (AS-STC-06).
 - After a heal the user's hide/restore/resize intent is dropped; an added link is kept (decisions 2, 3).
 - The message text depends on timing (decision 4): the same real situation shows the single-link text when the other tab healed first and the reset text in the race.
 - `#favorites` has no visible focus ring when focused programmatically after a failed heal (decision 5): it is a container, the persistent alert carries the information.

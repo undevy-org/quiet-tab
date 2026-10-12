@@ -143,6 +143,8 @@ Tooltip chrome reuses `--radius-control` (**8px**), not a separate radius token.
 | `--shadow-tooltip` | `0 18px 50px rgb(0 0 0 / 10%)` | Hover tooltip (Phase 2: `.tooltip` in `newtab.css`) |
 | `--shadow-status` | `var(--shadow-popover)` | Page status chip (Phase 2; same elevation as popovers) |
 
+The page status chip `.desktop-status` has two looks (run 31): the danger look (text and border `--danger`) for every error, and `.desktop-status--info` (text `--text`, border `--border`) for a neutral notice such as the layout reset message. The failure chip holds a `.button.desktop-status__reload` below its text.
+
 Docked suggestion lists use no shadow (in-flow scroll).
 
 ## Focus
