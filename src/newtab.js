@@ -1672,6 +1672,16 @@ function showWizardHealOutcome() {
   }
 }
 
+// After a failed Finish the buttons come back enabled: put the focus back on Finish (it was lost when the pressed button was disabled for
+// the request; the alert text announces the failure) unless the person already moved it inside the wizard (backlog 77).
+function restoreWizardFocusAfterFinishError() {
+  const finish = onboardingWizardRoot?.querySelector('[data-onboarding-action="finish"]');
+  if (!(finish instanceof HTMLButtonElement) || finish.disabled) return;
+  const active = document.activeElement;
+  if (active && active !== document.body && onboardingWizardRoot.contains(active)) return;
+  finish.focus();
+}
+
 // The one Finish widgets call, also for zero links: on a fresh desk that fits it lays the system tiles and the new links out as the
 // island (docs/post-onboarding-grid.md). columns, rows and freshness are read now, not at load. Returns the added ids or null.
 async function layOutFinishIsland(inputs) {
@@ -1686,7 +1696,6 @@ async function layOutFinishIsland(inputs) {
     if (inputs.length >= 1) throw error;
     return null;
   }
-  if (addedIds === null) return null;
   if (inputs.length === 0) {
     // k = 0: no heal (a wiped storage must stay unwritten, dg-71 AS-STC-03). Take the re-read only if it still has Settings
     // (the island was written); a cleared storage keeps today's in-memory state. A failing read is swallowed like the call.
@@ -1700,10 +1709,17 @@ async function layOutFinishIsland(inputs) {
   }
   // the links are written: a failing re-read or heal must not make a retry add them again (decision 9)
   onboardingStartersCommitted = true;
-  widgetsState = await widgetsService.getState();
-  // the storage may have been cleared in another tab while the wizard was open: heal it like Add link does (the starters stay)
-  const outcome = await healClearedDesk(widgetsState);
-  widgetsState = outcome.state;
+  let outcome;
+  try {
+    widgetsState = await widgetsService.getState();
+    // the storage may have been cleared in another tab while the wizard was open: heal it like Add link does (the starters stay)
+    outcome = await healClearedDesk(widgetsState);
+    widgetsState = outcome.state;
+  } catch {
+    // the links are saved but this tab cannot read them back: Finish goes on and the persistent "Reload this tab" message says so,
+    // instead of the add error (a retry would not add anything: committed) and a stale desk without it (backlog 76)
+    outcome = { state: widgetsState, healed: false, failed: true };
+  }
   if (outcome.healed || outcome.failed) onboardingHealOutcome = outcome;
   for (const id of addedIds) {
     const item = widgetsState.items.find((row) => row.id === id);
@@ -1746,6 +1762,7 @@ async function finishOnboardingWizard() {
         finishFavoritesAction(generation, () => {});
         syncOnboardingWizardUi();
         renderFavorites();
+        restoreWizardFocusAfterFinishError();
         return;
       }
     }
@@ -1759,6 +1776,7 @@ async function finishOnboardingWizard() {
     finishFavoritesAction(generation, () => {});
     syncOnboardingWizardUi();
     renderFavorites();
+    restoreWizardFocusAfterFinishError();
   }
 }
 
