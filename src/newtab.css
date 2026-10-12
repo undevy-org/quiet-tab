@@ -767,3 +767,8 @@ button.weather-tile {
   outline: 3px solid var(--focus-ring);
   outline-offset: 2px;
 }
+
+/* After a failed heal the desk container takes focus programmatically (docs/stale-tab-recovery-followups.md decision 5): it is not a control, the persistent alert carries the message. */
+.desktop[tabindex="-1"]:focus {
+  outline: none;
+}

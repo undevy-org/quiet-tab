@@ -1882,7 +1882,7 @@ function buildDialogContent(root, dialog) {
           { dialogRoot: root }
         ).then((ok) => {
           if (ok) {
-            announce("Link added");
+            if (widgetsState?.items.some((entry) => entry.id === SETTINGS_TILE_ID)) announce("Link added"); // not after a failed heal: the alert speaks
             closeDesktopDialog();
             // The new link is the id the stored result has and the state before did not (set difference).
             const added = widgetsState?.items.find((entry) => entry.type === "favorite" && !previousIds.has(entry.id));
@@ -2285,13 +2285,54 @@ function showDialogError(root, message) {
   if (field instanceof HTMLElement && !field.matches(":disabled")) field.focus();
 }
 
+const LAYOUT_RESET_MESSAGE = "Your layout was reset in another tab.";
+const LAYOUT_RESTORE_FAILED_MESSAGE = "Couldn't restore your layout. Reload this tab.";
+
+// The storage was cleared in another tab when a state has no Settings tile (docs/stale-tab-empty-state.md,
+// docs/stale-tab-recovery-followups.md decision 1): heal it like a fresh install with `ensureWidgetsLayout` for the first screen of NOW
+// (the one exception to "first screen read once at boot") and read the state again, also when nothing was written (another tab
+// may have healed in between). `state` is the re-read result, else the input; `healed`: the final state has Settings; `failed`:
+// it has none (a failed write or read; a reload heals it). A null or a healthy input is returned untouched. Never throws.
+async function healClearedDesk(state) {
+  if (!state || state.items.some((item) => item.id === SETTINGS_TILE_ID)) return { state, healed: false, failed: false };
+  let result = state;
+  try {
+    await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });
+    result = await widgetsService.getState();
+  } catch {
+    // keep what we have: the grid stays as it is until a reload
+  }
+  const healed = result.items.some((item) => item.id === SETTINGS_TILE_ID);
+  return { state: result, healed, failed: !healed };
+}
+
+// A failed heal leaves no Settings to leave edit mode with and nothing to act on: drop edit mode and every transient layer (not
+// `setEditMode(false)`: it announces and clears the status), keep the live region quiet (the alert speaks once). The caller closes
+// any dialog first, without restoring focus (`#favorites` is inert while one is open and the opener tile does not exist).
+function leaveEditModeAfterFailedHeal() {
+  if (desktopDialogRoot) closeDesktopDialog({ restoreFocusTo: null });
+  desktopUi = exitEditMode(desktopUi);
+  cancelDrag();
+  closeAddMenu();
+  hideTooltip();
+  announce("");
+}
+
+// After the render of a failed heal: focus the desk container (never body) and say what to do, persistently.
+function showLayoutRestoreFailure() {
+  if (favoritesRoot) {
+    favoritesRoot.setAttribute("tabindex", "-1");
+    favoritesRoot.focus({ preventScroll: true });
+  }
+  showDesktopStatus(LAYOUT_RESTORE_FAILED_MESSAGE, { persist: true });
+}
+
 // A stale tab touched a link that another tab deleted (docs/stale-link-and-host-contrast.md decision 2). All under the busy
 // lock: forget a pending drop, note where focus should go (the DOM still has the tile), re-read storage, end the busy state with
 // one render from the fresh state, close the dialog or restore focus, say so in the alert status. Never throws.
-// The re-read writes nothing, except when it finds no Settings tile: the storage was cleared in another tab, so the desk is healed
-// like a fresh install (docs/stale-tab-empty-state.md) with `ensureWidgetsLayout` for the first screen of NOW (the one exception to
-// "first screen read once at boot"), the state is read again and focus goes to Settings (the neighbour list was read from the old DOM
-// and would find a just-created tile first). If the re-read or the heal fails the old/empty state stays; a reload heals it.
+// The re-read writes nothing, except when it finds no Settings tile (`healClearedDesk`): the desk is healed, the message says the
+// layout was reset and focus goes to Settings (the neighbour list was read from the old DOM and would find a just-created tile
+// first); a failed heal ends in `showLayoutRestoreFailure`.
 async function recoverFromGoneLink(generation, error) {
   pendingDrop = null;
   let neighbours = error.id ? neighborTargets(error.id) : [SETTINGS_TILE_ID];
@@ -2301,23 +2342,20 @@ async function recoverFromGoneLink(generation, error) {
   } catch {
     // keep the old state: the message below is still shown
   }
-  if (fresh && !fresh.items.some((item) => item.id === SETTINGS_TILE_ID)) {
-    try {
-      const healed = await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });
-      if (healed.changed) {
-        fresh = await widgetsService.getState();
-        neighbours = [SETTINGS_TILE_ID];
-      }
-    } catch {
-      // keep what we have: the grid stays as it is until a reload
-    }
-  }
+  const outcome = await healClearedDesk(fresh);
+  fresh = outcome.state;
+  if (outcome.healed) neighbours = [SETTINGS_TILE_ID];
+  if (outcome.failed) leaveEditModeAfterFailedHeal();
   finishFavoritesAction(generation, () => {
     if (fresh) widgetsState = fresh;
   });
+  if (outcome.failed) {
+    showLayoutRestoreFailure();
+    return;
+  }
   if (desktopDialogRoot) closeDesktopDialog({ restoreFocusTo: neighbours });
   else focusWidgetTarget(neighbours);
-  showDesktopStatus(error.message);
+  showDesktopStatus(outcome.healed ? LAYOUT_RESET_MESSAGE : error.message);
 }
 
 // Every explicit mutation goes through here. On failure nothing is persisted and the UI returns to the stored state.
@@ -2334,9 +2372,14 @@ async function runDesktopMutation(action, { dialogRoot = null, renderPending = t
   const generation = startFavoritesAction({ render: renderPending });
   try {
     const next = await action(currentColumns());
+    // a state without Settings means the write landed in a storage another tab had cleared (an Add link): heal it, the new link stays
+    const outcome = await healClearedDesk(next);
+    if (outcome.failed) leaveEditModeAfterFailedHeal();
     finishFavoritesAction(generation, () => {
-      widgetsState = next;
+      widgetsState = outcome.state;
     });
+    if (outcome.failed) showLayoutRestoreFailure();
+    else if (outcome.healed) showDesktopStatus(LAYOUT_RESET_MESSAGE);
     return true;
   } catch (error) {
     if (error?.code === "link-gone") {
@@ -2368,7 +2411,7 @@ function currentColumns() {
 }
 
 // The first screen of this boot (docs/vertically-centered-defaults.md decision 2): the same rows the drag uses for its drop area
-// (`viewportRows` of the same two inputs) and the page's column count. Read right before `ensureWidgetsLayout` at boot, and again by `recoverFromGoneLink` when it heals a cleared storage; nowhere else.
+// (`viewportRows` of the same two inputs) and the page's column count. Read right before `ensureWidgetsLayout` at boot, and again by `healClearedDesk` when it heals a cleared storage; nowhere else.
 function firstScreen() {
   return { rows: viewportRows(document.documentElement.clientHeight, viewportWidth()), columns: currentColumns() };
 }
