@@ -2,7 +2,7 @@
 
 ## Status
 
-`draft` — closes backlog 68 (found by the final design review of run 28) and 69 (verifier nits of run 28). Follow-up to `docs/stale-link-and-host-contrast.md` (`implemented`). **Data compatibility: not required** (no-users policy, `agent-config/CLAUDE.md`); storage shape unchanged.
+`implemented` — closes backlog 68 (found by the final design review of run 28) and 69 (verifier nits of run 28). Follow-up to `docs/stale-link-and-host-contrast.md` (`implemented`). **Data compatibility: not required** (no-users policy, `agent-config/CLAUDE.md`); storage shape unchanged.
 
 ## Intake log
 
@@ -34,7 +34,7 @@
 - `test/newtabSource.test.js`: the pin that counts `firstScreen(` occurrences (now 3: definition, boot, recovery), the pin of `recoverFromGoneLink` that requires `closeDesktopDialog({ restoreFocusTo: neighbours })` (updated to the forced-Settings focus target) and pins for the heal call (only inside `recoverFromGoneLink`, guarded by the missing Settings, `changed` check).
 - `docs/stale-tab-empty-state.md` (this spec → `implemented`), `docs/stale-link-and-host-contrast.md` (AS-SLH-06 wording), `docs/architecture.md` (one sentence in the concurrency paragraph), `docs/vertically-centered-defaults.md` ("Accepted exceptions" entry, decision 2 sentence), `CHANGELOG.md`.
 - Notes: `agent-config/CLAUDE.md` (concurrency), backlog 68–69 closed.
-- E2E: new `dg-68-stale-tab-empty-state.mjs` with a new harness helper `failStorageSetAfter(page, { area, key, ms })` (wraps `chrome.storage.<area>.set` in the page for calls whose written object has `key`: with `ms` omitted it rejects, with `ms > 0` it answers successfully after `ms`; a rejected call is not recorded by `recordSyncSets`; a reload drops the wrapper, unlike `failStorageInit`); `dg-67` stays green.
+- E2E: new `dg-68-stale-tab-empty-state.mjs` with a new harness helper `failStorageSetAfter(page, { area, key, ms })` (wraps `chrome.storage.<area>.set` in the page for calls whose written object has `key`: with `ms` omitted it rejects, with `ms > 0` the real write happens after `ms` and then answers; wrappers for different keys stack, each handling its own key; a rejected call is not recorded by `recordSyncSets`; a reload drops the wrappers, unlike `failStorageInit`); `dg-67` stays green.
 
 ## Process
 
@@ -90,7 +90,7 @@ Common Given for AS-STE-01…03, 05, 07…09: tabs A and B on the same profile, 
 - Verified by: unit pin for the first, `grep` in the verification report for the other two.
 
 ### AS-STE-07 The window changed between load and heal
-- Given: common Given at 1280×800; before Save B's window is resized to 900×500 (and a second run to 500×800).
+- Given: common Given at 1280×800; before Save B's window is resized to 900×500 (and a second run to 500×800; 320×600 is covered by the unchanged `ensureWidgetsLayout` layout tests of `docs/vertically-centered-defaults.md`).
 - When: Save on f0 in B.
 - Then: B's three tiles sit in the same cells as a fresh install loaded at that size, not the cells of the 1280×800 desk (decision 2).
 - Verified by: E2E `dg-68` group 6.
@@ -98,7 +98,7 @@ Common Given for AS-STE-01…03, 05, 07…09: tabs A and B on the same profile, 
 ### AS-STE-08 A slow heal
 - Given: common Given and `failStorageSetAfter(B, { area: "sync", key: "quietTabWidgetsMeta", ms: 1500 })` and a second wrapper with `key: "quietTabWidget:chrome:add"`, `ms: 1500`: each of the heal's two `set()` calls answers successfully after 1.5 s (longer than any action timer in `newtab.js`).
 - When: Save on f0 in B; during the wait press Save again and Escape.
-- Then: the dialog stays until the heal ends (repeat Save and Escape do nothing); exactly two `set()` calls happen; afterwards as AS-STE-01; the message stays its full 8 s from the moment it is shown.
+- Then: the dialog stays until the heal ends (repeat Save and Escape do nothing); exactly two `set()` calls happen; afterwards as AS-STE-01; the message stays about 8 s from the moment it is shown (visible at 6.5 s, gone by 8.7 s, as in `dg-67`).
 - Verified by: E2E `dg-68` group 7.
 
 ### AS-STE-09 The second read after the heal fails
@@ -106,6 +106,10 @@ Common Given for AS-STE-01…03, 05, 07…09: tabs A and B on the same profile, 
 - When: Save on f0 in B.
 - Then: the heal wrote its two `set()` calls, the dialog closes, the message is shown, no page error, the grid stays empty, focus on `body`; after a reload the three tiles are there.
 - Verified by: E2E `dg-68` group 8.
+
+## Known gap
+
+- If another tab healed the storage between the stale tab's first read and the heal's own read under the lock, `ensureWidgetsLayout` reports `changed: false` and the stale tab keeps its empty grid until a reload (milliseconds-wide race, nothing lost). A second `getState()` on `changed: false` would close it; kept out of this run (backlog).
 
 ## Review focus
 
