@@ -70,7 +70,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- A link whose site Chrome has no cached icon for shows the letter on the coloured tile instead of Chrome's grey globe (grid tiles, onboarding rows, auto accent colour); a real icon is kept, and the check fails open (`docs/favicon-globe-fallback.md`).
+- A link whose site Chrome has no cached icon shows the letter on the colored tile instead of Chrome's grey globe (grid tiles,
+  onboarding rows and the automatic tile color); a real icon is kept; if the check cannot run, the icon stays as it is
+  (`docs/favicon-globe-fallback.md`).
 - After a failed onboarding **Finish** (the add error or the completion-flag error) the focus returns to the Finish button instead of the
   page, so Enter retries (`docs/post-onboarding-followups.md`).
 - If this tab cannot read the saved desk back right after the onboarding links were written, Finish closes and the persistent "Couldn't

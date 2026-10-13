@@ -23,7 +23,7 @@ forecast cache and a per-device "city prompt dismissed" flag persist to
 | `src/widgetsShared.js` | Shared widget constants (types, weather metric ids, caps, the v1 column bounds and positions still read by the migration, lock name, newer-version message). |
 | `src/widgetsLayout.js` | `defaultColumnsForItems` (column count of the legacy favorites → widgets v1 migration) and `placeTooltip` (edge-aware tooltip placement). |
 | `src/favoritesShared.js` | Shared favorites constants (icon modes, color sources, tile sizes) and helpers. |
-| `src/favoriteIcon.js` | Chooses a favicon, custom image, or letter icon for a tile. A favicon image that equals Chrome's default globe (compared against one sentinel, `src/defaultFavicon.js`) is replaced by the letter; see `docs/favicon-globe-fallback.md`. |
+| `src/favoriteIcon.js` | Chooses a favicon, custom image, or letter icon for a tile. (The default-globe check on top of it lives in `defaultFavicon.js` and `newtab.js`; see `docs/favicon-globe-fallback.md`.) |
 | `src/defaultFavicon.js` | Tells Chrome's grey default `_favicon` globe from a real icon: pure exact-pixel comparison (`isDefaultFaviconPixels`), a per-page-load checker (one sentinel image, 2 s timeout, fail open) and an in-memory verdict cache. |
 | `src/favoriteColor.js` | Derives a tile's accent color from its domain or a sampled icon. |
 | `src/browserGeolocation.js` | Wraps `navigator.geolocation.getCurrentPosition` with a deadline race and maps failures to `BrowserLocationError` codes (`denied`, `unavailable`, `timeout`, `unsupported`). |
