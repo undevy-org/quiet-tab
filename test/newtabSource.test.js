@@ -806,6 +806,33 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     assert.ok(committed < reread && reread < heal, "flag, then re-read, then heal");
   });
 
+  it("Finish island: a failing re-read after the write ends in the failed heal outcome, not in the add error (backlog 76)", async () => {
+    const island = fn(await source(), "layOutFinishIsland");
+    const committed = island.indexOf("onboardingStartersCommitted = true;");
+    const tail = island.slice(committed);
+    assert.match(tail, /try \{[\s\S]*widgetsService\.getState\(\)[\s\S]*healClearedDesk\([\s\S]*\} catch \{[\s\S]*outcome = \{ state: widgetsState, healed: false, failed: true \};/, "re-read and heal in a try, a catch gives the failed outcome");
+    assert.doesNotMatch(island, /addedIds === null/, "no unreachable null check: addFavorites always returns an array");
+    assert.match(tail, /if \(outcome\.healed \|\| outcome\.failed\) onboardingHealOutcome = outcome;/, "the failed outcome is kept for the closing exits");
+  });
+
+  it("a failed Finish puts the focus back on Finish (backlog 77)", async () => {
+    const code = await source();
+    const restore = fn(code, "restoreWizardFocusAfterFinishError");
+    assert.match(restore, /\[data-onboarding-action="finish"\]/);
+    assert.match(restore, /finish\.disabled/, "only when Finish is enabled again");
+    assert.match(restore, /onboardingWizardRoot\.contains\(active\)/, "not when the focus is already inside the wizard");
+    assert.match(restore, /finish\.focus\(\)/);
+    const finish = fn(code, "finishOnboardingWizard");
+    assert.equal(finish.split("restoreWizardFocusAfterFinishError();").length - 1, 2, "after the add error and after the completion-flag error");
+  });
+
+  it("pins the 56px label fit of link tiles (backlog 78)", async () => {
+    const styles = await css();
+    assert.match(styles, /:root\[data-cell="56"\] \.favorite-tile\[data-w="1"\]\[data-h="2"\] \{\s*padding-inline: 3px;/);
+    assert.match(styles, /:root\[data-cell="56"\] \.favorite-tile\[data-w="1"\]\[data-h="2"\] \.favorite-tile__label \{\s*font-size: 10px;/);
+    assert.match(styles, /:root\[data-cell="56"\] \.favorite-tile\[data-w="2"\]\[data-h="1"\] \.favorite-tile__label \{\s*font-size: 12px;/);
+  });
+
   it("pins the DOM contract names: desktop-grid, chrome role, remove badge, per-tile cell variables", async () => {
     const code = await source();
     assert.match(code, /createNode\("div", "desktop-grid"\)/);
@@ -1296,7 +1323,7 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     // decision 3: the wizard heals after its starters are written and shows the kept outcome on both closing exits
     const finish = fn(code, "finishOnboardingWizard");
     const island = fn(code, "layOutFinishIsland");
-    assert.match(island, /const outcome = await healClearedDesk\(widgetsState\);/);
+    assert.match(island, /outcome = await healClearedDesk\(widgetsState\);/);
     assert.match(island, /onboardingHealOutcome = outcome;/);
     assert.equal(finish.split("showWizardHealOutcome();").length - 1, 2);
     const shown = fn(code, "showWizardHealOutcome");

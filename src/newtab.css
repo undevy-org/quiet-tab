@@ -413,6 +413,21 @@ button.weather-tile {
   line-height: 1.2;
 }
 
+/* The narrowest cell (56px, windows up to 360px; backlog 78): the label column of a 1×2 tile was 42px, so "YouTube", "ChatGPT" and
+   "Amazon" at 11px broke in the middle of the word; side padding 6 -> 3px (column 48px) and a 10px label keep every starter label on
+   one line. "ChatGPT" on a 2×1 tile overflowed its 56px line by 1px; 12px fits. */
+:root[data-cell="56"] .favorite-tile[data-w="1"][data-h="2"] {
+  padding-inline: 3px;
+}
+
+:root[data-cell="56"] .favorite-tile[data-w="1"][data-h="2"] .favorite-tile__label {
+  font-size: 10px;
+}
+
+:root[data-cell="56"] .favorite-tile[data-w="2"][data-h="1"] .favorite-tile__label {
+  font-size: 12px;
+}
+
 /* .status sets display: -webkit-box, which would otherwise defeat [hidden]. */
 .status[hidden] {
   display: none;

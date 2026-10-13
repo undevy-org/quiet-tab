@@ -70,6 +70,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- After a failed onboarding **Finish** (the add error or the completion-flag error) the focus returns to the Finish button instead of the
+  page, so Enter retries (`docs/post-onboarding-followups.md`).
+- If this tab cannot read the saved desk back right after the onboarding links were written, Finish closes and the persistent "Couldn't
+  restore your layout. Reload this tab." message shows, instead of the add error and a stale desk; a retry no longer adds anything.
+- Link tile labels fit one line at the narrowest cell (56 px, windows up to 360 px): on a 1×2 tile the side padding is 3 px and the label 10 px
+  ("YouTube", "ChatGPT", "Amazon" no longer break in the middle of the word); the 2×1 label is 12 px ("ChatGPT" no longer overflows by a pixel).
+
 - A focused tile keeps its focus ring inside the window: tiles carry `scroll-margin: 6px`, so focusing a tile at the window edge (for example Settings after Finish in a low window) scrolls enough to show the ring.
 - The failure message of a stale tab that could not restore its layout now has a **Reload** button and goes away on Escape; the notice `Your layout was reset in another tab.` is shown in a neutral colour (errors stay red). Finishing the first-run wizard on a storage another tab cleared now keeps the starter links and restores Settings and Add. After such a restore the tab drops a weather city it still held in memory (the hint tile stands in the first cell, as after a reload). Low-window and rejected-second-write cases are specified and covered (docs/stale-tab-closeout.md). E2E `dg-71-stale-tab-closeout.mjs`.
 - A tab that was open while another tab cleared the extension storage no longer stays broken when it hides or restores a weather tile, saves a weather tile's size or adds a link: those actions now heal the layout like a deleted-link recovery does (Settings and Add come back, an added link is kept) and say `Your layout was reset in another tab.`. If another tab healed the storage in the meantime the tab shows that layout. If the heal fails, the tab shows `Couldn't restore your layout. Reload this tab.` (stays until you reload or act), leaves edit mode and puts focus on the desk instead of `body` (docs/stale-tab-recovery-followups.md). E2E `dg-70-stale-tab-recovery-followups.mjs`.
