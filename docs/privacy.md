@@ -24,6 +24,8 @@ your IP address on those HTTPS requests, like any public API.
 For favorites, the extension may ask Chromium for a site's favicon through
 the Manifest V3 `_favicon` endpoint. Custom image URLs, if configured by the
 user, are loaded by the new tab page so they can be displayed as tile icons.
+The check that replaces Chromium's default grey globe with a letter runs locally
+on the page and still requests only `_favicon`.
 
 Location data is not sold or used for advertising.
 

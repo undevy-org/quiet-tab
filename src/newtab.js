@@ -4,7 +4,12 @@ import {
   hexToRgbChannels,
   normalizeAccentLightness
 } from "./favoriteColor.js";
-import { getFavoriteIconModel, getFavoriteLetter } from "./favoriteIcon.js";
+import {
+  DEFAULT_FAVICON_SENTINEL_PAGE,
+  DEFAULT_FAVICON_TIMEOUT_MS,
+  createDefaultFaviconChecker
+} from "./defaultFavicon.js";
+import { FAVICON_SIZE, getFaviconUrl, getFavoriteIconModel, getFavoriteLetter } from "./favoriteIcon.js";
 import { createIconNode } from "./icons.js";
 import {
   canPlace, cellFromPoint, clampDropCell, displayLayout, effectiveColumns, gridMetrics, maxDropRow, viewportRows
@@ -300,10 +305,48 @@ function createFavoriteLetterNode(item, source) {
   return span;
 }
 
+// One checker per page load, created on first use (docs/favicon-globe-fallback.md); null without the favicon endpoint.
+let defaultFaviconChecker;
+function getDefaultFaviconChecker() {
+  if (defaultFaviconChecker !== undefined) return defaultFaviconChecker;
+  defaultFaviconChecker = faviconBaseUrl
+    ? createDefaultFaviconChecker({
+        sentinelUrl: getFaviconUrl({ baseUrl: faviconBaseUrl, pageUrl: DEFAULT_FAVICON_SENTINEL_PAGE, size: FAVICON_SIZE }),
+        loadImage: loadBrowserImage,
+        createCanvas: createBrowserCanvas,
+        timeoutMs: DEFAULT_FAVICON_TIMEOUT_MS
+      })
+    : null;
+  return defaultFaviconChecker;
+}
+
+// Shared by the grid tile and the onboarding row so the rules cannot drift. Call it BEFORE `image.src` is set and
+// before the node is inserted. A known "default" verdict returns the letter node to use instead of the image; a
+// known "real" verdict or a failed checker returns null and leaves the image as it is; an unknown URL is hidden
+// (`data-icon-check="pending"`, set now, before insertion) until its first `load` has been classified.
+function attachDefaultFaviconCheck(image, url, makeLetter) {
+  const checker = getDefaultFaviconChecker();
+  if (!checker || checker.failed) return null;
+  const verdict = checker.verdictFor(url);
+  if (verdict === "default") return makeLetter();
+  if (verdict === "real") return null;
+  image.dataset.iconCheck = "pending";
+  image.addEventListener(
+    "load",
+    async () => {
+      const result = await checker.check(url, image);
+      if (!image.isConnected) return;
+      if (result === "default") image.replaceWith(makeLetter());
+      else image.dataset.iconCheck = "done";
+    },
+    { once: true }
+  );
+  return null;
+}
+
 function createFavoriteIconNode(model, item) {
   if (model.type === "image") {
     const image = createNode("img", "favorite-icon");
-    image.src = model.src;
     image.alt = "";
     image.loading = "lazy";
     image.decoding = "async";
@@ -311,6 +354,11 @@ function createFavoriteIconNode(model, item) {
     image.addEventListener("error", () => {
       image.replaceWith(createFavoriteLetterNode(item, "letter"));
     });
+    if (item.iconMode !== "custom") {
+      const letter = attachDefaultFaviconCheck(image, model.src, () => createFavoriteLetterNode(item, "letter"));
+      if (letter) return letter;
+    }
+    image.src = model.src;
     return image;
   }
 
@@ -568,9 +616,20 @@ async function resolveAutoBackgroundColor(item) {
     return fallback;
   }
 
+  let image;
+  try {
+    image = await loadBrowserImage(iconModel.src);
+  } catch {
+    return fallback;
+  }
+
+  // The same decision as the tile: Chrome's default globe gives the domain colour, not a colour sampled from it.
+  const verdict = await getDefaultFaviconChecker()?.classifyImage(iconModel.src, image);
+  if (verdict === "default") return fallback;
+
   return (
     (await extractImageBackgroundColor(iconModel.src, {
-      loadImage: loadBrowserImage,
+      loadImage: () => image,
       createCanvas: createBrowserCanvas
     })) ?? fallback
   );
@@ -1458,9 +1517,12 @@ function createOnboardingStarterIcon(row) {
   const fallback = () => createNode("span", "onboarding-wizard__starter-icon onboarding-wizard__starter-icon--letter", letter);
   if (!faviconBaseUrl) return fallback();
   const icon = createNode("img", "onboarding-wizard__starter-icon");
-  icon.src = `${faviconBaseUrl}?pageUrl=${encodeURIComponent(row.url)}&size=32`;
+  const url = getFaviconUrl({ baseUrl: faviconBaseUrl, pageUrl: row.url, size: FAVICON_SIZE });
   icon.alt = "";
   icon.addEventListener("error", () => icon.replaceWith(fallback()));
+  const known = attachDefaultFaviconCheck(icon, url, fallback);
+  if (known) return known;
+  icon.src = url;
   return icon;
 }
 
