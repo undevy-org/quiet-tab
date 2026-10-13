@@ -34,7 +34,7 @@ Each starter is `label.onboarding-wizard__row` (`src/surfaces.css`): a 20×20 na
      <label class="onboarding-wizard__starter">
        <input type="checkbox" aria-label="Add {label} to your grid" … />
        <span class="onboarding-wizard__starter-surface">
-         <img class="onboarding-wizard__starter-icon" … />   <!-- or the letter fallback span -->
+         <img class="onboarding-wizard__starter-icon" … />   <!-- or the letter fallback span (also for Chrome's default globe, docs/favicon-globe-fallback.md) -->
          <span class="onboarding-wizard__starter-label">…</span>
          <span class="onboarding-wizard__starter-check" aria-hidden="true"></span>
        </span>
@@ -45,7 +45,7 @@ Each starter is `label.onboarding-wizard__row` (`src/surfaces.css`): a 20×20 na
    - `.onboarding-wizard__starter`: `display: block`, `width: 100%`, `height: var(--cell-size)` (72 at 1280×800; `--cell-size` is set on `:root` by `applyGridMetrics`), `position: relative`, `cursor: pointer` (also on the native input, which covers the whole row and is the real hit target).
    - Native checkbox: `position: absolute; inset: 0; margin: 0; opacity: 0;` — the whole row is its hit target; it stays the only focusable element of the row and keeps its `aria-label`.
    - `.onboarding-wizard__starter-surface`: flex row, `align-items: center`, `gap: 8px`, `padding: 0 10px`, height 100%, the border and radius of today's `.onboarding-wizard__preview-tile`, background **`var(--panel)`** (today's `var(--panel-elevated, var(--panel))` names an undefined token, so it already resolves to `--panel`; contrast in decision 3 is computed against `--panel`); `pointer-events: none`.
-   - Icon **22×22**, `border-radius: 4px`; the letter fallback keeps today's behaviour (`createOnboardingStarterPreview`), renamed to `.onboarding-wizard__starter-icon--letter`.
+   - Icon **22×22**, `border-radius: 4px`; the letter fallback keeps today's behaviour (`createOnboardingStarterPreview`), renamed to `.onboarding-wizard__starter-icon--letter`; it is shown on an `error` and also when the icon is Chrome's default globe (`docs/favicon-globe-fallback.md`).
    - Label: own class `.onboarding-wizard__starter-label` (not `favorite-tile__label`, so grid tile rules never leak in) with the link tile's label type: **13px / 600**, `line-height: 1.2`, `flex: 1`, `min-width: 0`, `white-space: nowrap; overflow: hidden; text-overflow: ellipsis` (matches the companion To-Be panel; today's 12px / 400 row label is dropped).
    - `.onboarding-wizard__starter-check`: **20×20**, `border-radius: 6px`, last flex item (right), `flex-shrink: 0`; the border, background and checked glyph of today's checkbox move here.
 
@@ -123,7 +123,7 @@ Common setup: harness **1280×800**, wizard step 2, eight starters, light theme 
 - Verified by: E2E `dg-73` (emulated media).
 
 ### AS-OSR-09 Icon and letter fallback
-- Given: step 2 at 1280×800; favicon requests for one starter blocked (harness route abort) so it shows the letter fallback.
+- Given: step 2 at 1280×800; favicon requests for one starter blocked (harness route abort) so it shows the letter fallback (the letter also replaces Chrome's default globe, see `docs/favicon-globe-fallback.md`).
 - When: inspecting the icons; then unchecking both rows.
 - Then: favicon `img.onboarding-wizard__starter-icon` and the fallback `.onboarding-wizard__starter-icon--letter` are both 22×22; in the unchecked rows both have opacity 0.4.
 - Verified by: E2E `dg-73`.

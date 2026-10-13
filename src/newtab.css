@@ -362,6 +362,11 @@ button.weather-tile {
   object-fit: contain;
 }
 
+/* Default-favicon check in flight (grid tile and onboarding starter icon): the image keeps its box but is not painted (docs/favicon-globe-fallback.md). */
+[data-icon-check="pending"] {
+  visibility: hidden;
+}
+
 .favorite-letter {
   display: grid;
   place-items: center;

@@ -1559,3 +1559,144 @@ describe("newtab onboarding step 2 starter row source (docs/onboarding-starter-r
     assert.match(forcedChecked.body, /background:\s*Highlight;/);
   });
 });
+
+describe("default favicon fallback source pins (run 32, docs/favicon-globe-fallback.md)", () => {
+  // Text of one top-level function: from its header to the next top-level declaration.
+  function functionText(code, name) {
+    const start = code.search(new RegExp(`^(?:async )?function ${name}\\(`, "m"));
+    assert.notEqual(start, -1, `function ${name} exists`);
+    const rest = code.slice(start + 1);
+    const next = rest.search(/^(?:async )?function |^const |^let |^\/\/ /m);
+    return next === -1 ? code.slice(start) : code.slice(start, start + 1 + next);
+  }
+
+  const CHECK_HELPER = "attachDefaultFaviconCheck";
+
+  // Text between the `{` at `open` and its matching `}` (strings and comments are not special-cased: the pinned code has no braces in them).
+  function balancedBlock(text, open) {
+    let depth = 0;
+    for (let i = open; i < text.length; i += 1) {
+      if (text[i] === "{") depth += 1;
+      else if (text[i] === "}") {
+        depth -= 1;
+        if (depth === 0) return { start: open, end: i, text: text.slice(open, i + 1) };
+      }
+    }
+    return null;
+  }
+
+  it("custom-untouched: every checker use in createFavoriteIconNode sits inside the if (item.iconMode !== \"custom\") block", async () => {
+    const body = functionText(await source(), "createFavoriteIconNode");
+    const header = body.match(/if\s*\(\s*item\.iconMode\s*!==\s*"custom"\s*\)\s*\{/);
+    assert.ok(header, 'an if (item.iconMode !== "custom") { ... } block');
+    const block = balancedBlock(body, header.index + header[0].length - 1);
+    assert.ok(block, "the block is balanced");
+    const uses = [...body.matchAll(new RegExp(`${CHECK_HELPER}\\(|getDefaultFaviconChecker\\(|defaultFaviconChecker`, "g"))].map((m) => m.index);
+    assert.ok(uses.length >= 1, "the checker is consulted");
+    for (const use of uses) {
+      assert.ok(use > block.start && use < block.end, `the checker use at ${use} is inside the iconMode !== custom block [${block.start}, ${block.end}]`);
+    }
+    // A dataset.iconSource guard is not the custom condition: the same use must not be reachable only through it.
+    assert.match(body.slice(block.start, block.end), new RegExp(`${CHECK_HELPER}\\(`), "the helper itself is called inside the block");
+  });
+
+  it("attribute-before-insert: the pending attribute is written before the load listener and before the node is returned", async () => {
+    const code = await source();
+    const helper = functionText(code, CHECK_HELPER);
+    const pending = helper.search(/dataset\.iconCheck\s*=\s*"pending"|setAttribute\(\s*"data-icon-check",\s*"pending"\s*\)/);
+    const load = helper.search(/addEventListener\(\s*"load"/);
+    assert.notEqual(pending, -1, "pending is assigned");
+    assert.notEqual(load, -1, "a load listener decides later");
+    assert.ok(pending < load, "pending is set synchronously, before the load listener");
+    // The onboarding row is pinned by "onboarding-uses-checker"; the grid tile is the one whose order matters here.
+    const body = functionText(code, "createFavoriteIconNode");
+    const call = body.search(new RegExp(`${CHECK_HELPER}\\(`));
+    const ret = body.search(/return (?:image|icon);/);
+    assert.notEqual(call, -1, `createFavoriteIconNode calls ${CHECK_HELPER}`);
+    assert.notEqual(ret, -1, "createFavoriteIconNode returns the image node");
+    assert.ok(call < ret, "the check is attached before the node is returned");
+  });
+
+  it("error-handler-kept: the error listener still swaps the image for the letter in the grid and in the onboarding rows", async () => {
+    const code = await source();
+    assert.match(
+      functionText(code, "createFavoriteIconNode"),
+      /addEventListener\("error",\s*\(\)\s*=>\s*\{\s*image\.replaceWith\(createFavoriteLetterNode\(item, "letter"\)\);/
+    );
+    assert.match(
+      functionText(code, "createOnboardingStarterIcon"),
+      /addEventListener\("error",\s*\(\)\s*=>\s*icon\.replaceWith\(fallback\(\)\)\)/
+    );
+  });
+
+  it("connected-guard: after the last await the handler returns on a detached node before every effect (replaceWith / done)", async () => {
+    const helper = functionText(await source(), CHECK_HELPER);
+    const awaits = [...helper.matchAll(/\bawait\b/g)].map((m) => m.index);
+    assert.ok(awaits.length >= 1, "the decision awaits the checker");
+    const afterAwait = helper.slice(awaits[awaits.length - 1]);
+    const guards = [...afterAwait.matchAll(/if\s*\(\s*!\w+\.isConnected\s*\)\s*return\b/g)].map((m) => m.index);
+    const effects = [...afterAwait.matchAll(/\.replaceWith\(|dataset\.iconCheck\s*=\s*"done"/g)].map((m) => m.index);
+    assert.ok(guards.length >= 1, "an isConnected early return after the last await");
+    assert.ok(effects.length >= 1, "the handler replaces the image or sets done");
+    if (guards.length >= effects.length) {
+      // Variant A: one guard per effect, each before its effect.
+      effects.forEach((effect, i) => assert.ok(guards[i] < effect, `guard ${i} precedes effect ${i}`));
+    } else {
+      // Variant B (accepted): ONE shared early return that comes before every effect, so no effect can run on a detached node.
+      assert.equal(guards.length, 1, "either one guard per effect or exactly one shared guard");
+      assert.ok(guards[0] < Math.min(...effects), "the shared guard precedes every effect");
+    }
+  });
+
+  it("onboarding-url-helper: the onboarding row URL comes from getFaviconUrl with FAVICON_SIZE, not a hand-written size=32 string", async () => {
+    const code = await source();
+    const body = functionText(code, "createOnboardingStarterIcon");
+    assert.doesNotMatch(body, /size=32/);
+    assert.doesNotMatch(body, /encodeURIComponent\(row\.url\)/);
+    assert.match(body, /getFaviconUrl\(\{\s*baseUrl:\s*faviconBaseUrl,\s*pageUrl:\s*row\.url,\s*size:\s*FAVICON_SIZE\s*\}\)/);
+    const imported = code.match(/import\s*\{([^}]*)\}\s*from\s*"\.\/favoriteIcon\.js";/);
+    assert.ok(imported, "an import from ./favoriteIcon.js");
+    const names = imported[1].split(",").map((n) => n.trim());
+    assert.ok(names.includes("FAVICON_SIZE"), "FAVICON_SIZE is imported");
+    assert.ok(names.includes("getFaviconUrl"), "getFaviconUrl is imported");
+  });
+
+  it("sentinel-url: getDefaultFaviconChecker builds the sentinel URL with getFaviconUrl, DEFAULT_FAVICON_SENTINEL_PAGE and FAVICON_SIZE", async () => {
+    const body = functionText(await source(), "getDefaultFaviconChecker");
+    assert.match(body, /getFaviconUrl\(\s*\{[^}]*\bpageUrl:\s*DEFAULT_FAVICON_SENTINEL_PAGE\b[^}]*\}\s*\)/);
+    assert.match(body, /getFaviconUrl\(\s*\{[^}]*\bsize:\s*FAVICON_SIZE\b[^}]*\}\s*\)/);
+  });
+
+  it("lazy-kept: the grid tile image still loads lazily", async () => {
+    const body = functionText(await source(), "createFavoriteIconNode");
+    assert.match(body, /\.loading\s*=\s*"lazy"|setAttribute\(\s*"loading",\s*"lazy"\s*\)/);
+  });
+
+  it("onboarding-uses-checker: the onboarding row consults the checker through the shared helper", async () => {
+    const code = await source();
+    const body = functionText(code, "createOnboardingStarterIcon");
+    assert.match(body, new RegExp(`${CHECK_HELPER}\\(\\s*icon,`));
+    const helper = functionText(code, CHECK_HELPER);
+    assert.match(helper, /\.verdictFor\(/);
+    assert.match(helper, /\.check\(/);
+    assert.match(code, /from "\.\/defaultFavicon\.js";/);
+  });
+
+  it("accent-uses-checker: the auto accent classifies the loaded image and samples that same image", async () => {
+    const body = functionText(await source(), "resolveAutoBackgroundColor");
+    assert.match(body, /await loadBrowserImage\(iconModel\.src\)/);
+    assert.match(body, /\.classifyImage\(\s*iconModel\.src,\s*image\s*\)/);
+    assert.match(body, /=== "default"\)?\s*\{?\s*return fallback;/);
+    assert.match(body, /loadImage:\s*(?:async\s*)?\(\)\s*=>\s*image\b/);
+    assert.doesNotMatch(body, /loadImage:\s*loadBrowserImage/);
+  });
+
+  it("pending-rule: newtab.css has exactly one data-icon-check rule, [data-icon-check=\"pending\"] hiding the image without changing its box", async () => {
+    const css = (await readFile(new URL("../src/newtab.css", import.meta.url), "utf8")).replace(/\/\*[\s\S]*?\*\//g, "");
+    assert.equal((css.match(/data-icon-check/g) ?? []).length, 1, "no other data-icon-check selector");
+    const rule = css.match(/(?:^|\})\s*([^{}]*\[data-icon-check="pending"\][^{}]*)\{([^{}]*)\}/);
+    assert.ok(rule, "the pending rule");
+    assert.match(rule[1].trim(), /^(?:img)?\[data-icon-check="pending"\]$/, "the selector is exactly [data-icon-check=\"pending\"], optionally on img");
+    assert.match(rule[2], /^\s*visibility:\s*hidden;?\s*$/, "the body is visibility: hidden only (box unchanged, no opacity)");
+  });
+});
