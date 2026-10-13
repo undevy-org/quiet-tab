@@ -139,3 +139,57 @@ describe("AS-CT-06: docs name the token", () => {
     }
   });
 });
+
+describe("AS-SRP-02/03 starter rows polish contrast", () => {
+  // The letter icon is faded by the `opacity` of its unchecked rule (docs/starter-rows-polish.md decision 2): read it from the CSS.
+  const letterOpacity = () => {
+    const sel = '.onboarding-wizard__starter input[type="checkbox"]:not(:checked) + .onboarding-wizard__starter-surface .onboarding-wizard__starter-icon--letter';
+    const found = rules(sources["surfaces.css"]).filter((r) => r.selector === sel);
+    assert.equal(found.length, 1, `exactly one rule with selector ${sel} expected in surfaces.css, found ${found.length}`);
+    const rule = found[0];
+    const m = rule.body.match(/(?:^|[;\s])opacity:\s*([0-9.]+)\s*;/);
+    assert.ok(m, `letter opacity rule has no numeric opacity: ${rule.body.trim()}`);
+    return Number(m[1]);
+  };
+  // Glyph and chip are one element faded as a group: both are mixed with the backdrop at alpha.
+  const letterRatio = (glyph, chip, backdrop, alpha) => ratio(over([...glyph, alpha], backdrop), over([...chip, alpha], backdrop));
+  for (const [label, scope] of [["light", light], ["dark", dark]]) {
+    const rgb = (name) => rgba(token(scope, name)).slice(0, 3);
+    it(`${label}: --color-text and --color-text-muted on --color-fill-soft are at least 4.5:1 (the hovered label)`, () => {
+      for (const name of ["--color-text", "--color-text-muted"]) {
+        const r = ratio(rgb(name), rgb("--color-fill-soft"));
+        assert.ok(r >= 4.5, `${name} ${r.toFixed(3)}`);
+      }
+    });
+    it(`${label}: --color-border-control on --color-surface is at least 3:1 (the empty check on its own fill)`, () => {
+      const r = ratio(rgb("--color-border-control"), rgb("--color-surface"));
+      assert.ok(r >= 3, r.toFixed(3));
+    });
+    it(`${label}: the letter glyph over its chip at the CSS opacity is at least 3:1 on the panel`, () => {
+      const alpha = letterOpacity();
+      const r = letterRatio(rgb("--color-text"), rgb("--color-fill-soft"), rgb("--color-surface"), alpha);
+      assert.ok(r >= 3, `alpha ${alpha}: ${r.toFixed(3)}`);
+    });
+    it(`${label}: the letter glyph over the hovered chip (--color-fill-soft-strong) at the CSS opacity is at least 3:1`, () => {
+      const alpha = letterOpacity();
+      for (const backdrop of ["--color-fill-soft", "--color-surface"]) {
+        const r = letterRatio(rgb("--color-text"), rgb("--color-fill-soft-strong"), rgb(backdrop), alpha);
+        assert.ok(r >= 3, `alpha ${alpha} on ${backdrop}: ${r.toFixed(3)}`);
+      }
+    });
+  }
+  it("forced colors: CanvasText over a Canvas chip at the CSS opacity is at least 3:1 (black on white and white on black)", () => {
+    const alpha = letterOpacity();
+    const white = [255, 255, 255];
+    const black = [0, 0, 0];
+    for (const [text, canvas] of [[black, white], [white, black]]) {
+      const r = letterRatio(text, canvas, canvas, alpha);
+      assert.ok(r >= 3, `alpha ${alpha} on rgb(${canvas}): ${r.toFixed(3)}`);
+    }
+  });
+  it("doc: alpha 0.4 stays below 3:1 in the light theme (documents why the letter is not faded like the favicon)", () => {
+    const rgb = (name) => rgba(token(light, name)).slice(0, 3);
+    const r = letterRatio(rgb("--color-text"), rgb("--color-fill-soft"), rgb("--color-surface"), 0.4);
+    assert.ok(r < 3, r.toFixed(3));
+  });
+});
