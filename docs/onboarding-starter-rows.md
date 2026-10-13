@@ -51,11 +51,11 @@ Each starter is `label.onboarding-wizard__row` (`src/surfaces.css`): a 20×20 na
 
 2. **Checked.** `input:checked + .onboarding-wizard__starter-surface .onboarding-wizard__starter-check`: primary fill + contrast glyph (today's checked style). The row surface keeps `var(--border)`; no primary outline (OQ-P3-6 B).
 
-3. **Unchecked: the whole row reads "off" without losing contrast.** On `input:not(:checked) + .onboarding-wizard__starter-surface`: `filter: grayscale(1)` on the surface; `opacity: 0.4` on the icon only. Label colour `var(--muted)` (checked rows: `var(--text)`); the check keeps today's unchecked border token (`--border-control`). Label and check stay above 4.5:1 and 3:1 against the surface, in light and dark (computed in spec review 2: `--muted` 5.84 / 7.30, `--border-control` 3.33 / 3.28; grayscale keeps them above the thresholds: measured after the filter, light about 5.8 / 3.3, dark 7.34 / 3.30; the filter turns the dark surface a neutral grey, `rgb(29,34,41)` → `rgb(33,33,33)`). The row has no hover style and no transition: `cursor: pointer` is the only affordance (the dialogs of `surfaces.css` have no transitions; the companion's 120 ms transition on the check is dropped). (Today's companion used `opacity: 0.4` on the whole surface; that drops the label below 4.5:1 on an enabled control.)
+3. **Unchecked: the whole row reads "off" without losing contrast.** *(Superseded by `docs/starter-rows-polish.md` decision 2: the surface no longer carries the filter and keeps the dialog colour; only the icon is grey, a letter icon at `opacity` 0.6, a favicon at 0.4; a hover fill and a busy look were added. The text below is the run 26 state.)* On `input:not(:checked) + .onboarding-wizard__starter-surface`: `filter: grayscale(1)` on the surface; `opacity: 0.4` on the icon only. Label colour `var(--muted)` (checked rows: `var(--text)`); the check keeps today's unchecked border token (`--border-control`). Label and check stay above 4.5:1 and 3:1 against the surface, in light and dark (computed in spec review 2: `--muted` 5.84 / 7.30, `--border-control` 3.33 / 3.28; grayscale keeps them above the thresholds: measured after the filter, light about 5.8 / 3.3, dark 7.34 / 3.30; the filter turns the dark surface a neutral grey, `rgb(29,34,41)` → `rgb(33,33,33)`). *(Since run 33 an enabled row has a hover fill, still no transition.)* The row has no hover style and no transition: `cursor: pointer` is the only affordance (the dialogs of `surfaces.css` have no transitions; the companion's 120 ms transition on the check is dropped). (Today's companion used `opacity: 0.4` on the whole surface; that drops the label below 4.5:1 on an enabled control.)
 
 4. **Focus.** `input:focus-visible + .onboarding-wizard__starter-surface`: the ring is drawn **inside** the surface, `box-shadow: inset 0 0 0 2px var(--focus-ring)` (solid, ≥ 3:1), because `.onboarding-wizard__starters` scrolls (`overflow-y: auto`, `padding: 0`) and clips anything outside a full-width row. Forced colors: `outline: 2px solid Highlight; outline-offset: -2px`.
 
-5. **Forced colors.** Under `@media (forced-colors: active)`: the check gets `border: 1px solid CanvasText`; checked → `background: Highlight` with the glyph in `HighlightText`; the focus ring uses `Highlight`, and the surface gets `filter: none` there (the grayscale would grey the `Highlight` outline of an unchecked focused row). `getComputedStyle` reports `Highlight` as an `rgba(…)` colour with alpha, so tests resolve it through a probe element.
+5. **Forced colors.** Under `@media (forced-colors: active)`: the check gets `border: 1px solid CanvasText`; checked → `background: Highlight` with the glyph in `HighlightText`; the focus ring uses `Highlight`, and the surface got `filter: none` there in run 26 (removed in run 33: the surface has no filter any more, `docs/starter-rows-polish.md` decision 4). `getComputedStyle` reports `Highlight` as an `rgba(…)` colour with alpha, so tests resolve it through a probe element.
 
 6. **Remove obsolete CSS and DOM.** Delete `.onboarding-wizard__row`, `.onboarding-wizard__row-label`, `.onboarding-wizard__preview`, `.onboarding-wizard__preview-tile`, `.onboarding-wizard__preview-icon` (and `--letter`), the `:has(> input:checked)::before` glyph and the preview-only mute rule. `test/borderContrast.test.js` pins `.onboarding-wizard__starter-check` instead of the old checkbox selector (its allowlist names `.onboarding-wizard__row input[type="checkbox"]` today) and gains one unit: `--color-text-muted` against the row surface ≥ 4.5:1 in both themes.
 
@@ -138,13 +138,13 @@ Common setup: harness **1280×800**, wizard step 2, eight starters, light theme 
 
 Intentional differences from the companion To-Be panel (`onboarding-wizard-step2-starters-v1.html`):
 
-- An unchecked row is a grey surface (`filter: grayscale(1)`, icon `opacity` 0.4), not `opacity` on the whole row (decision 3; the label and check stay readable).
+- An unchecked row was a grey surface in run 26 (`filter: grayscale(1)`, icon `opacity` 0.4); since run 33 it keeps the dialog colour with a grey icon (`docs/starter-rows-polish.md`).
 - A checked row has no primary outline; only the check is filled (OQ-P3-6).
 - The focus ring is drawn inside the surface (`inset`), not outside as in the companion (decision 4; the list clips an outside ring).
 - The check sits at the end of the flex row after a `flex: 1` label; the companion's `margin-left` on the check is not used.
-- No hover style and no transition on the row (decision 3).
+- No transition on the row; a hover fill exists since run 33 (`docs/starter-rows-polish.md` decision 1).
 - The label type is 13px / 600 (decision 1).
-- In the dark theme the grey surface is a neutral grey slightly lighter than the dialog around it (measured `rgb(33,33,33)` against `rgb(29,34,41)`); this follows from decision 3.
+- In run 26 the dark off row was a neutral grey slightly lighter than the dialog (`rgb(33,33,33)` against `rgb(29,34,41)`); removed in run 33 (the surface takes the dialog colour).
 
 ## Decision log
 
