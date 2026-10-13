@@ -118,6 +118,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Onboarding step 2: each starter link is one full-width row (icon, name, the check on the right) that looks like a grid link tile, and the whole row toggles. An unchecked row turns grey while its name and check keep their contrast; the focus ring is drawn inside the row so the scrolling list does not clip it. E2E: `dg-73-onboarding-starter-rows.mjs`.
 - After the first-run wizard's Finish on a fresh desk, the six system tiles and the starter links form one solid island, centered once (horizontally on the center line, vertically in the first screen), instead of a strip with the links scattered by free-spot search. The tile sizes per link count are fixed (1 to 8 links; no links gives a 3×3 island with a tall temperature tile). A desk that is not fresh (links already there, a hidden or resized weather tile) or a window narrower than the island keeps the old 2×1 placement; reload and resize never re-pack. E2E: `dg-65-post-onboarding-grid.mjs`; spec `docs/post-onboarding-grid.md`.
 - The city line and the metric glyph of a toned weather tile use the full text color (they were muted: 2.59:1 on a rain-5 tile); the dialog segments (Icon, Color, Size) use `padding: 0 5px` and no wrapping up to 451 px windows (was 6 px up to 400 px), and the Size shape glyph uses unit 4 px there.
 - Tiles no longer carry the data-tile-size attribute; layout CSS uses data-w / data-h only.
