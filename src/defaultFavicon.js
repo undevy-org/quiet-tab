@@ -44,7 +44,7 @@ export function createDefaultFaviconChecker({
     canvas.height = height;
     const context = canvas.getContext("2d", { willReadFrequently: true });
     context.drawImage(image, 0, 0);
-    return new Uint8ClampedArray(context.getImageData(0, 0, width, height).data);
+    return context.getImageData(0, 0, width, height).data;
   }
 
   // The sentinel is requested on the first call, the one timeout starts at that request; success, failure and the
@@ -88,7 +88,7 @@ export function createDefaultFaviconChecker({
     if (known) return known;
     if (failed) return "unknown";
     const ok = await ensureReady();
-    if (!ok || failed) return "unknown";
+    if (!ok) return "unknown";
     const again = verdicts.get(url);
     if (again) return again;
     if (!validSize(image)) return "unknown";
