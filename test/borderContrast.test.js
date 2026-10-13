@@ -143,8 +143,10 @@ describe("AS-CT-06: docs name the token", () => {
 describe("AS-SRP-02/03 starter rows polish contrast", () => {
   // The letter icon is faded by the `opacity` of its unchecked rule (docs/starter-rows-polish.md decision 2): read it from the CSS.
   const letterOpacity = () => {
-    const rule = rules(sources["surfaces.css"]).find((r) => /:not\(:checked\)/.test(r.selector) && r.selector.endsWith(".onboarding-wizard__starter-icon--letter") && /(?:^|[;\s])opacity:/.test(r.body));
-    assert.ok(rule, "letter opacity rule not found in surfaces.css (an unchecked `.onboarding-wizard__starter-icon--letter` rule with `opacity`)");
+    const sel = '.onboarding-wizard__starter input[type="checkbox"]:not(:checked) + .onboarding-wizard__starter-surface .onboarding-wizard__starter-icon--letter';
+    const found = rules(sources["surfaces.css"]).filter((r) => r.selector === sel);
+    assert.equal(found.length, 1, `exactly one rule with selector ${sel} expected in surfaces.css, found ${found.length}`);
+    const rule = found[0];
     const m = rule.body.match(/(?:^|[;\s])opacity:\s*([0-9.]+)\s*;/);
     assert.ok(m, `letter opacity rule has no numeric opacity: ${rule.body.trim()}`);
     return Number(m[1]);
@@ -185,7 +187,7 @@ describe("AS-SRP-02/03 starter rows polish contrast", () => {
       assert.ok(r >= 3, `alpha ${alpha} on rgb(${canvas}): ${r.toFixed(3)}`);
     }
   });
-  it("alpha 0.4 stays below 3:1 in the light theme (documents why the letter is not faded like the favicon)", () => {
+  it("doc: alpha 0.4 stays below 3:1 in the light theme (documents why the letter is not faded like the favicon)", () => {
     const rgb = (name) => rgba(token(light, name)).slice(0, 3);
     const r = letterRatio(rgb("--color-text"), rgb("--color-fill-soft"), rgb("--color-surface"), 0.4);
     assert.ok(r < 3, r.toFixed(3));
