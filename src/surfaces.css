@@ -360,7 +360,6 @@
   }
 
   /* grayscale would grey the Highlight outline of an unchecked focused row */
-  .onboarding-wizard__starter-surface,
   .onboarding-wizard__starter input[type="checkbox"]:not(:checked) + .onboarding-wizard__starter-surface {
     filter: none;
   }

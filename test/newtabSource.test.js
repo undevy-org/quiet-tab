@@ -1480,6 +1480,8 @@ describe("newtab onboarding step 2 starter row source (docs/onboarding-starter-r
     assert.match(body, /^\s*box\.setAttribute\("aria-label", `Add \$\{row\.label\} to your grid`\);/m);
     assert.match(body, /^\s*check\.setAttribute\("aria-hidden", "true"\);/m);
     assert.match(body, /^\s*label\.append\(box, surface\);/m);
+    assert.match(body, /^\s*box\.type = "checkbox";/m);
+    assert.match(body, /^\s*surface\.append\(createOnboardingStarterIcon\(row\), createNode\("span", "onboarding-wizard__starter-label", row\.label\), check\);/m);
   });
 
   it("pin 2: no trace of the old row and preview DOM in newtab.js", async () => {
@@ -1505,6 +1507,9 @@ describe("newtab onboarding step 2 starter row source (docs/onboarding-starter-r
     const surface = all.find((r) => r.selector === ".onboarding-wizard__starter-surface");
     assert.ok(surface, "surface rule");
     assert.match(surface.body, /pointer-events:\s*none;/);
+    const row = all.find((r) => r.selector === ".onboarding-wizard__starter");
+    assert.ok(row, "row rule");
+    assert.match(row.body, /height:\s*var\(--cell-size\);/);
     const input = all.find((r) => r.selector === '.onboarding-wizard__starter input[type="checkbox"]');
     assert.ok(input, "input rule");
     assert.match(input.body, /opacity:\s*0;/);
@@ -1529,15 +1534,28 @@ describe("newtab onboarding step 2 starter row source (docs/onboarding-starter-r
   it("pin 5: off rows are grey, the focus ring is inset, forced colors keep a Highlight indicator without the grey filter", async () => {
     const css = await surfaces();
     const all = cssRules(css);
-    const off = all.find((r) => /input(?:\[type=\"checkbox\"\])?:not\(:checked\) \+ \.onboarding-wizard__starter-surface$/.test(r.selector));
+    const SURFACE = ".onboarding-wizard__starter-surface";
+    const OFF = `.onboarding-wizard__starter input[type="checkbox"]:not(:checked) + ${SURFACE}`;
+    const FOCUS = `.onboarding-wizard__starter input[type="checkbox"]:focus-visible + ${SURFACE}`;
+    const CHECKED_CHECK = `.onboarding-wizard__starter input[type="checkbox"]:checked + ${SURFACE} .onboarding-wizard__starter-check`;
+    const off = all.find((r) => r.selector === OFF);
     assert.ok(off, "unchecked rule");
     assert.match(off.body, /filter:\s*grayscale\(1\);/);
-    const focus = all.find((r) => /input(?:\[type=\"checkbox\"\])?:focus-visible \+ \.onboarding-wizard__starter-surface$/.test(r.selector));
+    const muted = all.find((r) => r.selector === `${OFF} .onboarding-wizard__starter-label`);
+    assert.ok(muted, "unchecked label rule");
+    assert.match(muted.body, /color:\s*var\(--muted\);/);
+    const focus = all.find((r) => r.selector === FOCUS);
     assert.ok(focus, "focus rule");
     assert.match(focus.body, /inset 0 0 0 2px var\(--focus-ring\)/);
-    const forced = mediaBlock(css, "@media (forced-colors: active)");
-    assert.match(forced, /\.onboarding-wizard__starter/);
-    assert.match(forced, /Highlight/);
-    assert.match(forced, /filter:\s*none;/);
+    const forced = cssRules(mediaBlock(css, "@media (forced-colors: active)"));
+    const forcedOff = forced.find((r) => r.selector.endsWith(OFF));
+    assert.ok(forcedOff, "forced-colors unchecked rule");
+    assert.match(forcedOff.body, /filter:\s*none;/);
+    const forcedFocus = forced.find((r) => r.selector.endsWith(FOCUS));
+    assert.ok(forcedFocus, "forced-colors focus rule");
+    assert.match(forcedFocus.body, /outline:\s*2px solid Highlight;/);
+    const forcedChecked = forced.find((r) => r.selector.endsWith(CHECKED_CHECK));
+    assert.ok(forcedChecked, "forced-colors checked rule");
+    assert.match(forcedChecked.body, /background:\s*Highlight;/);
   });
 });
