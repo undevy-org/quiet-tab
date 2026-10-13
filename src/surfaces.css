@@ -321,17 +321,43 @@
     center / 14px 14px no-repeat;
 }
 
-/* An unchecked row reads "off": the whole surface goes grey, the icon fades, the label and the check keep their contrast. */
-.onboarding-wizard__starter input[type="checkbox"]:not(:checked) + .onboarding-wizard__starter-surface {
+/* An unchecked row reads "off" without a grey block: the surface keeps the dialog colour, only the icon is greyed and
+   faded; the muted label and the empty check carry the rest. The favicon fades to 0.4, the letter to 0.6 (the letter is
+   the row's identity glyph and must stay >= 3:1 against its chip, docs/starter-rows-polish.md decision 2). */
+.onboarding-wizard__starter input[type="checkbox"]:not(:checked) + .onboarding-wizard__starter-surface img.onboarding-wizard__starter-icon {
   filter: grayscale(1);
+  opacity: 0.4;
 }
 
-.onboarding-wizard__starter input[type="checkbox"]:not(:checked) + .onboarding-wizard__starter-surface .onboarding-wizard__starter-icon {
-  opacity: 0.4;
+.onboarding-wizard__starter input[type="checkbox"]:not(:checked) + .onboarding-wizard__starter-surface .onboarding-wizard__starter-icon--letter {
+  filter: grayscale(1);
+  opacity: 0.6;
 }
 
 .onboarding-wizard__starter input[type="checkbox"]:not(:checked) + .onboarding-wizard__starter-surface .onboarding-wizard__starter-label {
   color: var(--muted);
+}
+
+/* Hover response only on a pointer that can hover; keyed on the enabled input (the real hit target, the surface has
+   pointer-events: none, and label:hover is also true over a disabled input). Only the fill changes, so the inset focus
+   ring stays visible; the letter chip would vanish on the same fill and takes the stronger one. */
+@media (hover: hover) {
+  .onboarding-wizard__starter input[type="checkbox"]:not(:disabled):hover + .onboarding-wizard__starter-surface {
+    background: var(--soft-fill);
+  }
+
+  .onboarding-wizard__starter input[type="checkbox"]:not(:disabled):hover + .onboarding-wizard__starter-surface .onboarding-wizard__starter-icon--letter {
+    background: var(--soft-fill-strong);
+  }
+}
+
+/* Busy (Finish is writing, the boxes are disabled): rows are muted by the design-system disabled tokens. */
+.onboarding-wizard__starter input[type="checkbox"]:disabled {
+  cursor: wait;
+}
+
+.onboarding-wizard__starter input[type="checkbox"]:disabled + .onboarding-wizard__starter-surface {
+  opacity: var(--control-disabled-opacity);
 }
 
 /* Inside the surface: the list scrolls (overflow-y: auto) and would clip a ring outside a full-width row. */
@@ -359,9 +385,13 @@
     box-shadow: none;
   }
 
-  /* grayscale would grey the Highlight outline of an unchecked focused row */
-  .onboarding-wizard__starter input[type="checkbox"]:not(:checked) + .onboarding-wizard__starter-surface {
-    filter: none;
+  /* The pills have no fill contrast under forced colors: a border keeps them visible, Highlight marks the active ones. */
+  .onboarding-wizard__pill {
+    border: 1px solid CanvasText;
+  }
+
+  .onboarding-wizard__pill--active {
+    background: Highlight;
   }
 }
 
