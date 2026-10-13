@@ -1531,32 +1531,92 @@ describe("newtab onboarding step 2 starter row source (docs/onboarding-starter-r
     assert.doesNotMatch(stripCss(await surfaces()), /\.onboarding-wizard__(row|preview)/);
   });
 
-  it("pin 5: off rows are grey, the focus ring is inset, forced colors keep a Highlight indicator without the grey filter", async () => {
+  // Selectors of docs/starter-rows-polish.md; exact comparison, no substring matching.
+  const SURFACE = ".onboarding-wizard__starter-surface";
+  const INPUT = '.onboarding-wizard__starter input[type="checkbox"]';
+  const OFF = `${INPUT}:not(:checked) + ${SURFACE}`;
+  const FOCUS = `${INPUT}:focus-visible + ${SURFACE}`;
+  const HOVER = `${INPUT}:not(:disabled):hover + ${SURFACE}`;
+  const LETTER = ".onboarding-wizard__starter-icon--letter";
+  const selectorList = (css) => cssRules(css).flatMap((r) => r.selector.split(",").map((s) => ({ selector: s.trim(), body: r.body })));
+
+  it("pin 5: hover paints the surface of an enabled row, only inside @media (hover: hover), with no transition (AS-SRP-01, 06)", async () => {
     const css = await surfaces();
-    const all = cssRules(css);
-    const SURFACE = ".onboarding-wizard__starter-surface";
-    const OFF = `.onboarding-wizard__starter input[type="checkbox"]:not(:checked) + ${SURFACE}`;
-    const FOCUS = `.onboarding-wizard__starter input[type="checkbox"]:focus-visible + ${SURFACE}`;
-    const CHECKED_CHECK = `.onboarding-wizard__starter input[type="checkbox"]:checked + ${SURFACE} .onboarding-wizard__starter-check`;
-    const off = all.find((r) => r.selector === OFF);
-    assert.ok(off, "unchecked rule");
-    assert.match(off.body, /filter:\s*grayscale\(1\);/);
+    const block = mediaBlock(css, "@media (hover: hover)");
+    const inBlock = cssRules(block);
+    const hover = inBlock.find((r) => r.selector === HOVER);
+    assert.ok(hover, "hover rule inside the (hover: hover) block");
+    assert.match(hover.body, /background:\s*var\(--soft-fill\);/);
+    const outside = cssRules(stripCss(css).replace(block, ""));
+    assert.deepEqual(outside.filter((r) => /:hover/.test(r.selector) && /onboarding-wizard__starter/.test(r.selector)).map((r) => r.selector), [], "no starter hover rule outside the media block");
+    const surface = cssRules(css).filter((r) => r.selector === SURFACE);
+    assert.ok(surface.length > 0, "surface rule");
+    for (const rule of [...surface, ...inBlock]) assert.doesNotMatch(rule.body, /transition/, rule.selector);
+  });
+
+  it("pin 5b: the letter chip takes --soft-fill-strong on hover, in the same (hover: hover) block", async () => {
+    const chip = cssRules(mediaBlock(await surfaces(), "@media (hover: hover)")).find((r) => r.selector === `${HOVER} ${LETTER}`);
+    assert.ok(chip, "chip hover rule inside the (hover: hover) block");
+    assert.match(chip.body, /background:\s*var\(--soft-fill-strong\);/);
+  });
+
+  it("pin 6: an off row keeps the dialog colour (no surface filter anywhere), the icon alone is greyed: favicon 0.4, letter 0.6", async () => {
+    const css = await surfaces();
+    const onSurface = selectorList(css).filter((r) => r.selector.endsWith(`+ ${SURFACE}`));
+    assert.ok(onSurface.some((r) => r.selector === OFF || r.selector === HOVER || r.selector === FOCUS), "surface-state rules exist");
+    for (const rule of onSurface) assert.doesNotMatch(rule.body, /filter/, `${rule.selector} must not carry a filter`);
+    const img = selectorList(css).find((r) => r.selector === `${OFF} img.onboarding-wizard__starter-icon`);
+    assert.ok(img, "unchecked favicon img rule");
+    assert.match(img.body, /filter:\s*grayscale\(1\);/);
+    assert.match(img.body, /opacity:\s*0\.4;/);
+    const letter = selectorList(css).find((r) => r.selector === `${OFF} ${LETTER}`);
+    assert.ok(letter, "unchecked letter rule");
+    assert.match(letter.body, /filter:\s*grayscale\(1\);/);
+    assert.match(letter.body, /opacity:\s*0\.6;/);
+    assert.ok(!img.selector.includes("--letter"), "the img selector does not reach the letter");
+    assert.ok(!letter.selector.includes("img"), "the letter selector is not the img selector");
+  });
+
+  it("pin 7: busy rows are muted by the design-system disabled tokens and the real input shows cursor wait; the enabled input keeps cursor pointer", async () => {
+    const all = cssRules(await surfaces());
+    const input = all.find((r) => r.selector === `${INPUT}:disabled`);
+    assert.ok(input, "disabled input rule");
+    assert.match(input.body, /cursor:\s*wait;/);
+    const surface = all.find((r) => r.selector === `${INPUT}:disabled + ${SURFACE}`);
+    assert.ok(surface, "disabled surface rule");
+    assert.match(surface.body, /opacity:\s*var\(--control-disabled-opacity\);/);
+    const enabled = all.find((r) => r.selector === INPUT);
+    assert.ok(enabled, "enabled input rule");
+    assert.match(enabled.body, /cursor:\s*pointer;/);
+  });
+
+  it("pin 8: forced colors give the progress pills a border and Highlight, keep the Highlight outline and have no filter rule", async () => {
+    const forced = cssRules(mediaBlock(await surfaces(), "@media (forced-colors: active)"));
+    const pill = forced.find((r) => r.selector === ".onboarding-wizard__pill");
+    assert.ok(pill, "forced pill rule");
+    assert.match(pill.body, /border:\s*1px solid CanvasText;/);
+    const active = forced.find((r) => r.selector === ".onboarding-wizard__pill--active");
+    assert.ok(active, "forced active pill rule");
+    assert.match(active.body, /background:\s*Highlight;/);
+    const focus = forced.find((r) => r.selector === FOCUS);
+    assert.ok(focus, "forced focus rule");
+    assert.match(focus.body, /outline:\s*2px solid Highlight;/);
+    assert.match(focus.body, /outline-offset:\s*-2px;/);
+    assert.match(focus.body, /box-shadow:\s*none;/);
+    const checked = forced.find((r) => r.selector === `${INPUT}:checked + ${SURFACE} .onboarding-wizard__starter-check`);
+    assert.ok(checked, "forced-colors checked rule");
+    assert.match(checked.body, /background:\s*Highlight;/);
+    assert.deepEqual(forced.filter((r) => /filter/.test(r.body)).map((r) => r.selector), [], "no filter rule in the forced-colors block");
+  });
+
+  it("pin 9: the off label stays --muted and the focus ring stays inset", async () => {
+    const all = cssRules(await surfaces());
     const muted = all.find((r) => r.selector === `${OFF} .onboarding-wizard__starter-label`);
     assert.ok(muted, "unchecked label rule");
     assert.match(muted.body, /color:\s*var\(--muted\);/);
     const focus = all.find((r) => r.selector === FOCUS);
     assert.ok(focus, "focus rule");
-    assert.match(focus.body, /inset 0 0 0 2px var\(--focus-ring\)/);
-    const forced = cssRules(mediaBlock(css, "@media (forced-colors: active)"));
-    const forcedOff = forced.find((r) => r.selector.endsWith(OFF));
-    assert.ok(forcedOff, "forced-colors unchecked rule");
-    assert.match(forcedOff.body, /filter:\s*none;/);
-    const forcedFocus = forced.find((r) => r.selector.endsWith(FOCUS));
-    assert.ok(forcedFocus, "forced-colors focus rule");
-    assert.match(forcedFocus.body, /outline:\s*2px solid Highlight;/);
-    const forcedChecked = forced.find((r) => r.selector.endsWith(CHECKED_CHECK));
-    assert.ok(forcedChecked, "forced-colors checked rule");
-    assert.match(forcedChecked.body, /background:\s*Highlight;/);
+    assert.match(focus.body, /box-shadow:\s*inset 0 0 0 2px var\(--focus-ring\);/);
   });
 });
 
