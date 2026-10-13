@@ -68,9 +68,9 @@ Common setup: harness **1280×800**, wizard step 2, eight starters, light theme 
 - Verified by: E2E `dg-75` (amends `dg-73` AS-OSR-04 and 09); `borderContrast` units.
 
 ### AS-SRP-04 Busy rows are muted and inert
-- Given: step 2, Finish writing: every `sync.set` of a `quietTabWidget:` key is held for 9000 ms (longer than the 8 s status timer and every guard window) and then succeeds.
+- Given: step 2, Finish writing: every `sync.set` that carries the key `quietTabWidgetsMeta` (meta and items are written in one batched call) is held for 9000 ms (longer than the 8 s status timer and every guard window) and then succeeds.
 - When: the write is in flight, sampled at 0.5 s, 4 s and 8.5 s.
-- Then: at each sample all 8 checkboxes are `disabled`, each surface has `opacity` equal to the resolved `--control-disabled-opacity`, the `input` `cursor` is `wait`, `aria-busy="true"` is still set, hovering a row paints nothing, and clicking a row changes no `checked`. After the answer the wizard is closed.
+- Then: at each sample all 8 checkboxes are `disabled`, each surface has `opacity` equal to the resolved `--control-disabled-opacity`, the `input` `cursor` is `wait`, `aria-busy="true"` is still set on the `[role=dialog]`, hovering a row paints nothing, and clicking a row changes no `checked`. After the answer the wizard is closed.
 - Verified by: E2E `dg-75`; `newtabSource` pin.
 
 ### AS-SRP-04b Busy rows after a failed write
@@ -101,7 +101,7 @@ Common setup: harness **1280×800**, wizard step 2, eight starters, light theme 
 
 - Dark-theme "off" row: does it still read "off" without the grey block (label, empty check, grey icon)? The letter at 0.6 is brighter than the 13px / 600 `--muted` label: does the off row still look off? (AS-SRP-03)
 - Hover/busy interplay: no hover on a disabled row, no stuck hover after a tap, a slow successful write stays muted (AS-SRP-04, 06).
-- Contrast of the hovered label on `--soft-fill` in both themes and the letter chip on hover (AS-SRP-01, 02).
+- Contrast of the hovered label on `--soft-fill` in both themes and the letter chip on hover (AS-SRP-01, 02). The chip on hover (`--soft-fill-strong` against `--soft-fill`, about 1.1:1) is barely visible; accepted, the glyph on it stays ≥ 4:1.
 - Forced colors: pills and focus ring (AS-SRP-05).
 
 ## Accepted exceptions
