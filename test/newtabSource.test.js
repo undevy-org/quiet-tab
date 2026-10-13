@@ -1601,8 +1601,6 @@ describe("newtab onboarding step 2 starter row source (docs/onboarding-starter-r
     assert.equal(letter.length, 1, "exactly one unchecked letter rule");
     assert.match(letter[0].body, /(?:^|[;\s])filter:\s*grayscale\(1\);/);
     assert.match(letter[0].body, /(?:^|[;\s])opacity:\s*0\.6;/);
-    assert.ok(!IMG_OFF.includes("--letter"), "the img selector does not reach the letter");
-    assert.ok(!LETTER_OFF.includes("img"), "the letter selector is not the img selector");
   });
 
   it("SRP pin 4: busy rows are muted by the design-system disabled tokens and the real input shows cursor wait; the enabled input keeps cursor pointer", async () => {

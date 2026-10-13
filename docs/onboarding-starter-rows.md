@@ -19,7 +19,7 @@ Related: `docs/onboarding-wizard.md` (decision 5, AS-OB-04, AS-OB-17, AS-OB-26),
 | 2026-10-10 | Step 2: the cell **is** the control — full width, check **right**, vertically centered; no duplicate row label. | `confirmed` | Companion To-Be panel. |
 | 2026-10-10 | OQ-P3-5: unchecked = mute the **entire** row. OQ-P3-6: checked = filled check only, **no** primary border on the row. | `confirmed` | § Decision log. |
 | 2026-10-10 | Footprint hints (OQ-P3-2/3/4/7/8) superseded by part 2's island table. | `confirmed` (owner, 2026-10-11) | `docs/post-onboarding-grid.md` revision 2. |
-| 2026-10-10 | Unchecked mute keeps text and check contrast (WCAG 1.4.3 / 1.4.11): grayscale on the whole row, opacity only on the icon. | `confirmed` (owner, 2026-10-11) | § Default decision 3. |
+| 2026-10-10 | Unchecked mute keeps text and check contrast (WCAG 1.4.3 / 1.4.11): grayscale on the whole row, opacity only on the icon. | `confirmed` (owner, 2026-10-11) | § Default decision 3. *(Superseded by `docs/starter-rows-polish.md` in run 33: surface without a filter, grey icon, favicon opacity 0.4, letter 0.6.)* |
 
 ## Current behaviour (`main` at review time)
 
@@ -95,7 +95,7 @@ Common setup: harness **1280×800**, wizard step 2, eight starters, light theme 
 ### AS-OSR-04 Unchecked row is off but readable
 - Given: one unchecked and one checked row, light and dark theme.
 - When: reading computed styles and contrast.
-- Then: unchecked surface has `grayscale(1)`, its icon opacity 0.4; label contrast ≥ 4.5:1 and check border ≥ 3:1 against the surface in both themes; the checked row has no filter.
+- Then: *(Superseded by `docs/starter-rows-polish.md` in run 33: surface without a filter, grey icon, favicon opacity 0.4, letter 0.6.)* unchecked surface has `grayscale(1)`, its icon opacity 0.4; label contrast ≥ 4.5:1 and check border ≥ 3:1 against the surface in both themes; the checked row has no filter.
 - Verified by: E2E `dg-73` computed style; `borderContrast` units for the check border and the muted label.
 
 ### AS-OSR-05 Checked row has no primary outline
@@ -125,7 +125,7 @@ Common setup: harness **1280×800**, wizard step 2, eight starters, light theme 
 ### AS-OSR-09 Icon and letter fallback
 - Given: step 2 at 1280×800; favicon requests for one starter blocked (harness route abort) so it shows the letter fallback (the letter also replaces Chrome's default globe, see `docs/favicon-globe-fallback.md`).
 - When: inspecting the icons; then unchecking both rows.
-- Then: favicon `img.onboarding-wizard__starter-icon` and the fallback `.onboarding-wizard__starter-icon--letter` are both 22×22; in the unchecked rows both have opacity 0.4.
+- Then: *(Superseded by `docs/starter-rows-polish.md` in run 33: surface without a filter, grey icon, favicon opacity 0.4, letter 0.6.)* favicon `img.onboarding-wizard__starter-icon` and the fallback `.onboarding-wizard__starter-icon--letter` are both 22×22; in the unchecked rows both have opacity 0.4.
 - Verified by: E2E `dg-73`.
 
 ### AS-OSR-10 500 px and low window
@@ -152,7 +152,7 @@ Intentional differences from the companion To-Be panel (`onboarding-wizard-step2
 |----|---------------------|------------|
 | OQ-P3-1 | B: one spec for hints + UI. | UI only; hints moved to part 2. |
 | OQ-P3-2, -3, -4, -7, -8 | Hints prune search; j-th added; interim 2×1; canonize companion JSON; part 2 may ship first. | Superseded by part 2's normative island table (j and the 2×1 not-fresh size live there). |
-| OQ-P3-5 | A: mute the entire row. | Kept as intent; implemented as grayscale on the row + opacity on the icon (decision 3). |
+| OQ-P3-5 | A: mute the entire row. | Kept as intent; implemented as grayscale on the row + opacity on the icon (decision 3). *(Superseded by `docs/starter-rows-polish.md` in run 33: surface without a filter, grey icon, favicon opacity 0.4, letter 0.6.)* |
 | OQ-P3-6 | B: checked = filled check only. | Kept. |
 
 ## Non-goals
