@@ -84,13 +84,37 @@ describe("AS-CT-05: only the six control-boundary rules use --border-control", (
       ".city-field",
       ".desktop-dialog .segmented__option:has(input:checked)",
       ".onboarding-wizard__pill--active",
-      '.onboarding-wizard__row input[type="checkbox"]'
+      ".onboarding-wizard__starter-check"
     ];
     assert.deepEqual(users.filter((s) => !six.includes(s) && !hoverStates.includes(s) && !modalOverlay.includes(s)), []);
   });
   it(".segmented__option keeps the decorative divider", () => {
     const option = all.find((r) => r.selector === ".segmented__option");
     assert.match(option.body, /border-right:[^;]*var\(--border\)/);
+  });
+});
+
+describe("AS-OSR-04: the starter row stays readable when it is off", () => {
+  for (const [label, scope] of [["light", light], ["dark", dark]]) {
+    const rgb = (name) => rgba(token(scope, name)).slice(0, 3);
+    it(`${label}: --color-text-muted on --color-surface is at least 4.5:1 (the off label)`, () => {
+      const r = ratio(rgb("--color-text-muted"), rgb("--color-surface"));
+      assert.ok(r >= 4.5, r.toFixed(3));
+    });
+    it(`${label}: --color-border-control on --color-surface is at least 3:1 (the check border)`, () => {
+      const r = ratio(rgb("--color-border-control"), rgb("--color-surface"));
+      assert.ok(r >= 3, r.toFixed(3));
+    });
+    it(`${label}: --focus-ring on --color-surface is at least 3:1 (the row focus ring)`, () => {
+      const r = ratio(rgb("--focus-ring"), rgb("--color-surface"));
+      assert.ok(r >= 3, r.toFixed(3));
+    });
+  }
+  it("the check draws its border with var(--border-control)", () => {
+    const all = rules(sources["surfaces.css"]);
+    const checks = all.filter((r) => r.selector === ".onboarding-wizard__starter-check");
+    assert.ok(checks.length > 0, "the check has a rule");
+    assert.ok(checks.some((r) => /(?:^|[;\s])border:[^;]*var\(--border-control\)/.test(r.body)));
   });
 });
 

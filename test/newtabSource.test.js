@@ -1450,3 +1450,112 @@ describe("use my location: reverse lookup timer", () => {
   });
 
 });
+
+describe("newtab onboarding step 2 starter row source (docs/onboarding-starter-rows.md)", () => {
+  const stripCss = (text) => text.replace(/\/\*[\s\S]*?\*\//g, "");
+  const surfaces = () => readFile(new URL("../src/surfaces.css", import.meta.url), "utf8");
+  const cssRules = (css) => [...stripCss(css).matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({ selector: m[1].trim().replace(/\s+/g, " "), body: m[2] }));
+  const step2 = async () => {
+    const code = await source();
+    const start = code.indexOf("function buildOnboardingStep2(");
+    assert.ok(start > -1, "buildOnboardingStep2");
+    return code.slice(start, code.indexOf("\n}\n", start));
+  };
+  const mediaBlock = (css, header) => {
+    const text = stripCss(css);
+    const start = text.indexOf(header);
+    assert.ok(start > -1, header);
+    let depth = 0;
+    for (let i = text.indexOf("{", start); i < text.length; i += 1) {
+      if (text[i] === "{") depth += 1;
+      if (text[i] === "}" && --depth === 0) return text.slice(start, i + 1);
+    }
+    assert.fail("unbalanced block");
+  };
+
+  it("pin 1: the row is one label holding the real checkbox, an aria-hidden check and the index/name contract", async () => {
+    const body = await step2();
+    assert.match(body, /^\s*const label = createNode\("label", "onboarding-wizard__starter"\);/m);
+    assert.match(body, /^\s*box\.dataset\.onboardingStarterIndex = String\(i\);/m);
+    assert.match(body, /^\s*box\.setAttribute\("aria-label", `Add \$\{row\.label\} to your grid`\);/m);
+    assert.match(body, /^\s*check\.setAttribute\("aria-hidden", "true"\);/m);
+    assert.match(body, /^\s*label\.append\(box, surface\);/m);
+    assert.match(body, /^\s*box\.type = "checkbox";/m);
+    assert.match(body, /^\s*surface\.append\(createOnboardingStarterIcon\(row\), createNode\("span", "onboarding-wizard__starter-label", row\.label\), check\);/m);
+  });
+
+  it("pin 2: no trace of the old row and preview DOM in newtab.js", async () => {
+    const code = await source();
+    assert.doesNotMatch(code, /onboarding-wizard__row/);
+    assert.doesNotMatch(code, /onboarding-wizard__preview/);
+    assert.doesNotMatch(code, /createOnboardingStarterPreview/);
+  });
+
+  it("pin 3: the icon is decorative (alt empty) and an error swaps in the letter icon", async () => {
+    const code = await source();
+    const start = code.indexOf("function createOnboardingStarterIcon(");
+    assert.ok(start > -1, "createOnboardingStarterIcon");
+    const body = code.slice(start, code.indexOf("\n}\n", start));
+    assert.match(body, /^\s*icon\.alt = "";/m);
+    assert.match(body, /icon\.addEventListener\("error", \(\) => icon\.replaceWith\(fallback\(\)\)\);/);
+    assert.match(body, /onboarding-wizard__starter-icon onboarding-wizard__starter-icon--letter/);
+  });
+
+  it("pin 4: the surface ignores the pointer, the real input covers the row, is transparent and stays focusable", async () => {
+    const css = await surfaces();
+    const all = cssRules(css);
+    const surface = all.find((r) => r.selector === ".onboarding-wizard__starter-surface");
+    assert.ok(surface, "surface rule");
+    assert.match(surface.body, /pointer-events:\s*none;/);
+    const row = all.find((r) => r.selector === ".onboarding-wizard__starter");
+    assert.ok(row, "row rule");
+    assert.match(row.body, /height:\s*var\(--cell-size\);/);
+    const input = all.find((r) => r.selector === '.onboarding-wizard__starter input[type="checkbox"]');
+    assert.ok(input, "input rule");
+    assert.match(input.body, /opacity:\s*0;/);
+    assert.match(input.body, /position:\s*absolute;/);
+    assert.match(input.body, /inset:\s*0;/);
+    assert.match(input.body, /cursor:\s*pointer;/);
+    assert.doesNotMatch(input.body, /display:\s*none|visibility:\s*hidden/);
+    for (const rule of all.filter((r) => /^\.onboarding-wizard__starter input/.test(r.selector))) {
+      assert.doesNotMatch(rule.body, /display:\s*none|visibility:\s*hidden/, rule.selector);
+    }
+    const outline = all.find((r) => r.selector === '.onboarding-wizard__starter input[type="checkbox"]:focus-visible');
+    assert.ok(outline, "input focus-visible rule");
+    assert.match(outline.body, /outline:\s*none;/);
+  });
+
+  it("pin 4b: no selector of the old .onboarding-wizard__row / __preview family is left in surfaces.css", async () => {
+    const selectors = cssRules(await surfaces()).flatMap((r) => r.selector.split(","));
+    assert.deepEqual(selectors.filter((s) => /^\s*\.onboarding-wizard__(row|preview)/.test(s)), []);
+    assert.doesNotMatch(stripCss(await surfaces()), /\.onboarding-wizard__(row|preview)/);
+  });
+
+  it("pin 5: off rows are grey, the focus ring is inset, forced colors keep a Highlight indicator without the grey filter", async () => {
+    const css = await surfaces();
+    const all = cssRules(css);
+    const SURFACE = ".onboarding-wizard__starter-surface";
+    const OFF = `.onboarding-wizard__starter input[type="checkbox"]:not(:checked) + ${SURFACE}`;
+    const FOCUS = `.onboarding-wizard__starter input[type="checkbox"]:focus-visible + ${SURFACE}`;
+    const CHECKED_CHECK = `.onboarding-wizard__starter input[type="checkbox"]:checked + ${SURFACE} .onboarding-wizard__starter-check`;
+    const off = all.find((r) => r.selector === OFF);
+    assert.ok(off, "unchecked rule");
+    assert.match(off.body, /filter:\s*grayscale\(1\);/);
+    const muted = all.find((r) => r.selector === `${OFF} .onboarding-wizard__starter-label`);
+    assert.ok(muted, "unchecked label rule");
+    assert.match(muted.body, /color:\s*var\(--muted\);/);
+    const focus = all.find((r) => r.selector === FOCUS);
+    assert.ok(focus, "focus rule");
+    assert.match(focus.body, /inset 0 0 0 2px var\(--focus-ring\)/);
+    const forced = cssRules(mediaBlock(css, "@media (forced-colors: active)"));
+    const forcedOff = forced.find((r) => r.selector.endsWith(OFF));
+    assert.ok(forcedOff, "forced-colors unchecked rule");
+    assert.match(forcedOff.body, /filter:\s*none;/);
+    const forcedFocus = forced.find((r) => r.selector.endsWith(FOCUS));
+    assert.ok(forcedFocus, "forced-colors focus rule");
+    assert.match(forcedFocus.body, /outline:\s*2px solid Highlight;/);
+    const forcedChecked = forced.find((r) => r.selector.endsWith(CHECKED_CHECK));
+    assert.ok(forcedChecked, "forced-colors checked rule");
+    assert.match(forcedChecked.body, /background:\s*Highlight;/);
+  });
+});

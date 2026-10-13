@@ -2,7 +2,7 @@
 
 ## Status
 
-`draft` — revision 2 (2026-10-10) after the initiative spec review (notes `pipeline/reports/onboarding-grid-initiative-spec-review.md`). **Part 3** of the onboarding-grid initiative. Renamed from `onboarding-starter-footprints.md`: the link footprint hints moved into part 2's normative island table (`docs/post-onboarding-grid.md` § Island table), so this spec covers only the step 2 list UI. Independent of part 1 and part 2; may ship in any order.
+`implemented` — revision 2 (2026-10-10) after the initiative spec review (notes `pipeline/reports/onboarding-grid-initiative-spec-review.md`). **Part 3** of the onboarding-grid initiative. Renamed from `onboarding-starter-footprints.md`: the link footprint hints moved into part 2's normative island table (`docs/post-onboarding-grid.md` § Island table), so this spec covers only the step 2 list UI. Independent of part 1 and part 2; may ship in any order.
 
 Decision: **do it**. Replace step 2's three-zone row (checkbox · text · preview tile) with **one full-width starter row** that looks like a grid link tile; the **20×20 check is on the right** of that row, not a separate column.
 
@@ -42,7 +42,7 @@ Each starter is `label.onboarding-wizard__row` (`src/surfaces.css`): a 20×20 na
    </li>
    ```
 
-   - `.onboarding-wizard__starter`: `display: block`, `width: 100%`, `height: var(--cell-size)` (72 at 1280×800; `--cell-size` is set on `:root` by `applyGridMetrics`), `position: relative`, `cursor: pointer`.
+   - `.onboarding-wizard__starter`: `display: block`, `width: 100%`, `height: var(--cell-size)` (72 at 1280×800; `--cell-size` is set on `:root` by `applyGridMetrics`), `position: relative`, `cursor: pointer` (also on the native input, which covers the whole row and is the real hit target).
    - Native checkbox: `position: absolute; inset: 0; margin: 0; opacity: 0;` — the whole row is its hit target; it stays the only focusable element of the row and keeps its `aria-label`.
    - `.onboarding-wizard__starter-surface`: flex row, `align-items: center`, `gap: 8px`, `padding: 0 10px`, height 100%, the border and radius of today's `.onboarding-wizard__preview-tile`, background **`var(--panel)`** (today's `var(--panel-elevated, var(--panel))` names an undefined token, so it already resolves to `--panel`; contrast in decision 3 is computed against `--panel`); `pointer-events: none`.
    - Icon **22×22**, `border-radius: 4px`; the letter fallback keeps today's behaviour (`createOnboardingStarterPreview`), renamed to `.onboarding-wizard__starter-icon--letter`.
@@ -51,11 +51,11 @@ Each starter is `label.onboarding-wizard__row` (`src/surfaces.css`): a 20×20 na
 
 2. **Checked.** `input:checked + .onboarding-wizard__starter-surface .onboarding-wizard__starter-check`: primary fill + contrast glyph (today's checked style). The row surface keeps `var(--border)`; no primary outline (OQ-P3-6 B).
 
-3. **Unchecked: the whole row reads "off" without losing contrast.** On `input:not(:checked) + .onboarding-wizard__starter-surface`: `filter: grayscale(1)` on the surface; `opacity: 0.4` on the icon only. Label colour `var(--muted)` (checked rows: `var(--text)`); the check keeps today's unchecked border token (`--border-control`). Label and check stay above 4.5:1 and 3:1 against the surface, in light and dark (computed in spec review 2: `--muted` 5.84 / 7.30, `--border-control` 3.33 / 3.28; grayscale changes them by ≤ 0.01). (Today's companion used `opacity: 0.4` on the whole surface; that drops the label below 4.5:1 on an enabled control.)
+3. **Unchecked: the whole row reads "off" without losing contrast.** On `input:not(:checked) + .onboarding-wizard__starter-surface`: `filter: grayscale(1)` on the surface; `opacity: 0.4` on the icon only. Label colour `var(--muted)` (checked rows: `var(--text)`); the check keeps today's unchecked border token (`--border-control`). Label and check stay above 4.5:1 and 3:1 against the surface, in light and dark (computed in spec review 2: `--muted` 5.84 / 7.30, `--border-control` 3.33 / 3.28; grayscale keeps them above the thresholds: measured after the filter, light about 5.8 / 3.3, dark 7.34 / 3.30; the filter turns the dark surface a neutral grey, `rgb(29,34,41)` → `rgb(33,33,33)`). The row has no hover style and no transition: `cursor: pointer` is the only affordance (the dialogs of `surfaces.css` have no transitions; the companion's 120 ms transition on the check is dropped). (Today's companion used `opacity: 0.4` on the whole surface; that drops the label below 4.5:1 on an enabled control.)
 
 4. **Focus.** `input:focus-visible + .onboarding-wizard__starter-surface`: the ring is drawn **inside** the surface, `box-shadow: inset 0 0 0 2px var(--focus-ring)` (solid, ≥ 3:1), because `.onboarding-wizard__starters` scrolls (`overflow-y: auto`, `padding: 0`) and clips anything outside a full-width row. Forced colors: `outline: 2px solid Highlight; outline-offset: -2px`.
 
-5. **Forced colors.** Under `@media (forced-colors: active)`: the check gets `border: 1px solid CanvasText`; checked → `background: Highlight` with the glyph in `HighlightText`; the focus ring uses `Highlight`.
+5. **Forced colors.** Under `@media (forced-colors: active)`: the check gets `border: 1px solid CanvasText`; checked → `background: Highlight` with the glyph in `HighlightText`; the focus ring uses `Highlight`, and the surface gets `filter: none` there (the grayscale would grey the `Highlight` outline of an unchecked focused row). `getComputedStyle` reports `Highlight` as an `rgba(…)` colour with alpha, so tests resolve it through a probe element.
 
 6. **Remove obsolete CSS and DOM.** Delete `.onboarding-wizard__row`, `.onboarding-wizard__row-label`, `.onboarding-wizard__preview`, `.onboarding-wizard__preview-tile`, `.onboarding-wizard__preview-icon` (and `--letter`), the `:has(> input:checked)::before` glyph and the preview-only mute rule. `test/borderContrast.test.js` pins `.onboarding-wizard__starter-check` instead of the old checkbox selector (its allowlist names `.onboarding-wizard__row input[type="checkbox"]` today) and gains one unit: `--color-text-muted` against the row surface ≥ 4.5:1 in both themes.
 
@@ -67,7 +67,7 @@ Each starter is `label.onboarding-wizard__row` (`src/surfaces.css`): a 20×20 na
 - `src/surfaces.css`: new `.onboarding-wizard__starter*` rules; delete the obsolete ones (decision 6).
 - `test/borderContrast.test.js`: selector update; `test/newtabSource.test.js`: pin the new row structure and the absence of the preview.
 - `docs/onboarding-wizard.md` (in the implementation PR): decision 5 UI bullet; AS-OB-04 (row height now `--cell-size`), AS-OB-17, AS-OB-26 (click anywhere on the row toggles) cross-link this spec.
-- E2E: a new `dg-NN-onboarding-starter-rows.mjs` (the plan takes the next free number) or groups added to `dg-60`.
+- E2E: `dg-73-onboarding-starter-rows.mjs` (groups AS-OSR-01…10 and the wizard-doc groups AS-OB-04, AS-OB-17, AS-OB-26).
 - `CHANGELOG.md` `[Unreleased]`.
 
 ## Acceptance scenarios
@@ -78,61 +78,73 @@ Common setup: harness **1280×800**, wizard step 2, eight starters, light theme 
 - Given: step 2.
 - When: inspecting the list.
 - Then: 8 `label.onboarding-wizard__starter`; no `.onboarding-wizard__row-label`, `.onboarding-wizard__preview`; each row's width equals the list content width; height 72 px.
-- Verified by: E2E; `newtabSource` pin.
+- Verified by: E2E `dg-73`; `newtabSource` pin.
 
 ### AS-OSR-02 Check on the right, centered
 - Given: step 2, any row.
 - When: measuring.
 - Then: `.onboarding-wizard__starter-check` is 20×20, its right edge 10 px from the inner edge of the surface border (11 px from the outer edge), its vertical center equals the row's (±1 px); the native input covers the whole row.
-- Verified by: E2E.
+- Verified by: E2E `dg-73`.
 
 ### AS-OSR-03 Click anywhere toggles
 - Given: an unchecked row.
 - When: `page.mouse.click` at the center of the label's rect, then of the icon's rect, then of the check's rect (coordinates, not element locators: the surface has `pointer-events: none`, so locator clicks on its children time out).
 - Then: the state toggles on each click (checked, unchecked, checked); Space on the focused row toggles too.
-- Verified by: E2E (replaces the AS-OB-26 preview click).
+- Verified by: E2E `dg-73` (replaces the AS-OB-26 preview click).
 
 ### AS-OSR-04 Unchecked row is off but readable
 - Given: one unchecked and one checked row, light and dark theme.
 - When: reading computed styles and contrast.
 - Then: unchecked surface has `grayscale(1)`, its icon opacity 0.4; label contrast ≥ 4.5:1 and check border ≥ 3:1 against the surface in both themes; the checked row has no filter.
-- Verified by: E2E computed style; `borderContrast` units for the check border and the muted label.
+- Verified by: E2E `dg-73` computed style; `borderContrast` units for the check border and the muted label.
 
 ### AS-OSR-05 Checked row has no primary outline
 - Given: a checked row.
 - When: inspecting.
 - Then: the check is primary-filled with the glyph; the surface border colour equals `--border`.
-- Verified by: E2E.
+- Verified by: E2E `dg-73`.
 
 ### AS-OSR-06 Keyboard and names unchanged
 - Given: step 2.
 - When: Tab from the first row.
 - Then: order is the eight checkboxes → Back → Finish; each checkbox named `Add {label} to your grid`; the focused row's surface has computed `box-shadow` `inset 0 0 0 2px` in the `--focus-ring` colour, and the surface rect lies inside the list's `getBoundingClientRect` for the first and the last row (scrolled into view).
-- Verified by: E2E (AS-OB-17 adapted).
+- Verified by: E2E `dg-73` (AS-OB-17 adapted).
 
 ### AS-OSR-07 Narrow window
 - Given: harness 320×600.
 - When: step 2.
-- Then: rows 56 px high (`--cell-size` 56); the label's computed `white-space` is `nowrap` and `text-overflow` is `ellipsis` (the starter labels are short enough not to truncate, so truncation itself is not asserted); check fully visible; no horizontal scroll; list cap still ~3.5 rows.
-- Verified by: E2E.
+- Then: rows 56 px high (`--cell-size` 56); the label's computed `white-space` is `nowrap` and `text-overflow` is `ellipsis` (the starter labels are short enough not to truncate, so truncation itself is not asserted); check fully visible; no horizontal scroll; list cap still ~3.5 rows (the visible list is 3.3..3.7 rows: `list.clientHeight` over row height + gap, as AS-OB-04).
+- Verified by: E2E `dg-73`.
 
 ### AS-OSR-08 Forced colors
 - Given: `forced-colors: active` emulated.
 - When: step 2 with one checked row.
 - Then: the unchecked check has a visible border; the checked one is filled with `Highlight`; the focused row's surface has `outline-style: solid` and `outline-offset: -2px`.
-- Verified by: E2E (emulated media).
+- Verified by: E2E `dg-73` (emulated media).
 
 ### AS-OSR-09 Icon and letter fallback
 - Given: step 2 at 1280×800; favicon requests for one starter blocked (harness route abort) so it shows the letter fallback.
 - When: inspecting the icons; then unchecking both rows.
 - Then: favicon `img.onboarding-wizard__starter-icon` and the fallback `.onboarding-wizard__starter-icon--letter` are both 22×22; in the unchecked rows both have opacity 0.4.
-- Verified by: E2E.
+- Verified by: E2E `dg-73`.
 
 ### AS-OSR-10 500 px and low window
 - Given: harness 500×800, then 1280×600.
 - When: step 2.
 - Then: at 500 px rows are 64 px (`--cell-size` 64) and the check stays inside the row; at 1280×600 the list keeps the ~3.5-row cap (`docs/onboarding-wizard.md` AS-OB-04) and the dialog behaves as in AS-OB-16 (same footer and scroll outcome as before this change).
-- Verified by: E2E.
+- Verified by: E2E `dg-73`.
+
+## Accepted exceptions
+
+Intentional differences from the companion To-Be panel (`onboarding-wizard-step2-starters-v1.html`):
+
+- An unchecked row is a grey surface (`filter: grayscale(1)`, icon `opacity` 0.4), not `opacity` on the whole row (decision 3; the label and check stay readable).
+- A checked row has no primary outline; only the check is filled (OQ-P3-6).
+- The focus ring is drawn inside the surface (`inset`), not outside as in the companion (decision 4; the list clips an outside ring).
+- The check sits at the end of the flex row after a `flex: 1` label; the companion's `margin-left` on the check is not used.
+- No hover style and no transition on the row (decision 3).
+- The label type is 13px / 600 (decision 1).
+- In the dark theme the grey surface is a neutral grey slightly lighter than the dialog around it (measured `rgb(33,33,33)` against `rgb(29,34,41)`); this follows from decision 3.
 
 ## Decision log
 

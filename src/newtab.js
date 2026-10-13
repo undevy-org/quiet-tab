@@ -1453,24 +1453,15 @@ function goToOnboardingStep1({ focusTitle = false } = {}) {
   }
 }
 
-function createOnboardingStarterPreview(row) {
-  const preview = createNode("div", "onboarding-wizard__preview");
-  const tile = createNode("div", "onboarding-wizard__preview-tile");
+function createOnboardingStarterIcon(row) {
   const letter = getFavoriteLetter({ label: row.label, domain: row.domain });
-  if (faviconBaseUrl) {
-    const icon = createNode("img", "onboarding-wizard__preview-icon");
-    icon.src = `${faviconBaseUrl}?pageUrl=${encodeURIComponent(row.url)}&size=32`;
-    icon.alt = "";
-    icon.addEventListener("error", () => {
-      icon.replaceWith(createNode("span", "onboarding-wizard__preview-icon onboarding-wizard__preview-icon--letter", letter));
-    });
-    tile.appendChild(icon);
-  } else {
-    tile.appendChild(createNode("span", "onboarding-wizard__preview-icon onboarding-wizard__preview-icon--letter", letter));
-  }
-  tile.appendChild(createNode("span", "favorite-tile__label", row.label));
-  preview.appendChild(tile);
-  return preview;
+  const fallback = () => createNode("span", "onboarding-wizard__starter-icon onboarding-wizard__starter-icon--letter", letter);
+  if (!faviconBaseUrl) return fallback();
+  const icon = createNode("img", "onboarding-wizard__starter-icon");
+  icon.src = `${faviconBaseUrl}?pageUrl=${encodeURIComponent(row.url)}&size=32`;
+  icon.alt = "";
+  icon.addEventListener("error", () => icon.replaceWith(fallback()));
+  return icon;
 }
 
 function buildOnboardingStep2() {
@@ -1484,13 +1475,17 @@ function buildOnboardingStep2() {
   for (let i = 0; i < ONBOARDING_STARTER_LINKS.length; i += 1) {
     const row = ONBOARDING_STARTER_LINKS[i];
     const item = createNode("li");
-    const label = createNode("label", "onboarding-wizard__row");
+    const label = createNode("label", "onboarding-wizard__starter");
     const box = document.createElement("input");
     box.type = "checkbox";
     box.checked = onboardingStarterChecks[i] === true;
     box.dataset.onboardingStarterIndex = String(i);
     box.setAttribute("aria-label", `Add ${row.label} to your grid`);
-    label.append(box, createNode("span", "onboarding-wizard__row-label", row.label), createOnboardingStarterPreview(row));
+    const surface = createNode("span", "onboarding-wizard__starter-surface");
+    const check = createNode("span", "onboarding-wizard__starter-check");
+    check.setAttribute("aria-hidden", "true");
+    surface.append(createOnboardingStarterIcon(row), createNode("span", "onboarding-wizard__starter-label", row.label), check);
+    label.append(box, surface);
     item.appendChild(label);
     list.appendChild(item);
   }
