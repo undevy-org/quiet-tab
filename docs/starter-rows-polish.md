@@ -16,9 +16,11 @@ Related: `docs/onboarding-starter-rows.md` (decisions 3, 4, 5 and `## Accepted e
 | 2026-10-13 | Make the dark-theme "off" row closer to the dialog colour. | `confirmed` | § Decision 2 |
 | 2026-10-13 | Mute the rows while Finish is writing. | `confirmed` | § Decision 3 (backlog 81) |
 | 2026-10-13 | Include backlog 83 (E2E base build). Backlog 82 (progress pills under forced colors) rides along. | `confirmed` | § Decisions 4, 5 (backlog 59, 82, 83) |
+| 2026-10-13 | Backlog 85 (letter glyph too faint in an unchecked row, found by run 32) joins: it is the same CSS rule that decision 2 rewrites. | `added by the orchestrator` after run 32 merged; the owner can drop it | § Decision 2 (backlog 85) |
 
-## Current behaviour (`main` after run 32)
+## Current behaviour (`main` after run 32, `ab7b415`)
 
+- Since run 32 a starter icon that is Chrome's default globe is replaced by the letter (`.onboarding-wizard__starter-icon--letter`), after a pending state (`[data-icon-check="pending"]`, `visibility: hidden`); this run does not touch that logic. The letter is now the common look of an icon, so its contrast in an unchecked row matters (backlog 85).
 - A starter row has no hover style: `cursor: pointer` is the only affordance (run 26 `## Accepted exceptions`).
 - An unchecked row is `filter: grayscale(1)` on the whole surface, icon `opacity` 0.4. In the dark theme the grey of the filtered surface is a neutral `rgb(33,33,33)` while the dialog is `rgb(29,34,41)`, so the off row looks like a grey block on a blue-grey panel.
 - While Finish writes (`favoritesBusy`), the 8 checkboxes are `disabled` but the rows look normal; a click is ignored silently.
@@ -28,7 +30,7 @@ Related: `docs/onboarding-starter-rows.md` (decisions 3, 4, 5 and `## Accepted e
 ## Default decisions (owner can override)
 
 1. **Hover.** On a device with a hover pointer (`@media (hover: hover)`), `.onboarding-wizard__starter:hover` paints the surface of an ENABLED row with `background: var(--soft-fill)`; border stays. It applies to checked and unchecked rows alike, in both themes. No transition (the wizard has none, `surfaces.css:30`). Not applied while the row is disabled (decision 3). The label stays ≥ 4.5:1 on `--soft-fill` in both themes (checked on the unit test in `test/borderContrast.test.js`: `--text` and `--muted` against `--color-fill-soft`; if `--muted` on `--soft-fill` falls below 4.5:1, the hovered unchecked label uses `--text`).
-2. **Quieter "off" row.** The grey no longer comes from a filter on the whole surface. An unchecked row keeps the surface colour of the dialog (`background: var(--panel)`, border `var(--border)`, no `filter`), and reads "off" through the muted label (`var(--muted)`), the empty check (border `--border-control`), and the icon: `filter: grayscale(1)` and `opacity: 0.4` on the ICON only (favicon `img` and the letter icon alike). In the light theme the row looks as before; in the dark theme it takes the dialog colour. Supersedes decision 3 of `docs/onboarding-starter-rows.md`. Contrast stays exact: label ≥ 4.5:1 and check border ≥ 3:1 against `--panel` (5.84 / 7.30 and 3.33 / 3.28 measured in run 26).
+2. **Quieter "off" row.** The grey no longer comes from a filter on the whole surface. An unchecked row keeps the surface colour of the dialog (`background: var(--panel)`, border `var(--border)`, no `filter`), and reads "off" through the muted label (`var(--muted)`), the empty check (border `--border-control`), and the icon: `filter: grayscale(1)` on the ICON only, plus `opacity: 0.4` on the favicon `img` (the letter icon follows the paragraph below). **The letter icon is not faded** (backlog 85): in an unchecked row `.onboarding-wizard__starter-icon--letter` keeps `filter: grayscale(1)` but no `opacity` reduction, so its glyph keeps ≥ 3:1 against its chip in the light theme, the dark theme and under forced colors (run 32 measured 2.58 / 3.6 / 2.85 at `opacity: 0.4`); if full strength reads as "on", the plan probe picks the lowest `opacity` that still gives ≥ 3:1 in all three, and that value is the one written into the spec. The favicon `img` keeps `opacity: 0.4`. In the light theme the row looks as before; in the dark theme it takes the dialog colour. Supersedes decision 3 of `docs/onboarding-starter-rows.md`. Contrast stays exact: label ≥ 4.5:1 and check border ≥ 3:1 against `--panel` (5.84 / 7.30 and 3.33 / 3.28 measured in run 26).
 3. **Busy look (backlog 81).** While the rows are disabled (Finish writing), each row is muted: surface `opacity: 0.6` and `cursor: default` (on the label and the input); no hover. When the write fails and the rows are enabled again, the rows return to normal. Disabled controls are exempt from the contrast rule (WCAG 1.4.3 inactive components), so the 0.6 is a visual choice. The focus behaviour of run 25 (focus back on Finish after a failed Finish) is unchanged.
 4. **Progress pills under forced colors (backlog 82).** In `@media (forced-colors: active)`: `.onboarding-wizard__pill` gets `border: 1px solid CanvasText`, `.onboarding-wizard__pill--active` gets `background: Highlight`. Nothing changes outside forced colors. With decision 2 there is no surface `filter` left, so the `filter: none` rules that run 26 added to the forced-colors block are removed.
 5. **E2E base build (backlog 59, 83).** `buildFromRef` copies `rules/` from the ref when the ref has it (`git archive` of the path only if `git ls-tree` finds it; older refs without `rules/` still build). `dg-73` AS-OSR-10 switches back to `ctx.base`, the private `base-73` build is removed. Measure whether `01-upgrade` turns green on a clean base: if so, backlog 59 and 83 are closed and the "known red" wording in the kickoffs and `permissions.md` is not edited (a rights file; the owner decides); the verifier reports the new state.
@@ -60,7 +62,7 @@ Common setup: harness **1280×800**, wizard step 2, eight starters, light theme 
 ### AS-SRP-03 Unchecked row takes the dialog colour
 - Given: an unchecked and a checked row, light and dark theme.
 - When: reading computed styles.
-- Then: the unchecked surface `background-color` equals the resolved `--panel` (the dialog colour) and `filter` is `none`; the unchecked icon has `filter: grayscale(1)` and `opacity` 0.4 (favicon and letter alike); label colour equals `--muted`; check border equals `--border-control`; label ≥ 4.5:1 and check border ≥ 3:1 against `--panel`. The checked row is unchanged.
+- Then: the unchecked surface `background-color` equals the resolved `--panel` (the dialog colour) and `filter` is `none`; the unchecked icon has `filter: grayscale(1)`; a favicon `img` has `opacity` 0.4, the letter icon has the opacity chosen in decision 2 and its glyph contrast against its chip is ≥ 3:1 in light, dark and forced colors; label colour equals `--muted`; check border equals `--border-control`; label ≥ 4.5:1 and check border ≥ 3:1 against `--panel`. The checked row is unchanged.
 - Verified by: E2E `dg-75` (amends `dg-73` AS-OSR-04); `borderContrast` units.
 
 ### AS-SRP-04 Busy rows are muted and inert
@@ -104,6 +106,7 @@ Common setup: harness **1280×800**, wizard step 2, eight starters, light theme 
 
 - A different layout, size or type of the row, or the favicon handling (run 32).
 - Changing the busy flow itself (guards, focus return), or backlog 80.
+- Backlog 84 (letters hidden from assistive technology) and 86 (empty 1×1 tile while the default-icon check is pending): both are about the run 32 logic, not the starter row styles.
 - Editing `permissions.md`.
 
 ## Process
