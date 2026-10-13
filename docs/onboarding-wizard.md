@@ -36,7 +36,7 @@ When `shouldAutoShowCityPrompt` allows, boot opens `showCityModal("first-run", n
 2. **One modal shell, two steps.** Implement as **`#onboarding-wizard`** with `CITY_MODAL_MODES` entry **`onboarding`** so `isCityModalOpen`, escape layer, and tab-trap reuse today's modal stack (`src/newtab.js` escape/tab paths). Root: `role="dialog"`, `aria-modal="true"`. **`aria-labelledby`** points at the **active** step title id (update when step changes). Step index `1 | 2` in JS only; no header toolbar. Hidden step panel is `inert` (tab trap must ignore inert descendants). Veil invariant from `docs/first-run-empty-desk.md` decision 2 moves to onboarding show/hide (not `showCityModal("first-run")`).
 3. **Progress indicator (variant D).** Inset row at the top of the dialog panel (same horizontal padding as modal content): two pills, height **5px**, gap **6px**, border-radius full. Inactive: `--soft-fill`. Active: `--border-control` (not `--primary`). Step 1: left pill active. Step 2: both pills active (completed + current). No numeric "Step 1 of 2" text.
 4. **Step 1 — City.** Title: "Where should we show weather?" Subtitle: "Enter a city, use your location, or skip for now." (inline **use your location** link; spec `docs/use-my-location.md`). Body: reuse city field, suggestions popover, busy/save validation and error slot from today's first-run city modal (no "Current:" line; no focus steal on open). Reload before complete: field shows stored location (`chosenCity`) like change-mode prefill. Footer **50/50**: **Skip** | **Continue** (`arrowRight` after label). **Skip** → step 2 without geocode, without `quietTabWeatherPromptDismissed`. **Continue** disabled while step 1 **busy**; enabled when the city field is non-empty (same as today's Save, `newtab.js:661-665`). On success `changeCity` runs with **`onSuccess` → advance to step 2** (must not call `hideCityModal()`). On failure stay on step 1 with error. While busy, **Skip**, Escape, and backdrop are ignored (match today's busy city modal). Escape with an open suggestions list: first Escape closes the list (`escapeLayer`), second behaves like Skip (AS-OB-11). Popover placement: on low windows use the same docked/scroll dialog behaviour as first-run city modal when needed (AS-OB-16); step-1 shell must not clip the popover.
-5. **Step 2 — Starter links.** Title: "Add starter links". Subtitle: "Keep the ones you want on your grid." Body: a scrollable list only (title, subtitle, progress, footer fixed). Each row is one **`<label>`** wrapping the native checkbox and a non-interactive **2×1** preview (`div`, not `button`). **Click anywhere on the row** or **Space** while focus is on the row toggles the checkbox (same as a native label). Min **44×44 px** row height, visible `:focus-visible` on the checkbox control. Unchecked **preview tile and favicon only** ~**0.4** opacity + **grayscale** — **label text always full opacity** (≥ 4.5:1). Scroll: list region `max-height: calc(var(--cell-size) * 3.5 + var(--grid-gap) * 3)` (same formula as mockup, AS-OB-04) and `overflow-y: auto`; do **not** use `flex: 1 1 auto` on the list (prevents 7+ visible rows). When `100vh − 32px` is less than the fixed chrome + capped list, the **dialog panel** uses `.city-modal__dialog--scroll` so **Back** and **Finish** stay reachable down to **320×200** (list keeps the cap and scrolls inside). Dialog shell: **no `overflow: hidden`** (popover on step 1 must not clip). Default **checked** (3): ChatGPT, YouTube, X. Starters (order, url, label, domain, defaultChecked, optional accent hex):
+5. **Step 2 — Starter links.** Title: "Add starter links". Subtitle: "Keep the ones you want on your grid." Body: a scrollable list only (title, subtitle, progress, footer fixed). Each row is one **`<label>`** wrapping the native checkbox (invisible, covering the whole row, the only focusable element of the row) and one **full-width link-tile surface** (22×22 icon, 13px / 600 name, the 20×20 check on the right), `--cell-size` high (`docs/onboarding-starter-rows.md`). **Click anywhere on the row** or **Space** while focus is on the row toggles the checkbox (same as a native label). The `:focus-visible` ring is drawn inside the surface. An unchecked row is a **grey surface** (`grayscale`, icon ~**0.4** opacity); the name stays ≥ 4.5:1 and the check border ≥ 3:1. Scroll: list region `max-height: calc(var(--cell-size) * 3.5 + var(--grid-gap) * 3)` (same formula as mockup, AS-OB-04) and `overflow-y: auto`; do **not** use `flex: 1 1 auto` on the list (prevents 7+ visible rows). When `100vh − 32px` is less than the fixed chrome + capped list, the **dialog panel** uses `.city-modal__dialog--scroll` so **Back** and **Finish** stay reachable down to **320×200** (list keeps the cap and scrolls inside). Dialog shell: **no `overflow: hidden`** (popover on step 1 must not clip). Default **checked** (3): ChatGPT, YouTube, X. Starters (order, url, label, domain, defaultChecked, optional accent hex):
 
 | # | Label | Domain | URL | Accent |
 |---|-------|--------|-----|--------|
@@ -89,7 +89,7 @@ Full UI pipeline: spec review, spec gate, plan in notes, E2E-first implementatio
 - **Zero links on Finish** leaves only system tiles (owner approved); they form the k = 0 island (3×3, temperature 1×2).
 - **Escape on step 2 = Finish** (owner approved): no separate cancel on step 2.
 - **Continue/Finish icons** (`arrowRight`, `check`, `arrowLeft`) are new footer chrome for this wizard only.
-- **Starter row click target:** implementation uses a wrapping `<label>` (whole row toggles). The development mockup uses a `button` preview where only the 22×22 checkbox toggles; **ship label semantics**, mock aligned at checkpoint.
+- **Starter row click target:** implementation uses a wrapping `<label>` (whole row toggles). The development mockup uses a `button` preview where only the 22×22 checkbox toggles; **ship label semantics**; the row layout is `docs/onboarding-starter-rows.md`.
 
 ## Acceptance scenarios
 
@@ -117,7 +117,7 @@ Common setup: E2E harness 1280×800, fresh profile, `autoPrompt: true`, weather 
 - Given: step 2, 8 rows, harness 1280×800.
 - When: `list.clientHeight / rowPitch` (row includes gap).
 - Then: ratio in **3.3..3.7**; footer and title fixed.
-- Verified by: E2E `dg-60` group 4.
+- Verified by: E2E `dg-73` group AS-OB-04 (rows are `--cell-size` high, `docs/onboarding-starter-rows.md`).
 
 ### AS-OB-05 Finish adds checked starters as favorites
 - Given: step 2, default three checked, one unchecked toggled on (GitHub).
@@ -189,13 +189,13 @@ Common setup: E2E harness 1280×800, fresh profile, `autoPrompt: true`, weather 
 - Given: harness resize (same fixtures as `dg-48` / `15-city-modal-layout` / `dg-53` where only viewport differs).
 - When: step 1 at **320×400**; step 2 at **500×600**, **500×420**, **320×320**, and **320×200**.
 - Then: step 1 city field and suggestions usable (popover not clipped; docked list behaviour per `docs/city-modal-low-window.md` when applicable); step 2 list keeps **max-height** cap (~3.5 rows); when content exceeds viewport the wizard panel has **`.city-modal__dialog--scroll`** (same rule as city modal `placePopover` / `tooTall`); footer **Back** and **Finish** reachable without clipping.
-- Verified by: E2E `dg-60` group 15; regressions may reuse resized groups from `dg-48`, `dg-53`, `15-city-modal-layout` adapted to wizard step 1.
+- Verified by: step 2 at 1280×600 in `dg-73` AS-OSR-10 (head against the old build); the former reference "`dg-60` group 15" named a group that does not exist. Regressions may reuse resized groups from `dg-48`, `dg-53`, `15-city-modal-layout` adapted to wizard step 1.
 
 ### AS-OB-17 Tab order and focus on step 2
 - Given: step 2.
 - When: user Tabs from the document.
 - Then: focus visits each checkbox, then Back, then Finish; hidden step 1 controls are skipped.
-- Verified by: E2E `dg-60` group 16 (keyboard smoke).
+- Verified by: E2E `dg-73` group AS-OB-17 (order) and AS-OSR-06 (ring); the Tab-wrap checks are in `dg-60` group 17.
 
 ### AS-OB-18 Finish busy ignores duplicate actions
 - Given: step 2, `delayStorageInit` on widget or flag write.
@@ -247,9 +247,9 @@ Common setup: E2E harness 1280×800, fresh profile, `autoPrompt: true`, weather 
 
 ### AS-OB-26 Starter row toggles by click and Space
 - Given: step 2, one row focused.
-- When: click on preview/label area (not only the 22×22 box); Space key.
+- When: click on the row (label, icon and check; not only the check); Space key.
 - Then: checkbox toggles; accessible name includes link label.
-- Verified by: E2E `dg-60` group 25.
+- Verified by: E2E `dg-73` group AS-OB-26 and AS-OSR-03 (`docs/onboarding-starter-rows.md`).
 
 ### AS-OB-27 Finish dedupes URLs already on the grid
 - Given: step 2, profile already has ChatGPT favorite; ChatGPT row checked.
