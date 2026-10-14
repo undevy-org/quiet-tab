@@ -16,7 +16,7 @@ Related: `docs/favicon-letter-pending.md`, `docs/favicon-globe-fallback.md`, `sr
 
 ## Probe result (live Chromium, light scheme, run 37 measurements)
 
-The grid letter `.favorite-letter` and the pending chip (`.favorite-icon[data-icon-check="pending"]`) are filled with `rgb(255 255 255 / 12%)` in both themes. On a light tile that is `(229,232,236)` on `(226,230,234)` at the centre of the box (about 3 levels of 255; the corner-mean sampling of run 38 measured 5–6 on `main`), so in the light theme a link without an icon shows its letter on a tile that looks the same colour around it. In the dark theme the same fill is 25–27 levels away from the tile. The wizard row letter and chip use `--soft-fill` (`#eef1f5` in light), which is visible on the white panel (17 levels) and is not part of this run.
+The grid letter `.favorite-letter` and the pending chip (`.favorite-icon[data-icon-check="pending"]`) are filled with `rgb(255 255 255 / 12%)` in both themes. On a light tile that is `(229,232,236)` on `(226,230,234)` at the centre of the box (about 3 levels of 255; the corner-mean sampling of run 38 measured 3–7 on `main` over all sizes), so in the light theme a link without an icon shows its letter on a tile that looks the same colour around it. In the dark theme the same fill is 25–27 levels away from the tile. The wizard row letter and chip use `--soft-fill` (`#eef1f5` in light), which is visible on the white panel (17 levels) and is not part of this run.
 
 ## Current behaviour (`main`, `f7fd5c5`)
 
