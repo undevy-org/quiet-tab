@@ -2,7 +2,7 @@
 
 ## Status
 
-`draft` — run №37 (`favicon-letter-pending`). A follow-up of run 32 (`docs/favicon-globe-fallback.md`, backlog 84 and 86), kept out of runs 33–36 as "run 32 logic". Backlog 84 and 86 were reproduced live before this spec (§ Probe result).
+`draft` — revision 2 (2026-10-14, after spec review round 1). Run №37 (`favicon-letter-pending`). A follow-up of run 32 (`docs/favicon-globe-fallback.md`, backlog 84 and 86), kept out of runs 33–36 as "run 32 logic". Backlog 84 and 86 were reproduced live before this spec (§ Probe result).
 
 **Data compatibility: not required** (no storage change; no-users policy, `agent-config/CLAUDE.md`).
 
@@ -18,45 +18,62 @@ Related: `docs/favicon-globe-fallback.md` (decisions 2 and 4 stay, except where 
 
 ## Probe result (live Chromium, throw-away profile, no history; `scratch/probe-favicon-letter-pending/probe.mjs` in quiet-tab-notes)
 
-- Backlog 86, normal case: the tile is `pending` for one frame (first pending frame at 41 ms, last at 41 ms, letter at 58 ms): an empty box for about one frame, then the letter. With the sentinel held open: `pending` from 42 ms to 2042 ms, then the globe image appears (fail open): the tile is an empty box for 2 s.
+- Backlog 86, normal case: the tile is `pending` for one frame (first pending frame at 41 ms, last at 41 ms, letter at 58 ms; requestAnimationFrame samples): an empty box for about one frame, then the letter. With the sentinel held open: `pending` from 42 ms to 2042 ms, the tile is an empty box for 2 s (the globe appearing afterwards is the fail open of run 32, `dg-74` AS-FDF-06a, not measured here).
+- Mechanism (`scratch/probe-favicon-letter-pending/mech.mjs`, screenshot of the 28×28 box with the sentinel held, pixels read in Python): `visibility: hidden` paints nothing (box = tile colour). A pending `img` with `visibility: visible`, a fill and radius **and `object-position: 100px 0`** (a length larger than the box; the replaced content is clipped to the box) paints the fill only: no globe pixel (the globe's grey `(154,160,166)` is absent), `complete` true, `naturalWidth` 32, so `load` still fires and the check still runs. Percent positions (`300% 0`), `content: ""` + `clip-path` and `content: url(data:…)` leave the globe painted and are ruled out. Light theme: chip `(229,232,236)` on tile `(226,230,234)`, about 3 levels: the chip is nearly invisible in the light theme, like the letter's own fill.
 - Backlog 84: tile accessibility tree `button "Open Site 1": S`; wizard row `checkbox "Add ChatGPT to your grid" [checked]` and `text: C ChatGPT`; the letter node has no `aria-hidden`. In both places the name is already carried by another node (the tile's `aria-label`; the row's visible label and the checkbox `aria-label`), so the letter only adds noise.
 
 ## Current behaviour (`main`, `4fa8792`)
 
-- `[data-icon-check="pending"]` is `visibility: hidden` (`src/newtab.css`): the `img` keeps its box and paints nothing (grid tile icon 28×28; wizard row icon 22×22).
-- The letter nodes are `span.favorite-letter` (grid, 28 px, radius 7 px, fill `rgb(255 255 255 / 12%)`) and `span.onboarding-wizard__starter-icon--letter` (row, 22 px, radius 4 px, fill `var(--soft-fill)`). Neither is `aria-hidden`.
+- `[data-icon-check="pending"]` is `visibility: hidden` (`src/newtab.css`): the `img` keeps its box and paints nothing (grid icon 28×28 in a 1×1 tile, 32 px in 1×2 and 40 px in 2×2 through the `.favorite-letter` size rules; wizard row icon 22×22).
+- The letter nodes are `span.favorite-letter` (grid, size by tile, radius 7 px, fill `rgb(255 255 255 / 12%)`) and `span.onboarding-wizard__starter-icon--letter` (row, 22 px, radius 4 px, fill `var(--soft-fill)`). Neither is `aria-hidden`.
 
 ## Decisions (owner can override)
 
-1. **A neutral chip while the check is pending (owner, 2026-10-14).** While an icon `img` has `data-icon-check="pending"` its box shows a chip: the same size, radius and fill as the letter node of that surface (grid: 28 px, radius 7 px, `rgb(255 255 255 / 12%)`; wizard row: 22 px, radius 4 px, `var(--soft-fill)`), with no glyph, no `--icon-backdrop`, no `--icon-outline`. The globe's pixels are never painted during the check (run 32 decision 4 stays). On verdict `default` the chip becomes the letter (the fill is the same, only the glyph appears, no colour jump); on `real` the image replaces the chip (a wizard row then shows the image on its backdrop and outline, as today); on fail open (decision 2 of run 32) the image replaces the chip. The tile's size and layout do not change. No transition and no animation (nothing to switch off for reduced motion). The mechanism that keeps the globe unpainted while the chip is painted is the plan's choice (live probe, `visibility: hidden` alone cannot paint a fill); the observable contract is AS-FLP-01..03.
+1. **A neutral chip while the check is pending (owner, 2026-10-14).** While an icon `img` has `data-icon-check="pending"` its box shows a chip: the size and radius of the letter node it will become (grid: the tile's letter size, radius 7 px; wizard row: 22 px, radius 4 px) and the letter's fill (grid: `rgb(255 255 255 / 12%)`; row: `var(--soft-fill)`), with no glyph, no `--icon-backdrop`, no `--icon-outline`. **The chip follows every rule that styles the row's letter**, so that chip → letter changes only the glyph: in an unchecked row `opacity: 0.6` and the grey filter of the letter (not the `img`'s 0.4), the letter's hover fill (`--soft-fill-strong`), the letter's busy and forced-colors treatment. The globe's pixels are never painted during the check (run 32 decision 4 stays). On verdict `default` the chip becomes the letter; on `real` the image replaces the chip (a wizard row then shows the image on its backdrop and outline, as today); on fail open the image replaces the chip. The tile's size and layout do not change. No transition and no animation. **Mechanism (proven by the probe, § Probe result):** the pending `img` is made visible and gets the chip's fill and radius, and its content is pushed out of its box with `object-position: <length larger than the box>` (replaced content is clipped to the box), instead of `visibility: hidden`; `opacity` cannot be used (it would hide the fill too); percent positions, `content` replacement and `clip-path` do not hide the globe. The plan's Task 1 re-measures it in the real rules (grid sizes 28/32/40, row 22, both themes, `loading="lazy"` still loads, `complete`/`naturalWidth` unchanged, no broken-image mark) and may choose another mechanism only if it meets AS-FLP-01..03. The observable contract is the AS below.
 2. **The letter is hidden from assistive technology.** Both letter nodes get `aria-hidden="true"` where they are created (`createFavoriteLetterNode`, the wizard fallback). Names do not change: tiles `Open <label>` / `Edit <label>`, rows `Add <label> to your grid` and the visible row label. The pending `img` already has `alt=""`; the chip is that `img` and adds nothing to the tree. The letter is not focusable, so keyboard order and focus are unaffected.
 3. **Not changed.** Run 32 decision 2 (one 2 s timeout, fail open, no `pending` for later tiles), the verdict cache, the detection (`src/defaultFavicon.js`), letter colours and styles, the letter's glyph, custom icons, icon mode control, the starter table, Finish, the backdrop and outline of runs 35–36, storage, permissions, `docs/privacy.md`. No new user-facing string.
 
 ## Scope
 
 - `src/newtab.css` (pending rule of the grid icon), `src/surfaces.css` (pending rule of the wizard icon), `src/newtab.js` (two `aria-hidden` sites), `CHANGELOG.md` `[Unreleased]`, `docs/favicon-globe-fallback.md` (decision 4: the pending state is now a chip; `## Status` note), `docs/onboarding-starter-rows.md` only if it describes the pending state.
-- Tests: `test/newtabSource.test.js` (pins by component selector, mutation-proven after the implementation commit), a new E2E `dg-79-favicon-letter-pending.mjs`; sweep of the scenarios that read icon nodes or the frame recorder of `dg-74` (AS-FDF-05, 10, 11 assert `visibility` of the pending image) and `dg-73`, `dg-75`, `dg-76`, `dg-78`.
+- Pins and scenarios that assert the old pending state (`visibility: hidden`) and are rewritten with it: `test/newtabSource.test.js` pin "pending-rule" (~1895–1903: exactly one `data-icon-check` rule with body `visibility: hidden`; replaced by pins of all `[data-icon-check="pending"]` rules, by component selector); `dg-78` AS-FBO-05 (`held.visibility === "hidden"`, no ring pixels; becomes "pending box is the chip, no ring"); the frame recorder of `dg-74` (`painted` is `shown && complete && naturalWidth > 0`; it excludes `[data-icon-check="pending"]` from `painted`, and the "no globe" guarantee moves to the pixel checks of AS-FLP-01/02); `dg-74` AS-FDF-05, 10, 11; `dg-73`, `dg-75`, `dg-76`. Docs that state "pending = `visibility: hidden`": `docs/favicon-globe-fallback.md` decision 4, `docs/favicon-outline.md` (~line 82), `docs/favicon-backdrop.md` (~line 39); `docs/starter-rows-polish.md` (~line 25) is checked.
+- Tests: `test/newtabSource.test.js` (pins by component selector over ALL rules with the component prefix, mutation-proven after the implementation commit), a new E2E `dg-79-favicon-letter-pending.mjs`.
 
 ## Acceptance scenarios
 
 Common setup: the E2E harness profile has no history, so every `_favicon` answer is the grey globe. The sentinel is held or delayed with the `dg-74` router (`gate`/`hang` modes). "Icon box" is the 28×28 grid icon or 22×22 row icon rect.
 
 ### AS-FLP-01 Grid tile: chip while pending
-- Given: a favicon-mode link in a 1×1 tile (also 1×2, 2×1, 2×2), the sentinel held on a gate.
+- Given: dark colour scheme; favicon-mode links in a 1×1, a 1×2, a 2×1 and a 2×2 tile; the sentinel held on a gate that auto-releases after `GATE_BUDGET_MS` (1500 ms, inside the 2 s timeout; lesson run 32 (3)); the pixel read happens before the release.
 - When: the new tab opens and the check is pending.
-- Then: `[data-icon-check="pending"]` exists; a screenshot of the icon box shows no globe pixel (no pixel of the grey globe image) and its centre is the chip fill composited on the tile (not the plain tile colour: the chip differs from the tile background); the box rect equals the rect of the letter that replaces it after the gate opens; after release the node is `.favorite-letter` with the glyph and the same rect.
-- Verified by: E2E `dg-79`; `newtabSource` pin.
+- Then: `[data-icon-check="pending"]` exists; computed `background-color` of the pending `img` is the letter's fill with alpha > 0 and `border-radius` equals the letter's; in a screenshot of the icon box every pixel of the inner area (inset 4 px from the box edge, so the rounded corners are excluded) equals the pixel at the box centre within ±2 levels per channel (uniform fill: no globe, no glyph), and that colour differs from the tile colour sampled 3 px outside the box by at least 8 levels in one channel; after the release the node is `.favorite-letter` with the glyph, the same rect, and the same fill (computed `background-color` equal). Computed style is also read in the light scheme (fill and radius equal to the letter's; no pixel difference asserted, § Accepted exceptions).
+- Red on old code (premise, run before the implementation): the old pending `img` has `visibility: hidden` and no fill, so the uniform-fill and the difference-from-tile assertions fail; a mutation that keeps the chip rule but drops `object-position` makes the globe's grey show and fails the uniformity assertion.
+- Verified by: E2E `dg-79`; `newtabSource` pins.
 
-### AS-FLP-02 Wizard row: chip while pending, light and dark
-- Given: wizard step 2, the sentinel held, once with `prefers-color-scheme: light` and once with `dark`.
+### AS-FLP-02 Wizard row: chip while pending, checked and unchecked, light and dark
+- Given: wizard step 2, the sentinel held (gate with auto-release as above), once with `prefers-color-scheme: light` and once with `dark`; the default checked state (3 rows checked, 5 unchecked, `onboardingStarters.js`).
 - When: step 2 is shown.
-- Then: every row icon is pending and shows the chip (22×22, radius 4 px, fill `--soft-fill` computed in that scheme); no globe pixel; no `--icon-backdrop` and no outline ring on the chip. After release all 8 rows are `.onboarding-wizard__starter-icon--letter` at the same rect; a row whose `_favicon` is a routed real PNG shows the `img` with its backdrop and outline (as in `dg-76`/`dg-78`).
+- Then: every row icon is pending and shows the chip: 22×22, radius 4 px, fill `--soft-fill` computed in that scheme, no `--icon-backdrop`, no `box-shadow` ring; the pixel at the box centre of a pending chip equals, within ±2 levels per channel, the pixel at the same point of the letter that replaces it after the release, **separately for a checked and an unchecked row** (the unchecked chip carries the letter's `opacity: 0.6`, not the `img`'s 0.4), and for a hovered row (the hover fill of the letter). After release all 8 rows are `.onboarding-wizard__starter-icon--letter` at the same rect; a row whose `_favicon` is a routed real PNG shows the `img` with its backdrop and outline (as in `dg-76`/`dg-78`).
+- Red on old code: as AS-FLP-01 (the old pending icon paints nothing).
 - Verified by: E2E `dg-79`; `newtabSource` pin.
 
 ### AS-FLP-03 Hung sentinel: never an empty box
-- Given: the sentinel never answers (hang), grid tile and wizard rows.
-- When: the new tab opens and 2 s plus a named guard pass.
-- Then: a frame recorder over the whole period finds, for each icon box, no frame in which it is empty (every frame is the chip, then after the timeout the `img`); the chip lasts until the timeout and no longer; after the timeout the `img` is visible (fail open, run 32 decision 2) and nothing else changes; no page error.
+- Given: the sentinel never answers (hang), grid tile and wizard rows, a frame recorder (`requestAnimationFrame`, started with the document) that records for each icon box its frame state.
+- When: the new tab opens and `DEFAULT_FAVICON_TIMEOUT_MS` (2000) plus `HANG_GUARD_MS` (2500) pass.
+- Then: the per-frame predicate "the box is non-empty" is true in every frame from the first render on: a pending `img` with a fill alpha > 0, or a letter, or a loaded `img` with computed `visibility` not hidden; the last pending frame is no later than the timeout plus `HANG_GUARD_MS`; after the timeout the `img` is visible (fail open); nothing else changes; no page error. A tile built after the timeout has no pending state at all (run 32).
+- Red on old code: the old pending frames fail the predicate (no fill), so the scenario is red before the implementation.
+- Verified by: E2E `dg-79` (the recorder records fill alpha and `visibility`, which the `dg-74` recorder does not).
+
+### AS-FLP-03a Slow but successful sentinel (under the timeout)
+- Given: the sentinel answers with the real globe after about 1200 ms (`delay` mode of the router), grid tile and wizard rows.
+- When: the new tab opens.
+- Then: chip until the answer, then the letter (no frame without a non-empty box); no globe pixel at any point; nothing changes after the letter.
+- Verified by: E2E `dg-79`.
+
+### AS-FLP-03b Slow sentinel, later than the timeout
+- Given: the sentinel answers with the real globe after 3000 ms (`LATE_SENTINEL_MS` of `dg-74`).
+- When: the new tab opens and 4.5 s pass.
+- Then: chip until 2 s, then the `img` (fail open, run 32 AS-FDF-06b); the late answer changes nothing (no letter appears, no node is replaced); no empty frame; no page error.
 - Verified by: E2E `dg-79`.
 
 ### AS-FLP-04 Grid letter is not in the accessibility tree
@@ -68,7 +85,7 @@ Common setup: the E2E harness profile has no history, so every `_favicon` answer
 ### AS-FLP-05 Wizard row letter is not in the accessibility tree
 - Given: wizard step 2, no history (all 8 rows are letters).
 - When: the tree of each row is read.
-- Then: the row is `checkbox "Add <label> to your grid"` plus `text: <label>` and no letter text (`C ChatGPT` becomes `ChatGPT`); the 8 letter nodes have `aria-hidden="true"`; the checkbox is still the only focusable element of the row.
+- Then: the tree of each row equals the tree before the change with only the letter text removed: `checkbox "Add <label> to your grid"` plus `text: <label>` (`C ChatGPT` becomes `ChatGPT`; compared as whole strings per row, not by a pattern on the first character); the 8 letter nodes have `aria-hidden="true"`; the checkbox is still the only focusable element of the row.
 - Verified by: E2E `dg-79`; `newtabSource` pin.
 
 ### AS-FLP-06 Real and custom icons are untouched
@@ -80,13 +97,13 @@ Common setup: the E2E harness profile has no history, so every `_favicon` answer
 ### AS-FLP-07 Narrow window, forced colors, reduced motion
 - Given: windows of 500 and 320 px, `forced-colors: active`, `prefers-reduced-motion: reduce`.
 - When: the sentinel is held and then released.
-- Then: the chip never overflows the tile or the row; under forced colors the chip is allowed to be invisible (same as the letter's fill, § Accepted exceptions) but the box keeps its rect and the globe is still never painted; no transition or animation property on the chip rules.
+- Then: the chip never overflows the tile or the row; under forced colors AS-FLP-03's "non-empty" predicate and the pixel checks do not apply (the browser drops the fill, § Accepted exceptions): computed styles are checked instead (`object-position` still pushes the content out, so the globe is not painted; the rect is kept); no transition or animation property on the chip rules.
 - Verified by: E2E `dg-79`.
 
 ### AS-FLP-08 Rules are scoped and mutation-proven
 - Given: the CSS and JS source.
 - When: the pins run.
-- Then: the chip rules are pinned by the component selector (`.favorite-icon[data-icon-check="pending"]`, `img.onboarding-wizard__starter-icon[data-icon-check="pending"]`), including "no `transition`/`animation` in them"; `aria-hidden` on both letter creation sites is pinned; each pin fails when its rule/line is removed after the implementation commit (mutation check recorded in the report).
+- Then: ALL rules whose selector contains `[data-icon-check="pending"]` are listed with their exact selectors and bodies (the grid chip rule, the row chip rule and the letter-parity rules of decision 1), including "no `transition`/`animation` in them" and "no `visibility: hidden`"; the rule order (the chip rule after the row's `img` rules, so it wins) is pinned; `aria-hidden` on both letter creation sites is pinned; each pin fails when its rule/line is removed after the implementation commit (mutation check recorded in the report).
 - Verified by: `test/newtabSource.test.js`.
 
 ## Review focus
@@ -100,7 +117,8 @@ Common setup: the E2E harness profile has no history, so every `_favicon` answer
 
 - Under `forced-colors: active` the chip (a fill) is dropped by the browser, like the letter's own fill: the box is empty for the check, as today. Not worth a border: the check lasts one frame in the normal case.
 - With a hung sentinel the chip is replaced by the globe after 2 s (fail open, owner-approved in run 32). Tiles created after the timeout have no pending state and show the globe until the tab is reloaded (second half of backlog 86): re-checking later would bring back `pending` after the timeout, which run 32 forbids on purpose.
-- The chip is the same colour in every state (not themed by the site colour); on a very light custom tile accent it is low-contrast, which is fine for a placeholder that lasts about one frame.
+- In the light theme the grid chip is the letter's own fill (12% white) on a light tile: measured about 3 levels of 255 against the tile (`(229,232,236)` on `(226,230,234)`), so it is nearly invisible there, exactly like the letter's fill. The chip's job in the light theme is "no globe, no hole"; the letter's fill is a Non-goal. The pixel difference is asserted in the dark scheme only.
+- The chip is one colour in every state (not themed by the site colour); on a very light custom tile accent it is low-contrast, which is fine for a placeholder that lasts about one frame.
 
 ## Non-goals
 
