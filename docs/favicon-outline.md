@@ -2,7 +2,7 @@
 
 ## Status
 
-`draft` — revision 3 (2026-10-14, after spec review rounds 1–2). Run №36 (`favicon-outline`). A follow-up of run 35 (`docs/favicon-backdrop.md`, backlog 91 and 92) and run 34 (`docs/starter-rows-icon-chip.md`).
+`draft` — revision 4 (2026-10-14, after spec review rounds 1–3). Run №36 (`favicon-outline`). A follow-up of run 35 (`docs/favicon-backdrop.md`, backlog 91 and 92) and run 34 (`docs/starter-rows-icon-chip.md`).
 
 **Data compatibility: not required** (no storage change; no-users policy, `agent-config/CLAUDE.md`).
 
@@ -67,7 +67,7 @@ Common setup: harness 1280×800, dark theme unless stated, wizard step 2, eight 
 ### AS-FBO-03 Light theme, forced colors, letter chip, grid
 - Given: light theme; forced colors (light and dark); a letter-chip row; the desk behind the wizard after Finish.
 - When: reading the favicon `img` of a checked row, the letter chip, and a grid tile icon.
-- Then: light theme: computed `box-shadow` is NOT `none` but has a transparent colour (`rgba(0, 0, 0, 0) 0px 0px 0px 1px`) and the pixel outside the box equals the panel, so no ring is visible; forced colors: computed `box-shadow` is `none` in dark and light (measured in review round 1 on a blank page: `none` under `forcedColors: active`, the ring colour otherwise; `dg-77` measures it on the real row); the letter chip has `box-shadow: none`; a grid `.favorite-icon` has `box-shadow: none`; no rule inside `@media (forced-colors: active)` sets a `box-shadow` (source pin).
+- Then: light theme: computed `box-shadow` is NOT `none` but has a transparent colour (`rgba(0, 0, 0, 0) 0px 0px 0px 1px`) and the pixel outside the box equals the panel, so no ring is visible; forced colors: computed `box-shadow` is `none` in dark and light (measured in review round 1 on a blank page: `none` under `forcedColors: active`, the ring colour otherwise; `dg-77` measures it on the real row); the letter chip has `box-shadow: none`; a grid `.favorite-icon` has `box-shadow: none`; no rule for `img.onboarding-wizard__starter-icon` inside `@media (forced-colors: active)` sets a `box-shadow` (source pin, AS-FBO-06; the existing `box-shadow: none` of the row surface in that block stays).
 - Verified by: E2E `dg-77`; `newtabSource` pins.
 
 ### AS-FBO-04 Nothing else changes; every state keeps working
