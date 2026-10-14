@@ -272,7 +272,9 @@
   object-fit: contain;
 }
 
-/* The favicon sits on --icon-backdrop (a light square in the dark theme). Not in the hover or forced-colors blocks. */
+/* The favicon sits on --icon-backdrop (a light square in the dark theme). Not repeated in the hover block: the hover fill is painted
+   on the row surface and the icon keeps its own backdrop. Not in forced-colors: the dark-theme backdrop becomes Canvas there and
+   forced-color-adjust stays at its default, so nothing keeps it. */
 img.onboarding-wizard__starter-icon {
   background: var(--icon-backdrop);
 }
