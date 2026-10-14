@@ -2,7 +2,7 @@
 
 ## Status
 
-`draft` — run №38 (`light-letter-fill`). A follow-up of run 37 (`docs/favicon-letter-pending.md`, § Accepted exceptions: "in the light theme the grid chip is nearly invisible").
+`draft` — revision 2 (2026-10-15, after spec review round 1). Run №38 (`light-letter-fill`). A follow-up of run 37 (`docs/favicon-letter-pending.md`, § Accepted exceptions: "in the light theme the grid chip is nearly invisible").
 
 **Data compatibility: not required** (no storage change; no-users policy, `agent-config/CLAUDE.md`).
 
@@ -30,7 +30,7 @@ The grid letter `.favorite-letter` and the pending chip (`.favorite-icon[data-ic
 
 ## Scope
 
-- `src/design-tokens.css` (token, both themes), `src/newtab.css` (two rules use it), `CHANGELOG.md` `[Unreleased]`, `docs/favicon-letter-pending.md` (Accepted exceptions: the light-theme line is superseded; Decision 1 fill value), tests: `test/newtabSource.test.js` (PLP pin 3 and a token pin), E2E `dg-80-light-letter-fill.mjs`; the pixel checks of `dg-79` that assume the 12% white fill in the light scheme are checked and adjusted.
+- `src/design-tokens.css` (token, both themes), `src/newtab.css` (two rules use it), `CHANGELOG.md` `[Unreleased]`, `docs/favicon-letter-pending.md` (Accepted exceptions: the light-theme line is superseded; Decision 1 fill value), tests: `test/newtabSource.test.js` (PLP pin 3 and a token pin), E2E `dg-80-light-letter-fill.mjs`; `dg-79` reads no pixels in the light scheme and has no 12% literal (it compares chip and letter fills with each other), so it needs no change beyond the stale comment at `dg-79:51` ("12% white"), which is updated; `docs/design-system.md` (token table: `--letter-fill`, light `rgb(0 0 0 / 6%)`, dark `rgb(255 255 255 / 12%)`); `docs/favicon-letter-pending.md` lines that state the 12% fill or the nearly invisible light chip (Current behaviour, Decision 1, Accepted exceptions).
 
 ## Acceptance scenarios
 
@@ -46,19 +46,21 @@ Common setup: the E2E harness profile has no history (every `_favicon` answer is
 ### AS-LLF-02 Light theme: the letter stays legible
 - Given: light scheme, a letter link with the default accent and with accents `#ffffff`, `#e11d48`, `#f5d90a`.
 - When: the tile is settled.
-- Then: the contrast ratio of the letter glyph colour (computed `color`) against the letter fill composited on the tile colour (read from the screenshot, 3 px inside the box corner) is at least 4.5:1 in each case (the glyph is `#111318`, so this holds by a wide margin; the assertion guards a future colour change).
+- Then: the contrast ratio of the letter glyph colour (computed `color`) against the glyph-free sample inside the box (the mean of four points 3 px inside the corners, as in AS-LLF-01; that sample already contains the fill composited on the tile, so the fill is not applied again) is at least 4.5:1 in each case; the accents are the normalised ones (`normalizeAccentLightness` in `src/newtab.js` lightens a very dark accent), the contrast is read from the screenshot, not computed from the raw accent (the glyph is `#111318`, so this holds by a wide margin; the assertion guards a future colour change).
 - Verified by: E2E `dg-80`.
 
 ### AS-LLF-03 Dark theme is unchanged
 - Given: dark scheme, the same tiles.
 - When: the check is pending and after the answer.
-- Then: computed `background-color` is `rgba(255, 255, 255, 0.12)`; the chip and letter samples equal the values measured in run 37 (`(56,60,66)` for a 1×1 chip on the default tile, ±2); the difference to the tile is at least 25 levels in one channel.
+- Then: computed `background-color` is `rgba(255, 255, 255, 0.12)`; the chip and letter samples equal the values measured in run 37 (`(56,60,66)` for a 1×1 chip on the default tile, ±2); the difference to the tile is at least 20 levels in one channel (measured 25–27 in run 37, `reports/favicon-letter-pending-probe.md`; the margin covers the tile gradient).
+- Green on old code by design: a regression guard for the dark theme.
 - Verified by: E2E `dg-80` (and `dg-79`, unchanged).
 
 ### AS-LLF-04 Forced colors and reduced motion
 - Given: `forced-colors: active` (light and dark) and `prefers-reduced-motion: reduce`.
 - When: the letter and the chip are shown.
 - Then: the letter glyph is visible and the chip keeps its rect and its pushed-out content (computed `object-position` first component ≥ 40 px); no `transition` or `animation` on either rule; no horizontal overflow at 500 and 320 px.
+- Green on old code by design for the motion, forced-colors and geometry parts (the fill does not change geometry); the pins of run 37 already cover `transition`/`animation`.
 - Verified by: E2E `dg-80` (computed styles only under forced colors, as `dg-79`).
 
 ### AS-LLF-05 The fill lives in one token
@@ -71,12 +73,13 @@ Common setup: the E2E harness profile has no history (every `_favicon` answer is
 
 - The light tile in all four accents: the letter must not look like a hole or a stain (6% black on a gradient accent tile).
 - No change in the dark theme, and chip → letter parity in both.
-- That no other place uses the 12% white fill or `.favorite-letter` (grep over `src/`).
+- That no other place uses the 12% white fill or `.favorite-letter` (checked in review: the fill is only at `src/newtab.css` lines 370 and 379; `.favorite-letter` only in `newtab.css`, `newtab.js:303` and E2E).
 
 ## Accepted exceptions
 
 - Under `forced-colors: active` the fill is dropped by the browser, as before.
-- A custom very dark tile accent in the light theme is not a case: the tile background in the light theme is a pale accent gradient (6–18%).
+- A custom very dark tile accent in the light theme is not a case: `normalizeAccentLightness` lightens it and the tile background is a gradient from 18% to 6% of the accent.
+- Hover, focus and edit mode of the tile do not touch the letter fill (checked in `src/newtab.css`).
 
 ## Non-goals
 
