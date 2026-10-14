@@ -1462,7 +1462,7 @@ describe("newtab onboarding step 2 starter row source (docs/onboarding-starter-r
     return code.slice(start, code.indexOf("\n}\n", start));
   };
   // Every top-level block that starts with `header`, in source order (a stylesheet may hold several @media (forced-colors: active) blocks).
-  const mediaBlocks = (css, header) => {
+  const mediaBlocks = (css, header, file = "surfaces.css") => {
     const text = stripCss(css);
     const blocks = [];
     let from = 0;
@@ -1478,14 +1478,14 @@ describe("newtab onboarding step 2 starter row source (docs/onboarding-starter-r
           break;
         }
       }
-      assert.ok(end > -1, `${header} block is unbalanced in surfaces.css`);
+      assert.ok(end > -1, `${header} block is unbalanced in ${file}`);
       blocks.push(text.slice(start, end + 1));
       from = end + 1;
     }
-    assert.ok(blocks.length > 0, `${header} block not found in surfaces.css`);
+    assert.ok(blocks.length > 0, `${header} block not found in ${file}`);
     return blocks;
   };
-  const mediaBlock = (css, header) => mediaBlocks(css, header)[0];
+  const mediaBlock = (css, header, file) => mediaBlocks(css, header, file)[0];
 
   it("pin 1: the row is one label holding the real checkbox, an aria-hidden check and the index/name contract", async () => {
     const body = await step2();
@@ -1593,14 +1593,60 @@ describe("newtab onboarding step 2 starter row source (docs/onboarding-starter-r
     for (const rule of starter.filter((r) => r.selector !== IMG_OFF && r.selector !== LETTER_OFF)) {
       assert.doesNotMatch(rule.body, /filter/, `${rule.selector} must not carry a filter`);
     }
-    const img = starter.filter((r) => r.selector === IMG_OFF);
-    assert.equal(img.length, 1, "exactly one unchecked favicon img rule");
-    assert.match(img[0].body, /(?:^|[;\s])filter:\s*grayscale\(1\);/);
+    // The filter lives in ONE merged rule; `selectorList` already splits its comma list, so the set comes from `cssRules`.
+    const withFilter = cssRules(css).filter((r) => /(?:^|[;\s])filter:\s*grayscale\(1\);/.test(r.body) && r.selector.includes("onboarding-wizard__starter"));
+    assert.equal(withFilter.length, 1, "exactly one starter rule carries grayscale(1) (the merged rule)");
+    assert.deepEqual(withFilter[0].selector.split(",").map((s) => s.trim()).sort(), [IMG_OFF, LETTER_OFF].sort(), "the merged rule is exactly the unchecked favicon img + the unchecked letter");
+    // Every starter rule with an `opacity` declaration, by exact selector: the hidden native input, the unchecked favicon, the unchecked letter and the busy
+    // surface. Any other rule (a base rule, a late override such as `... img.onboarding-wizard__starter-icon[src]`) would change the glyph/chip contrast
+    // without touching the two pinned rules.
+    assert.deepEqual(
+      starter.filter((r) => /(?:^|[;\s])opacity\s*:/.test(r.body)).map((r) => r.selector).sort(),
+      [INPUT, IMG_OFF, LETTER_OFF, `${INPUT}:disabled + ${SURFACE}`].sort(),
+      "the only starter rules with opacity"
+    );
+    const opacityOf = (selector) => starter.filter((r) => r.selector === selector && /(?:^|[;\s])opacity:/.test(r.body));
+    const img = opacityOf(IMG_OFF);
+    assert.equal(img.length, 1, "exactly one opacity rule for the unchecked favicon img");
     assert.match(img[0].body, /(?:^|[;\s])opacity:\s*0\.4;/);
-    const letter = starter.filter((r) => r.selector === LETTER_OFF);
-    assert.equal(letter.length, 1, "exactly one unchecked letter rule");
-    assert.match(letter[0].body, /(?:^|[;\s])filter:\s*grayscale\(1\);/);
+    const letter = opacityOf(LETTER_OFF);
+    assert.equal(letter.length, 1, "exactly one opacity rule for the unchecked letter");
     assert.match(letter[0].body, /(?:^|[;\s])opacity:\s*0\.6;/);
+  });
+
+  it("ICB pin 1: --icon-backdrop is transparent in the light :root and #eef1f5 in the dark media block", async () => {
+    const tokens = await readFile(new URL("../src/design-tokens.css", import.meta.url), "utf8");
+    const css = stripCss(tokens);
+    const dark = mediaBlock(css, "@media (prefers-color-scheme: dark)", "design-tokens.css");
+    const lightPart = css.replace(dark, "");
+    const decl = (text) => [...text.matchAll(/--icon-backdrop:\s*([^;]+);/g)].map((m) => m[1].trim());
+    assert.deepEqual(decl(lightPart), ["transparent"], "light value");
+    assert.deepEqual(decl(dark), ["#eef1f5"], "dark value");
+  });
+
+  it("ICB pin 2: only the listed starter/img rules set a background; the favicon img takes var(--icon-backdrop) in exactly one rule, none inside @media (hover: hover)", async () => {
+    const css = await surfaces();
+    const BG = /(?:^|[;\s])background(?:-color|-image)?\s*:/;
+    const CHECK = ".onboarding-wizard__starter-check";
+    const CHECKED = `${INPUT}:checked + ${SURFACE} ${CHECK}`;
+    const allowed = [SURFACE, HOVER, `${HOVER} ${LETTER}`, LETTER, CHECK, CHECKED, `${CHECKED}::after`, "img.onboarding-wizard__starter-icon"];
+    const withBg = selectorList(css).filter((r) => (r.selector.includes("onboarding-wizard__starter") || /\bimg\b/.test(r.selector)) && BG.test(r.body));
+    assert.deepEqual(withBg.map((r) => r.selector).filter((s) => !allowed.includes(s)), [], "a background on a starter or img rule outside the allowed list");
+    const icon = withBg.filter((r) => r.selector === "img.onboarding-wizard__starter-icon");
+    assert.equal(icon.length, 1, "exactly one background rule for the favicon img");
+    assert.match(icon[0].body, /(?:^|[;\s])background:\s*var\(--icon-backdrop\);/);
+    const hoverRules = cssRules(mediaBlocks(css, "@media (hover: hover)").join("\n"));
+    assert.deepEqual(hoverRules.filter((r) => /icon-backdrop/.test(r.body)).map((r) => r.selector), [], "no backdrop rule inside (hover: hover)");
+    const hoverBg = hoverRules.flatMap((r) => r.selector.split(",").map((s) => s.trim()).filter((s) => BG.test(r.body)));
+    assert.deepEqual(hoverBg.filter((s) => s !== HOVER && s !== `${HOVER} ${LETTER}`), [], "a hover rule other than the surface and the letter chip sets a background");
+  });
+
+  it("ICB pin 3: no rule for the starter icon (except --letter) or an img sets a background inside any @media (forced-colors: active) block", async () => {
+    const forced = mediaBlocks(await surfaces(), "@media (forced-colors: active)").flatMap((b) => cssRules(b));
+    const offenders = forced.flatMap((r) => r.selector.split(",").map((s) => s.trim()).filter((s) => ((s.includes(".onboarding-wizard__starter-icon") && !s.includes("--letter")) || /\bimg\b/.test(s)) && /(?:^|[;\s])background(?:-color|-image)?:/.test(r.body)));
+    assert.deepEqual(offenders, [], "forced colors replace the backdrop; nothing is added there");
+    const adjust = forced.flatMap((r) => r.selector.split(",").map((s) => s.trim()).filter((s) => (s.includes(".onboarding-wizard__starter-icon") || /\bimg\b/.test(s)) && /(?:^|[;\s])forced-color-adjust\s*:/.test(r.body)));
+    assert.deepEqual(adjust, [], "forced-color-adjust must stay at its default for the starter icon and img (it would keep the dark backdrop)");
   });
 
   it("SRP pin 4: busy rows are muted by the design-system disabled tokens and the real input shows cursor wait; the enabled input keeps cursor pointer", async () => {

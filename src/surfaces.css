@@ -272,6 +272,11 @@
   object-fit: contain;
 }
 
+/* The favicon sits on --icon-backdrop (a light square in the dark theme). Not in the hover or forced-colors blocks. */
+img.onboarding-wizard__starter-icon {
+  background: var(--icon-backdrop);
+}
+
 .onboarding-wizard__starter-icon--letter {
   display: inline-flex;
   align-items: center;
@@ -324,13 +329,16 @@
 /* An unchecked row reads "off" without a grey block: the surface keeps the dialog colour, only the icon is greyed and
    faded; the muted label and the empty check carry the rest. The favicon fades to 0.4, the letter to 0.6 (the letter is
    the row's identity glyph and must stay >= 3:1 against its chip, docs/starter-rows-polish.md decision 2). */
-.onboarding-wizard__starter input[type="checkbox"]:not(:checked) + .onboarding-wizard__starter-surface img.onboarding-wizard__starter-icon {
+.onboarding-wizard__starter input[type="checkbox"]:not(:checked) + .onboarding-wizard__starter-surface img.onboarding-wizard__starter-icon,
+.onboarding-wizard__starter input[type="checkbox"]:not(:checked) + .onboarding-wizard__starter-surface .onboarding-wizard__starter-icon--letter {
   filter: grayscale(1);
+}
+
+.onboarding-wizard__starter input[type="checkbox"]:not(:checked) + .onboarding-wizard__starter-surface img.onboarding-wizard__starter-icon {
   opacity: 0.4;
 }
 
 .onboarding-wizard__starter input[type="checkbox"]:not(:checked) + .onboarding-wizard__starter-surface .onboarding-wizard__starter-icon--letter {
-  filter: grayscale(1);
   opacity: 0.6;
 }
 
@@ -340,7 +348,8 @@
 
 /* Hover response only on a pointer that can hover; keyed on the enabled input (the real hit target, the surface has
    pointer-events: none, and label:hover is also true over a disabled input). Only the fill changes, so the inset focus
-   ring stays visible; the letter chip would vanish on the same fill and takes the stronger one. */
+   ring stays visible; the letter chip would vanish on the same fill and takes the stronger one. An unchecked letter is
+   already at opacity 0.6 here, so the stronger chip fill shows through that fade. */
 @media (hover: hover) {
   .onboarding-wizard__starter input[type="checkbox"]:not(:disabled):hover + .onboarding-wizard__starter-surface {
     background: var(--soft-fill);
@@ -351,7 +360,8 @@
   }
 }
 
-/* Busy (Finish is writing, the boxes are disabled): rows are muted by the design-system disabled tokens. */
+/* Busy (Finish is writing, the boxes are disabled): rows are muted by the design-system disabled tokens. The opacity is
+   on the surface, so the focus ring is dimmed with it; a disabled row cannot take focus, so the dimmed ring never shows. */
 .onboarding-wizard__starter input[type="checkbox"]:disabled {
   cursor: wait;
 }

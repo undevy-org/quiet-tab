@@ -193,3 +193,40 @@ describe("AS-SRP-02/03 starter rows polish contrast", () => {
     assert.ok(r < 3, r.toFixed(3));
   });
 });
+
+describe("AS-ICB-01 icon backdrop", () => {
+  const OFF = '.onboarding-wizard__starter input[type="checkbox"]:not(:checked) + .onboarding-wizard__starter-surface';
+  const IMG_OFF = `${OFF} img.onboarding-wizard__starter-icon`;
+  const LETTER_OFF = `${OFF} .onboarding-wizard__starter-icon--letter`;
+  // The favicon img is faded only by the `opacity` of its unchecked rule (0.4 today). Every starter rule with an `opacity` (except the hidden native input,
+  // the letter and the busy surface, which are not the favicon's own fade) is collected: the set must be exactly that one rule, so a late override or a base
+  // opacity on the img cannot go unnoticed and a checked row is really at alpha 1.
+  const faviconOpacity = () => {
+    const OTHER = [LETTER_OFF, '.onboarding-wizard__starter input[type="checkbox"]', `.onboarding-wizard__starter input[type="checkbox"]:disabled + .onboarding-wizard__starter-surface`];
+    const found = rules(sources["surfaces.css"]).flatMap((r) => r.selector.split(",").map((s) => ({ selector: s.trim(), body: r.body }))).filter((r) => r.selector.includes("onboarding-wizard__starter") && /(?:^|[;\s])opacity:/.test(r.body) && !OTHER.includes(r.selector));
+    assert.deepEqual(found.map((r) => r.selector), [IMG_OFF], `the only opacity rule that can reach the favicon img is ${IMG_OFF}`);
+    const m = found[0].body.match(/(?:^|[;\s])opacity:\s*([0-9.]+)\s*;/);
+    assert.ok(m, `no numeric opacity in the rule for ${IMG_OFF}`);
+    return Number(m[1]);
+  };
+  const glyphOverBackdrop = (backdrop, panel, alpha) => ratio(over([0, 0, 0, alpha], panel), over([...backdrop, alpha], panel));
+  const panel = () => rgba(token(dark, "--color-surface")).slice(0, 3);
+  const backdrop = () => rgba(token(dark, "--icon-backdrop")).slice(0, 3);
+
+  it("light: --icon-backdrop is the keyword transparent (rgba() does not parse it, asserted as a string)", () => {
+    assert.equal(token(light, "--icon-backdrop"), "transparent");
+  });
+  it("dark: --icon-backdrop is #eef1f5, read from the dark token slice", () => {
+    assert.equal(token(dark, "--icon-backdrop"), "#eef1f5");
+  });
+  it("dark: a black glyph over the backdrop, both blended with --panel at the unchecked favicon opacity, is at least 3:1", () => {
+    const alpha = faviconOpacity();
+    const r = glyphOverBackdrop(backdrop(), panel(), alpha);
+    assert.ok(r >= 3, `alpha ${alpha}: ${r.toFixed(3)}`);
+  });
+  it("dark: a black glyph over the backdrop in a checked row (alpha 1) is at least 10:1", () => {
+    faviconOpacity(); // fails if any opacity rule other than the unchecked one can reach the img, so alpha 1 for a checked row holds
+    const r = glyphOverBackdrop(backdrop(), panel(), 1);
+    assert.ok(r >= 10, r.toFixed(3));
+  });
+});
