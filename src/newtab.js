@@ -302,6 +302,7 @@ const currentLocation = () => weatherResult?.location ?? weatherLocation;
 function createFavoriteLetterNode(item, source) {
   const span = createNode("span", "favorite-letter", getFavoriteLetter(item));
   span.dataset.iconSource = source;
+  span.setAttribute("aria-hidden", "true"); // the tile's aria-label already names the link (docs/favicon-letter-pending.md)
   return span;
 }
 
@@ -1514,7 +1515,11 @@ function goToOnboardingStep1({ focusTitle = false } = {}) {
 
 function createOnboardingStarterIcon(row) {
   const letter = getFavoriteLetter({ label: row.label, domain: row.domain });
-  const fallback = () => createNode("span", "onboarding-wizard__starter-icon onboarding-wizard__starter-icon--letter", letter);
+  const fallback = () => {
+    const span = createNode("span", "onboarding-wizard__starter-icon onboarding-wizard__starter-icon--letter", letter);
+    span.setAttribute("aria-hidden", "true"); // the row's visible label and the checkbox name carry the link
+    return span;
+  };
   if (!faviconBaseUrl) return fallback();
   const icon = createNode("img", "onboarding-wizard__starter-icon");
   const url = getFaviconUrl({ baseUrl: faviconBaseUrl, pageUrl: row.url, size: FAVICON_SIZE });
