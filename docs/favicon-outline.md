@@ -46,7 +46,7 @@ Related: `docs/starter-rows-icon-chip.md`, `docs/favicon-backdrop.md`, `src/desi
 
 - `src/design-tokens.css` (token, both themes), `src/surfaces.css` (ring on the favicon rule, `box-shadow: none` in the unchecked `img` rule), `docs/design-system.md` (a row for `--icon-outline`), `CHANGELOG.md`.
 - `test/borderContrast.test.js` (the two ratios as units), `test/newtabSource.test.js` (pins), `docs/favicon-backdrop.md`, `docs/starter-rows-icon-chip.md`, this spec (`implemented`).
-- `.private/e2e/scenarios/dg-77-favicon-outline.mjs` (new). `dg-73`, `dg-75`, `dg-76` must stay green (`dg-76` reads the favicon `img` computed styles but not `box-shadow`).
+- `.private/e2e/scenarios/dg-78-favicon-outline.mjs` (new). `dg-73`, `dg-75`, `dg-76` must stay green (`dg-76` reads the favicon `img` computed styles but not `box-shadow`).
 
 ## Acceptance scenarios
 
@@ -56,31 +56,31 @@ Common setup: harness 1280×800, dark theme unless stated, wizard step 2, eight 
 - Given: a checked favicon row whose PNG is a fully opaque black square.
 - When: reading the favicon `img` and the pixels around it.
 - Then: computed `box-shadow` is `rgb(61, 70, 82) 0px 0px 0px 1px`; the ring pixel is `rgb(61, 70, 82)` (±3); ring against the black plate pixel is ≥ 2.0:1 (computed 2.20) and ring against the panel is between 1.5:1 and 2.0:1 (computed 1.67), so it defines the plate without framing it; the box rect, the row rect and the label position equal the values on `origin/main` (box-shadow takes no space).
-- Verified by: E2E `dg-77`; unit ratios in `test/borderContrast.test.js`.
+- Verified by: E2E `dg-78`; unit ratios in `test/borderContrast.test.js`.
 
 ### AS-FBO-02 The outline is not visible in an unchecked row
 - Given: the same icon in an unchecked row.
 - When: reading the `img`.
 - Then: computed `box-shadow` is `none`; the pixel 1 px outside the box equals the panel colour (±3); checking the row brings the ring back and unchecking removes it again (toggle, no residue); a busy checked row shows the ring faded with the row (the surface `opacity` 0.62 blends it with the panel: pixel between the panel and the ring colour).
-- Verified by: E2E `dg-77`.
+- Verified by: E2E `dg-78`.
 
 ### AS-FBO-03 Light theme, forced colors, letter chip, grid
 - Given: light theme; forced colors (light and dark); a letter-chip row; the desk behind the wizard after Finish.
 - When: reading the favicon `img` of a checked row, the letter chip, and a grid tile icon.
-- Then: light theme: computed `box-shadow` is NOT `none` but has a transparent colour (`rgba(0, 0, 0, 0) 0px 0px 0px 1px`) and the pixel outside the box equals the panel, so no ring is visible; forced colors: computed `box-shadow` is `none` in dark and light (measured in review round 1 on a blank page: `none` under `forcedColors: active`, the ring colour otherwise; `dg-77` measures it on the real row); the letter chip has `box-shadow: none`; a grid `.favorite-icon` has `box-shadow: none`; no rule for `img.onboarding-wizard__starter-icon` inside `@media (forced-colors: active)` sets a `box-shadow` (source pin, AS-FBO-06; the existing `box-shadow: none` of the row surface in that block stays).
-- Verified by: E2E `dg-77`; `newtabSource` pins.
+- Then: light theme: computed `box-shadow` is NOT `none` but has a transparent colour (`rgba(0, 0, 0, 0) 0px 0px 0px 1px`) and the pixel outside the box equals the panel, so no ring is visible; forced colors: computed `box-shadow` is `none` in dark and light (measured in review round 1 on a blank page: `none` under `forcedColors: active`, the ring colour otherwise; `dg-78` measures it on the real row); the letter chip has `box-shadow: none`; a grid `.favorite-icon` has `box-shadow: none`; no rule for `img.onboarding-wizard__starter-icon` inside `@media (forced-colors: active)` sets a `box-shadow` (source pin, AS-FBO-06; the existing `box-shadow: none` of the row surface in that block stays).
+- Verified by: E2E `dg-78`; `newtabSource` pins.
 
 ### AS-FBO-04 Nothing else changes; every state keeps working
 - Given: both themes, forced colors; checked, unchecked, hover, focus, busy rows; 500 px and 320 px windows and the 600 px high window.
 - When: running `dg-73`, `dg-75`, `dg-76`, and reading `getBoundingClientRect` of the favicon `img` and of the row at 1280, 500 and 320 px.
 - Then: all three scenarios stay green with the check lists equal to the recorded baseline (a one-time before/after name comparison, as in run 35); the `img` and row rects equal `origin/main`; no horizontal overflow at 320 and 500 px; the ring is not clipped by the row (the 10 px side padding holds it).
-- Verified by: E2E `dg-73`, `dg-75`, `dg-76`, `dg-77`.
+- Verified by: E2E `dg-73`, `dg-75`, `dg-76`, `dg-78`.
 
 ### AS-FBO-05 Slow and failed answers, quick toggles
 - Given: dark theme; `_favicon` for one starter is held by a deferred promise that the test releases (held longer than the default-icon check timer of 2 s, which starts at the first `check` call, so that check has already failed open when the answer comes; the answer then succeeds), for another starter it fails; the route is asynchronous for the held row and as in `dg-76` for the others (sentinel aborted); a checked favicon row is toggled five times in a row.
 - When: reading the rows while the answer is held, after it, and after the toggles.
 - Then: while held, the `img` is `visibility: hidden` (the run 32 `pending` state) and the pixel outside its box equals the panel; after the answer the successful row shows the ring (`rgb(61, 70, 82)` ±3) and the failed row has been replaced by the letter chip with `box-shadow: none` and no ring pixel; after the five toggles the ring state equals the last state (present when checked, absent when unchecked), with no residue.
-- Verified by: E2E `dg-77`.
+- Verified by: E2E `dg-78`.
 
 ### AS-FBO-06 Source pins
 - Then: `--icon-outline` is `transparent` in the light `:root` and `#3d4652` in the dark media block (raw token slices). The pins select rules BY SELECTOR (surfaces.css already has unrelated `box-shadow` rules: the inset focus ring of the row surface, `box-shadow: none` of the surface in `@media (forced-colors: active)`, others; they stay): among the rules whose selector contains `img.onboarding-wizard__starter-icon` exactly two set `box-shadow`: the base rule `img.onboarding-wizard__starter-icon` with `0 0 0 1px var(--icon-outline)` and the unchecked `img` rule (`OFF img.onboarding-wizard__starter-icon`, the one with `opacity: 0.4`) with `none`; no rule whose selector contains `--letter` (in `surfaces.css`) or `.favorite-icon` (in `newtab.css`, read by the test as its own file) has a `box-shadow` layer matching `/(^|,)\s*0 0 0 \d+px\s+(var\(|#|rgb)/` (layers are split on top-level commas of the value, not with `selectorList`); `.favorite-tile` is outside the pin: its own shadows (`newtab.css`) stay as they are; no rule for `img.onboarding-wizard__starter-icon` inside `@media (hover: hover)` or `@media (forced-colors: active)` sets `box-shadow`; no `transition` (`SRP pin 1` stays). The ring goes into the SAME base rule as the backdrop, and the comment above it (`FBC pin 1` keeps matching) gets one more sentence APPENDED at its end (the first two sentences, with `hover … surface` and `forced-colors … Canvas`, stay as they are): the ring follows the same rule, it is not repeated in hover and the browser drops it in forced colors. Each pin is proven by mutation.
