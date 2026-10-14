@@ -2,7 +2,7 @@
 
 ## Status
 
-`draft` — revision 4 (2026-10-14, after spec review rounds 1–3). Run №35 (`favicon-backdrop`), branch A of its kickoff (the real-favicon probe decided: no luminance-based backdrop). A follow-up of run 34 (`docs/starter-rows-icon-chip.md`, backlog 89 and 90).
+`implemented` — revision 4 (2026-10-14, after spec review rounds 1–3). Run №35 (`favicon-backdrop`), branch A of its kickoff (the real-favicon probe decided: no luminance-based backdrop). A follow-up of run 34 (`docs/starter-rows-icon-chip.md`, backlog 89 and 90).
 
 **Data compatibility: not required** (no storage change; no-users policy, `agent-config/CLAUDE.md`).
 
