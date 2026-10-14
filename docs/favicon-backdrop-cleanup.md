@@ -1,19 +1,20 @@
-# Onboarding starter rows: favicon backdrop only after load, probe numbers, CSS comment
+# Onboarding starter rows: favicon backdrop comment, probe numbers, shared E2E helpers
 
 ## Status
 
-`draft` — revision 1 (2026-10-14). Run №35 (`favicon-backdrop`), branch A of its kickoff (the real-favicon probe decided: no luminance-based backdrop). A follow-up of run 34 (`docs/starter-rows-icon-chip.md`, backlog 89 and 90).
+`draft` — revision 2 (2026-10-14, after spec review round 1). Run №35 (`favicon-backdrop`), branch A of its kickoff (the real-favicon probe decided: no luminance-based backdrop). A follow-up of run 34 (`docs/starter-rows-icon-chip.md`, backlog 89 and 90).
 
 **Data compatibility: not required** (no storage change; no-users policy, `agent-config/CLAUDE.md`).
 
-Related: `docs/starter-rows-icon-chip.md`, `docs/favicon-globe-fallback.md`, `src/surfaces.css`, `src/newtab.js` (`createOnboardingStarterIcon`).
+Related: `docs/starter-rows-icon-chip.md`, `docs/favicon-globe-fallback.md`, `src/surfaces.css`.
 
 ## Intake log
 
 | Date | Raw note | Verdict | Reference |
 |------|----------|---------|-----------|
 | 2026-10-14 | Run 35 kickoff: how to choose the favicon backdrop (backlog 89, 90). Probe on 69 real favicons first. | `confirmed` | § Probe result |
-| 2026-10-14 | Owner, after the probe: "accept as exceptions and do the backlog 89 cleanup" (option A of the kickoff, recommended); no outline, no luminance backdrop. | `confirmed` | § Decisions 1–4 |
+| 2026-10-14 | Owner, after the probe: "accept as exceptions and do the backlog 89 cleanup" (option A of the kickoff, recommended); no outline, no luminance backdrop. | `confirmed` | § Decisions 1–3 |
+| 2026-10-14 | Spec review round 1: backlog 89 (б) (a light square before the image loads) is not reproducible: step 2 is built once with the wizard and only hidden/shown on Back/Continue (`src/newtab.js:1570-1590`, `:1463-1470`), `icon.src` is set before insertion so `:not([src])` never matches, and a pending row is `visibility: hidden` until its verdict. Closed as not reproducible, no product change. | `confirmed` | § Decision 2 |
 
 ## Probe result (numbers, `pipeline/reports/favicon-backdrop-probe.md` in quiet-tab-notes)
 
@@ -22,87 +23,79 @@ Related: `docs/starter-rows-icon-chip.md`, `docs/favicon-globe-fallback.md`, `sr
 | Class | Count | Share | Effect of the light backdrop |
 |-------|-------|-------|------------------------------|
 | Own opaque plate, dark (X, TikTok, Medium, Uber, Vercel, Perplexity, Booking, eBay, Twitter) | 9 | 13 % | none (the plate covers the backdrop); 1.31:1 against the panel |
-| Own plate, light (ChatGPT, GitHub, Google G, Wikipedia, Apple, Notion, Anthropic…) | 14 | 20 % | the plate merges with the backdrop (1.11:1 on average); the glyph inside stays readable |
+| Own plate, light (ChatGPT, GitHub, Google G, Wikipedia, Apple, Notion, Anthropic…) | 14 | 20 % | the plate merges with the backdrop (1.1:1 on average); the glyph inside stays readable |
 | Own plate, coloured (YouTube, Spotify, Reddit, Amazon…) | 28 | 41 % | none |
 | Glyph on transparent, readable on both | 14 | 20 % | none |
 | Dark glyph on transparent (NYTimes) | 1 | 1.4 % | the backdrop helps (1.17:1 → 16.5:1) |
 | Light glyph on transparent (Walmart, yellow, 1.43:1 on the backdrop) | 1 | 1.4 % | the backdrop hurts |
-| Genuinely non-square (aspect beyond 1.25) | 0 | 0 % | (Slack and Cloudflare are 32×31, one pixel) |
+| Genuinely non-square (aspect beyond 1.25) | 0 | 0 % | — |
+| One pixel off square (Slack, Cloudflare, 32×31), content square | 2 | 2.9 % | none; counted by the probe script as "non-square" because of the 1 px |
 
 A luminance-based backdrop would change 2 of 69 icons and none of the eight starters, so it is not built. A white glyph without a plate (the case of the run 34 exception) was not observed.
 
 ## Current behaviour (`main`, `5591120`)
 
-- `img.onboarding-wizard__starter-icon { background: var(--icon-backdrop) }` paints the backdrop as soon as the `img` is in the DOM. `createOnboardingStarterIcon` sets `icon.src` before the node is inserted, so the `img` has a `src` the whole time (an `:not([src])` selector, as backlog 89 proposed, would never match). While the image is not decoded yet the empty box shows a light square in the dark theme. When the default-icon check is pending (`[data-icon-check="pending"]`, `visibility: hidden`) the square is hidden with the image; a row whose check is skipped (cached verdict `real`, or the checker failed) shows the empty square until the image decodes.
-- The comment above the rule says "Not in the hover or forced-colors blocks" and does not say why.
+- `img.onboarding-wizard__starter-icon { background: var(--icon-backdrop) }` (`src/surfaces.css:275-278`); the comment above says "Not in the hover or forced-colors blocks" and does not say why.
+- Step 2 and its eight `img` nodes are built once with the wizard; the `img` has `src` before insertion; with the default-icon check pending the image is `visibility: hidden` until its verdict (`[data-icon-check="pending"]`, `src/newtab.css:366`). Back/Continue only toggles `hidden`/`inert` on the step. So the "empty light square until decode" of run 34 § Accepted exceptions was never observed on a reachable path.
 
 ## Decisions
 
-1. **Backdrop only after load (backlog 89 б, replaces `:not([src])`).** `createOnboardingStarterIcon` adds a one-shot `load` listener BEFORE it sets `src` that sets `icon.dataset.iconReady = ""` (an attribute, no value). The CSS rule becomes `img.onboarding-wizard__starter-icon[data-icon-ready] { background: var(--icon-backdrop); }` (still exactly one backdrop rule for the favicon `img`, still outside `@media (hover: hover)` and `@media (forced-colors: active)`). The listener is added in every path (also when the check is pending; the check keeps its own `load` listener). An `img` that fails to load never gets the attribute and is replaced by the letter as before. No attribute is set on the letter chip.
-2. **Comment (backlog 89 а).** The comment above the rule says: the backdrop is not repeated in the hover block because the hover fill sits on the row surface and the icon keeps its own backdrop, and not in `forced-colors: active` because the browser replaces author backgrounds there (Canvas), so a dark backdrop would not be kept.
-3. **Probe numbers become accepted exceptions (backlog 90 closed).** `docs/starter-rows-icon-chip.md` § Accepted exceptions gets the probe table (compact) and states that dark plates and the light-plate merge are accepted and that no per-icon backdrop is built; its sentence about "the empty light square until its image decodes" is replaced by "the backdrop appears with the image (run 35)".
-4. **E2E helpers (backlog 89 в), not a product change.** The helpers shared by `dg-75` and `dg-76` (colour maths, `nextFrames`, `park`, `waitSoft`, `hoverRow`, `focusRowByKeyboard`, `toStep2`, and `withDesk`, `tokens`, `rowState` where the two files really agree) move into `.private/e2e/lib/starterRows.mjs`; the scenarios import them. Self-check: the check names and counts of `dg-73`, `dg-75`, `dg-76` are identical before and after (recorded once), all three green, and a deliberate break of one helper turns a named check red.
-5. **Unchanged.** Backdrop colours and tokens, hover, busy, opacity, grayscale, the letter chip, the grid tiles (`.favorite-icon`), the DOM and tab order, the names, storage, the default-icon check (`src/defaultFavicon.js`).
+1. **Comment (backlog 89 а).** The comment above the backdrop rule says: the backdrop is not repeated in the hover block because the hover fill is painted on the row surface and the icon keeps its own backdrop; and not in `@media (forced-colors: active)` because in forced colors the dark-theme backdrop is replaced by Canvas and `forced-color-adjust` stays at its default, so nothing keeps it. A source pin checks that the comment directly above the rule names hover and forced colors. No computed style changes.
+2. **Backlog 89 (б) closed as not reproducible** (see the intake log). No `data-icon-ready`, no `:not([src])`. `docs/starter-rows-icon-chip.md` § Accepted exceptions: the sentence about "the empty light square until its image decodes" is replaced by "not observed on a reachable path (run 35)".
+3. **Probe numbers become accepted exceptions (backlog 90 closed).** `docs/starter-rows-icon-chip.md` § Accepted exceptions gets the probe table (compact, the same numbers as above) and states that dark plates and the light-plate merge are accepted and that no per-icon backdrop is built; the "every row" wording of its Decision 1 gets a pointer to this spec.
+4. **E2E helpers (backlog 89 в), not a product change.** From `dg-75` and `dg-76` the helpers that are verbatim equal move into `.private/e2e/lib/starterRows.mjs`: `rgbOf`, `alphaOf`, `transparent`, `lumRGB`, `ratioRGB`, `setChecked`, `noErrors`, `safe`, `nextFrames`, `park`, `waitSoft`, `waitFill`. Everything that differs stays local: `over`, `rowState`, `tokens`, `hoverRow`, `unhover`, `focusRowByKeyboard`, `toStep2`, `withDesk`, `routeFavicons`, and the module constants. (Review round 1 table: the helpers with different signatures or bodies are not merged; merging `rowState`/`withDesk` would change the checks.) Self-check: the check names and counts of `dg-73`, `dg-75`, `dg-76` are identical before and after (recorded once on `origin/main`), all three green, and a deliberate break of one shared helper turns a named check red.
+5. **Unchanged.** Backdrop colours and tokens, hover, busy, opacity, grayscale, the letter chip, the grid tiles, the DOM, tab order, names, storage, `src/newtab.js`, the default-icon check, `CHANGELOG.md` (no behaviour change; a comment and docs only).
 
 ## Scope
 
-- `src/newtab.js` (`createOnboardingStarterIcon`: the load listener), `src/surfaces.css` (selector and comment), `test/newtabSource.test.js` (pins), `CHANGELOG.md` (`[Unreleased]`), `docs/starter-rows-icon-chip.md` (§ Accepted exceptions, status unchanged `implemented`), this spec.
-- `.private/e2e/scenarios/dg-77-favicon-backdrop-cleanup.mjs` (new), `dg-76` (waits for `[data-icon-ready]` before reading the backdrop), `.private/e2e/lib/starterRows.mjs` (new), `dg-75`/`dg-76` (imports).
+- `src/surfaces.css` (the comment), `test/newtabSource.test.js` (the comment pin), `docs/starter-rows-icon-chip.md` (§ Accepted exceptions, Decision 1 pointer; status stays `implemented`), this spec (`implemented`).
+- `.private/e2e/lib/starterRows.mjs` (new), `dg-75`, `dg-76` (imports).
 
 ## Acceptance scenarios
 
-Common setup: harness 1280×800, dark theme unless stated, wizard step 2, eight starters; `_favicon` answered with a PNG (black 16×16 on transparent 32×32, the `dg-76` generator) except where a scenario holds or fails it; the favicon box is 22×22, the backdrop pixel is read at (3, 3) from the box's top-left corner (inside the 4px radius), the glyph pixel at (11, 11), from a screenshot clip, tolerance ±3 per channel.
+Common setup where an E2E applies: harness 1280×800, wizard step 2, eight starters, the `dg-76` route (a PNG for `chatgpt.com`, others failed).
 
-### AS-FBC-01 The backdrop appears with the image, not before
-- Given: dark theme; wizard step 2 opened a second time (Back, Continue) so the default-icon verdicts are cached and the check is skipped; the `_favicon` route is held (about 1500 ms) with caching off.
-- When: reading the favicon `img` while the request is held, then after it is released.
-- Then: while held, the `img` has no `data-icon-ready`, its computed `background-color` is transparent and the pixel at (3, 3) equals the row surface colour, not the backdrop; after the release `data-icon-ready` is present, `background-color` is `rgb(238, 241, 245)` and the pixel at (3, 3) is the backdrop within the tolerance. In a first visit (check pending) the `img` stays `visibility: hidden` until the verdict, then shows with the backdrop, and no frame shows the light square on a failed load (the letter replaces the `img`).
-- Verified by: E2E `dg-77`.
+### AS-FBC-01 Nothing computed changes
+- Given: both themes and forced colors; checked, unchecked, hover, focus and busy rows.
+- When: running `dg-73`, `dg-75`, `dg-76` on the branch.
+- Then: all green, with the check names and counts recorded on `origin/main` (the `src/` change is a CSS comment, no computed style differs).
+- Verified by: E2E `dg-73`, `dg-75`, `dg-76`.
 
-### AS-FBC-02 Failure and the letter chip are unchanged
-- Given: dark theme; one starter's `_favicon` fails.
-- When: the failed `img` is replaced by the letter chip.
-- Then: the chip is `--soft-fill` (as in run 34), carries no `data-icon-ready`, and no light square was visible at any frame between the first paint of the row and the swap (sampled each animation frame).
-- Verified by: E2E `dg-77`; `dg-76` stays green.
+### AS-FBC-02 The comment explains the missing hover and forced-colors backdrop
+- Then: the comment block directly above `img.onboarding-wizard__starter-icon { background: var(--icon-backdrop) }` contains the words `hover` and `forced-colors`; there is still exactly one backdrop rule for the favicon `img`, none inside `@media (hover: hover)` or `@media (forced-colors: active)` (the existing ICB pins 2 and 3 stay green).
+- Verified by: `test/newtabSource.test.js` (new pin, proven by mutation: removing a word turns it red).
 
-### AS-FBC-03 Light theme and forced colors unchanged
-- Given: light theme; forced colors (light and dark).
-- When: reading the loaded favicon `img`.
-- Then: light: `background-color` transparent; forced colors: as in run 34 (`dg-76` AS-ICB-02 values); no rule inside `@media (forced-colors: active)` sets a background on the favicon `img` (pin unchanged).
-- Verified by: E2E `dg-76` (green), `newtabSource` pins.
+### AS-FBC-03 E2E helper extraction changes no check
+- Given: `dg-73`, `dg-75`, `dg-76` run on `origin/main` (before) and on the branch (after).
+- Then: the lists of check names and the counts are identical and all green; breaking one shared helper (for example `ratioRGB`) makes a named check red.
+- Verified by: the recorded before/after lists in the plan task and the mutation run.
 
-### AS-FBC-04 Source pins
-- Then: exactly one backdrop rule for the favicon `img`, its selector requires `[data-icon-ready]`, none in `@media (hover: hover)` or `@media (forced-colors: active)`; the comment above it names hover and forced colors; `createOnboardingStarterIcon` registers the `load` listener before `icon.src` is assigned.
-- Verified by: `test/newtabSource.test.js`, each pin proven by mutation.
-
-### AS-FBC-05 E2E helper extraction changes no check
-- Given: `dg-73`, `dg-75`, `dg-76` run before the extraction (on `origin/main`) and after.
-- Then: the lists of check names and the counts are identical and all are green; breaking one shared helper makes a named check red.
-- Verified by: the recorded before/after lists in the plan task and a mutation run.
+### AS-FBC-04 Accepted exceptions are written down
+- Then: `docs/starter-rows-icon-chip.md` § Accepted exceptions contains the probe table numbers (9/14/28/14/1/1 of 69 and 2 one-pixel-off), says backlog 90 is closed as accepted and the "empty square" sentence is replaced.
+- Verified by: design review only (a text change, read by the reviewer).
 
 ## Paint-only
 
-A `data-*` attribute set once per favicon `img` and a selector change: no geometry, text, tab order or animation changes at any width (500, 320, the 600 px high window), so keyboard behaviour and `prefers-reduced-motion` are untouched; `dg-73` geometry checks stay green.
+A comment and test/doc changes: no geometry, text, DOM, tab order or animation changes at any width.
 
 ## Review focus
 
-- Is any frame left where the favicon shows no backdrop although it is loaded (the attribute set late, a cached image)? Does a fast cached load still get its backdrop in the first painted frame? (AS-FBC-01)
-- Is the row quieter or jumpier while the image loads (a transparent box, then a light square pops in)? Is the pop-in worse than the old empty square?
-- Dark plates (X, 1.31:1 on the panel) and light plates (ChatGPT merging with the backdrop) in checked and unchecked rows: the accepted exceptions below; the lens reports how bad they look, it does not reopen the decision.
+- Do the two accepted-exception classes look as bad as the numbers say? Dark plates (X, 1.31:1 on the panel; nearly vanishes in an unchecked row) and light plates (ChatGPT merging with the backdrop, 1.1:1) in checked and unchecked rows: the lens reports, it does not reopen the decision.
+- Is the new comment true: hover fill really on the surface only; forced colors really replace the backdrop (`dg-76` AS-ICB-02 values)?
 
 ## Accepted exceptions
 
 - No per-icon backdrop: the probe shows a luminance rule would change 2 of 69 real icons (owner decision 2026-10-14, option A).
-- A dark opaque plate (13 % of probed icons, among the starters X) stays close to the panel (1.31:1) and almost vanishes in an unchecked row; backlog 90 is closed as accepted (data of the probe).
-- A light plate (20 %) merges with the light backdrop (1.1:1 on average); the glyph inside is still readable.
-- Every exception of `docs/starter-rows-icon-chip.md` stays, except the one about the empty light square until decode (fixed here).
+- A dark opaque plate (13 % of probed icons, among the starters X) stays close to the panel (1.31:1) and almost vanishes in an unchecked row; backlog 90 is closed as accepted.
+- A light plate (20 %) merges with the light backdrop (1.1:1 on average); the glyph inside stays readable.
+- Every exception of `docs/starter-rows-icon-chip.md` stays.
 - The probe used Google's favicon proxy, not Chrome's `_favicon`; real icons of a profile can differ.
 
 ## Non-goals
 
-- A luminance- or plate-based backdrop, an outline or ring for dark plates, changes to the unchecked look (owner declined these on 2026-10-14).
+- A luminance- or plate-based backdrop, an outline or ring for dark plates, changes to the unchecked look (owner declined these on 2026-10-14); a backdrop appearing only after load (not reproducible); a fade-in (`SRP pin 1` forbids `transition` on the starter rules).
 - Grid tiles (`.favorite-tile`), backlog 84 and 86, the default-icon check logic.
 
 ## Process
 
-UI pipeline in the compact form of run 34: one task group, no checkpoint (the final design review covers it); full E2E; `permissions.md` untouched.
+UI pipeline in the compact form of run 34 (the `src/` hash changes, so a final design review is required): one task group, no checkpoint; full E2E; `permissions.md` untouched; backlog 89 and 90 are struck through in the merge cleanup.
