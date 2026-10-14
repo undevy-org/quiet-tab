@@ -121,6 +121,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Favicon check (grid tiles and onboarding step 2): while the default-icon check runs, the icon box shows a quiet neutral chip (the fill and radius of the replacement letter, no glyph, no globe pixel) instead of an empty box, and the replacement letter is hidden from assistive technology (`aria-hidden`; the tile and row names are unchanged). E2E `dg-79-favicon-letter-pending.mjs` (run 37, `docs/favicon-letter-pending.md`, backlog 84 and 86).
 - Onboarding step 2: in the dark theme a favicon gets a quiet 1 px outline (`--icon-outline`) in checked rows, so a favicon with its own dark plate keeps its shape against the panel (run 36, `docs/favicon-outline.md`; E2E: new `dg-78-favicon-outline.mjs`).
 
 - Onboarding step 2, dark theme: a favicon now sits on a light backdrop (new token `--icon-backdrop`, `#eef1f5` in the dark theme, transparent in the light one) so a dark icon stays readable on the dark panel; the run 33 row CSS was tidied without changing any computed style (`docs/starter-rows-icon-chip.md`). A white favicon with a transparent background is weaker on the backdrop (accepted). E2E: new `dg-76-starter-rows-icon-chip.mjs`.

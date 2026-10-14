@@ -302,6 +302,7 @@ const currentLocation = () => weatherResult?.location ?? weatherLocation;
 function createFavoriteLetterNode(item, source) {
   const span = createNode("span", "favorite-letter", getFavoriteLetter(item));
   span.dataset.iconSource = source;
+  span.setAttribute("aria-hidden", "true"); // the tile's aria-label already names the link (docs/favicon-letter-pending.md)
   return span;
 }
 
@@ -322,8 +323,8 @@ function getDefaultFaviconChecker() {
 
 // Shared by the grid tile and the onboarding row so the rules cannot drift. Call it BEFORE `image.src` is set and
 // before the node is inserted. A known "default" verdict returns the letter node to use instead of the image; a
-// known "real" verdict or a failed checker returns null and leaves the image as it is; an unknown URL is hidden
-// (`data-icon-check="pending"`, set now, before insertion) until its first `load` has been classified.
+// known "real" verdict or a failed checker returns null and leaves the image as it is; an unknown URL shows the
+// neutral chip (`data-icon-check="pending"`, set now, before insertion; no globe pixel) until its first `load` has been classified.
 function attachDefaultFaviconCheck(image, url, makeLetter) {
   const checker = getDefaultFaviconChecker();
   if (!checker || checker.failed) return null;
@@ -1514,7 +1515,11 @@ function goToOnboardingStep1({ focusTitle = false } = {}) {
 
 function createOnboardingStarterIcon(row) {
   const letter = getFavoriteLetter({ label: row.label, domain: row.domain });
-  const fallback = () => createNode("span", "onboarding-wizard__starter-icon onboarding-wizard__starter-icon--letter", letter);
+  const fallback = () => {
+    const span = createNode("span", "onboarding-wizard__starter-icon onboarding-wizard__starter-icon--letter", letter);
+    span.setAttribute("aria-hidden", "true"); // the row's visible label and the checkbox name carry the link
+    return span;
+  };
   if (!faviconBaseUrl) return fallback();
   const icon = createNode("img", "onboarding-wizard__starter-icon");
   const url = getFaviconUrl({ baseUrl: faviconBaseUrl, pageUrl: row.url, size: FAVICON_SIZE });

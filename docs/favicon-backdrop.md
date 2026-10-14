@@ -36,7 +36,7 @@ A luminance-based backdrop would change 2 of 69 icons and none of the eight star
 ## Current behaviour (`main`, `5591120`)
 
 - `img.onboarding-wizard__starter-icon { background: var(--icon-backdrop) }` (`src/surfaces.css:275-278`); the comment above says "Not in the hover or forced-colors blocks" and does not say why.
-- Step 2 and its eight `img` nodes are built once with the wizard; the `img` has `src` before insertion; with the default-icon check pending the image is `visibility: hidden` until its verdict (`[data-icon-check="pending"]`, `src/newtab.css:366`). Back/Continue only toggles `hidden`/`inert` on the step. So the "empty light square until decode" of run 34 § Accepted exceptions was never observed on a reachable path.
+- Step 2 and its eight `img` nodes are built once with the wizard; the `img` has `src` before insertion; with the default-icon check pending the image is the pending chip (no backdrop, no ring) until its verdict (`[data-icon-check="pending"]`, `src/surfaces.css`; run 37, before it was `visibility: hidden`). Back/Continue only toggles `hidden`/`inert` on the step. So the "empty light square until decode" of run 34 § Accepted exceptions was never observed on a reachable path.
 
 ## Decisions
 

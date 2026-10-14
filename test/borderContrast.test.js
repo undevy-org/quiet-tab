@@ -204,8 +204,12 @@ describe("AS-ICB-01 icon backdrop", () => {
   const faviconOpacity = () => {
     const OTHER = [LETTER_OFF, '.onboarding-wizard__starter input[type="checkbox"]', `.onboarding-wizard__starter input[type="checkbox"]:disabled + .onboarding-wizard__starter-surface`];
     const found = rules(sources["surfaces.css"]).flatMap((r) => r.selector.split(",").map((s) => ({ selector: s.trim(), body: r.body }))).filter((r) => r.selector.includes("onboarding-wizard__starter") && /(?:^|[;\s])opacity:/.test(r.body) && !OTHER.includes(r.selector));
-    assert.deepEqual(found.map((r) => r.selector), [IMG_OFF], `the only opacity rule that can reach the favicon img is ${IMG_OFF}`);
-    const m = found[0].body.match(/(?:^|[;\s])opacity:\s*([0-9.]+)\s*;/);
+    // Run 37: the pending favicon img is the chip with the letter's 0.6 (docs/favicon-letter-pending.md), not a favicon; the letter's own contrast is
+    // closed by the letter opacity pin (SRP pin 3). So exactly these two rules reach the img, and the favicon's fade is the IMG_OFF rule alone.
+    const CHIP_OFF = `${IMG_OFF}[data-icon-check="pending"]`;
+    assert.deepEqual(found.map((r) => r.selector).sort(), [IMG_OFF, CHIP_OFF].sort(), `the only opacity rules that can reach the favicon img are ${IMG_OFF} and the pending chip`);
+    assert.match(found.find((r) => r.selector === CHIP_OFF).body, /(?:^|[;\s])opacity:\s*0\.6\s*;/, "the pending chip carries the letter's 0.6");
+    const m = found.find((r) => r.selector === IMG_OFF).body.match(/(?:^|[;\s])opacity:\s*([0-9.]+)\s*;/);
     assert.ok(m, `no numeric opacity in the rule for ${IMG_OFF}`);
     return Number(m[1]);
   };
