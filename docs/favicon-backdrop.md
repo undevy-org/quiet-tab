@@ -22,7 +22,7 @@ Related: `docs/starter-rows-icon-chip.md`, `docs/favicon-globe-fallback.md`, `sr
 
 | Class | Count | Share | Effect of the light backdrop |
 |-------|-------|-------|------------------------------|
-| Own opaque plate, dark (X, TikTok, Medium, Uber, Vercel, Perplexity, Booking, eBay, Twitter) | 9 | 13 % | none (the plate covers the backdrop); 1.31:1 against the panel |
+| Own opaque plate, dark (X, TikTok, Medium, Uber, Vercel, Perplexity, Booking, eBay, Twitter) | 9 | 13 % | none (the plate covers the backdrop); up to 1.31:1 against the panel (a pure black plate) |
 | Own plate, light (ChatGPT, GitHub, Google G, Wikipedia, Apple, Notion, Anthropic…) | 14 | 20 % | the plate merges with the backdrop (1.1:1 on average); the glyph inside stays readable |
 | Own plate, coloured (YouTube, Spotify, Reddit, Amazon…) | 28 | 41 % | none |
 | Glyph on transparent, readable on both | 14 | 20 % | none |
@@ -86,7 +86,7 @@ A comment and test/doc changes: no geometry, text, DOM, tab order or animation c
 ## Accepted exceptions
 
 - No per-icon backdrop: the probe shows a luminance rule would change 2 of 69 real icons (owner decision 2026-10-14, option A).
-- A dark opaque plate (13 % of probed icons, among the starters X) stays close to the panel (1.31:1) and almost vanishes in an unchecked row; backlog 90 is closed as accepted.
+- A dark opaque plate (13 % of probed icons, among the starters X) stays close to the panel (up to 1.31:1 for a pure black plate) and almost vanishes in an unchecked row; backlog 90 is closed as accepted.
 - A light plate (20 %) merges with the light backdrop (1.1:1 on average); the glyph inside stays readable.
 - Every exception of `docs/starter-rows-icon-chip.md` stays.
 - The probe used Google's favicon proxy, not Chrome's `_favicon`; real icons of a profile can differ.
