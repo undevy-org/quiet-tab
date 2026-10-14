@@ -1624,6 +1624,14 @@ describe("newtab onboarding step 2 starter row source (docs/onboarding-starter-r
     assert.deepEqual(decl(dark), ["#eef1f5"], "dark value");
   });
 
+  it("FBC pin 1: the comment above the favicon backdrop rule names the hover surface and the forced-colors Canvas", async () => {
+    const css = await surfaces(); // raw text: cssRules/stripCss drop comments
+    const m = css.match(/\/\*((?:(?!\*\/)[\s\S])*)\*\/\s*img\.onboarding-wizard__starter-icon\s*\{/);
+    assert.ok(m, "a comment directly above the img.onboarding-wizard__starter-icon rule");
+    assert.match(m[1], /hover[\s\S]*surface/i, "the comment says the hover fill is painted on the row surface");
+    assert.match(m[1], /forced-colors[\s\S]*Canvas/i, "the comment says forced colors turn the backdrop into Canvas");
+  });
+
   it("ICB pin 2: only the listed starter/img rules set a background; the favicon img takes var(--icon-backdrop) in exactly one rule, none inside @media (hover: hover)", async () => {
     const css = await surfaces();
     const BG = /(?:^|[;\s])background(?:-color|-image)?\s*:/;
