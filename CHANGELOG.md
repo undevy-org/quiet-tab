@@ -121,6 +121,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Onboarding step 2: in the dark theme a favicon gets a quiet 1 px outline (`--icon-outline`) in checked rows, so a favicon with its own dark plate keeps its shape against the panel (run 36, `docs/favicon-outline.md`; E2E: new `dg-78-favicon-outline.mjs`).
+
 - Onboarding step 2, dark theme: a favicon now sits on a light backdrop (new token `--icon-backdrop`, `#eef1f5` in the dark theme, transparent in the light one) so a dark icon stays readable on the dark panel; the run 33 row CSS was tidied without changing any computed style (`docs/starter-rows-icon-chip.md`). A white favicon with a transparent background is weaker on the backdrop (accepted). E2E: new `dg-76-starter-rows-icon-chip.mjs`.
 
 - Onboarding step 2 polish (run 33, `docs/starter-rows-polish.md`): an enabled starter row gets a hover fill (`--soft-fill`, the letter chip `--soft-fill-strong`; pointer devices only, no transition); an unchecked row keeps the dialog colour and only its icon turns grey (the dark-theme grey block is gone; a letter icon stays at `opacity` 0.6 so it keeps 3:1 against its chip); the rows are muted (`opacity` 0.62, cursor `wait`) while Finish writes; the progress pills get a border and a `Highlight` fill under forced colors. E2E: new `dg-75-starter-rows-polish.mjs`; `buildFromRef` now copies `rules/`, so `ctx.base` and the `01-upgrade` baseline open a tab.

@@ -31,7 +31,7 @@ Related: `docs/starter-rows-icon-chip.md`, `docs/favicon-globe-fallback.md`, `sr
 | Genuinely non-square (aspect beyond 1.25) | 0 | 0 % | — |
 | One pixel off square (Slack, Cloudflare, 32×31), content square | 2 | 2.9 % | none; counted by the probe script as "non-square" because of the 1 px |
 
-A luminance-based backdrop would change 2 of 69 icons and none of the eight starters, so it is not built. A white glyph without a plate (the case of the run 34 exception) was not observed.
+A luminance-based backdrop would change 2 of 69 icons and none of the eight starters, so it is not built (proxy data; with real Chromium icons the backdrop is what makes the starters ChatGPT and GitHub readable, see `docs/favicon-outline.md`). A white glyph without a plate (the case of the run 34 exception) was not observed.
 
 ## Current behaviour (`main`, `5591120`)
 
@@ -86,14 +86,14 @@ A comment and test/doc changes: no geometry, text, DOM, tab order or animation c
 ## Accepted exceptions
 
 - No per-icon backdrop: the probe shows a luminance rule would change 2 of 69 real icons (owner decision 2026-10-14, option A).
-- A dark opaque plate (13 % of probed icons, among the starters X) stays close to the panel (up to 1.31:1 for a pure black plate) and almost vanishes in an unchecked row; backlog 90 is closed as accepted.
+- A dark opaque plate (13 % of probed icons, among the starters X) stays close to the panel (up to 1.31:1 for a pure black plate) and almost vanishes in an unchecked row; in a checked row the run 36 ring outlines it; backlog 90 is closed as accepted.
 - A light plate (20 %) merges with the light backdrop (1.1:1 on average); the glyph inside stays readable.
 - Every exception of `docs/starter-rows-icon-chip.md` stays.
 - The probe used Google's favicon proxy, not Chrome's `_favicon`; real icons of a profile can differ.
 
 ## Non-goals
 
-- A luminance- or plate-based backdrop, an outline or ring for dark plates, changes to the unchecked look (owner declined these on 2026-10-14); a backdrop appearing only after load (not reproducible); a fade-in (`SRP pin 1` forbids `transition` on the starter rules).
+- A luminance- or plate-based backdrop, an outline or ring for dark plates (declined in run 35, decided later in run 36, `docs/favicon-outline.md`: a quiet ring in checked rows only), changes to the unchecked look (owner declined these on 2026-10-14); a backdrop appearing only after load (not reproducible); a fade-in (`SRP pin 1` forbids `transition` on the starter rules).
 - Grid tiles (`.favorite-tile`), backlog 84 and 86, the default-icon check logic.
 
 ## Process

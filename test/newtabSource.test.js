@@ -1632,6 +1632,65 @@ describe("newtab onboarding step 2 starter row source (docs/onboarding-starter-r
     assert.match(m[1], /forced-colors[\s\S]*Canvas/i, "the comment says forced colors turn the backdrop into Canvas");
   });
 
+  // ---- run 36 (docs/favicon-outline.md AS-FBO-06): the quiet outline of the favicon in the dark theme ----------------------------------------------------
+  const RING_IMG = "img.onboarding-wizard__starter-icon";
+  // The layers of a box-shadow value, split on top-level commas (a comma inside rgb()/var() does not split).
+  const shadowLayers = (value) => {
+    const layers = [];
+    let depth = 0;
+    let from = 0;
+    for (let i = 0; i < value.length; i += 1) {
+      if (value[i] === "(") depth += 1;
+      else if (value[i] === ")") depth -= 1;
+      else if (value[i] === "," && depth === 0) {
+        layers.push(value.slice(from, i).trim());
+        from = i + 1;
+      }
+    }
+    layers.push(value.slice(from).trim());
+    return layers;
+  };
+  const shadowOf = (body) => body.match(/(?:^|[;\s])box-shadow:\s*([^;}]+)/)?.[1]?.trim() ?? null;
+  // a ring layer is any layer that is not inset and not `none`
+  const isRingLayer = (layer) => layer !== "none" && !/^inset\b/.test(layer);
+
+  it("FBO pin 1: --icon-outline is transparent in the light :root and #3d4652 in the dark media block", async () => {
+    const tokens = await readFile(new URL("../src/design-tokens.css", import.meta.url), "utf8");
+    const css = stripCss(tokens);
+    const dark = mediaBlock(css, "@media (prefers-color-scheme: dark)", "design-tokens.css");
+    const lightPart = css.replace(dark, "");
+    const decl = (text) => [...text.matchAll(/--icon-outline:\s*([^;]+);/g)].map((m) => m[1].trim());
+    assert.deepEqual(decl(lightPart), ["transparent"], "light value");
+    assert.deepEqual(decl(dark), ["#3d4652"], "dark value");
+  });
+
+  it("FBO pin 2: of the rules for the favicon img exactly two set a box-shadow: the ring in the base rule, none in the unchecked rule", async () => {
+    const withShadow = selectorList(await surfaces()).filter((r) => r.selector.includes(RING_IMG) && shadowOf(r.body) !== null);
+    assert.deepEqual(withShadow.map((r) => r.selector).sort(), [RING_IMG, IMG_OFF].sort(), "the rules that set a box-shadow on the favicon img");
+    assert.equal(shadowOf(withShadow.find((r) => r.selector === RING_IMG).body), "0 0 0 1px var(--icon-outline)", "the base rule draws the 1 px ring from the token");
+    assert.equal(shadowOf(withShadow.find((r) => r.selector === IMG_OFF).body), "none", "an unchecked row has no ring");
+  });
+
+  it("FBO pin 3: no letter chip rule and no grid favicon rule has a ring layer (a shadow that is neither inset nor none)", async () => {
+    const files = { "surfaces.css": await surfaces(), "newtab.css": await readFile(new URL("../src/newtab.css", import.meta.url), "utf8") };
+    const offenders = [];
+    for (const [file, css] of Object.entries(files)) {
+      for (const r of selectorList(css)) {
+        if (!(r.selector.includes("--letter") || r.selector.includes(".favorite-icon"))) continue;
+        const value = shadowOf(r.body);
+        if (value !== null && shadowLayers(value).some(isRingLayer)) offenders.push(`${file}: ${r.selector}`);
+      }
+    }
+    assert.deepEqual(offenders, [], "the ring belongs to the starter favicon img only");
+  });
+
+  it("FBO pin 4: no rule for the favicon img inside (hover: hover) or forced-colors blocks sets a box-shadow (the browser drops it in forced colors)", async () => {
+    const css = await surfaces();
+    const blocks = [...mediaBlocks(css, "@media (hover: hover)"), ...mediaBlocks(css, "@media (forced-colors: active)")];
+    const offenders = blocks.flatMap((b) => selectorList(b)).filter((r) => r.selector.includes(RING_IMG) && shadowOf(r.body) !== null).map((r) => r.selector);
+    assert.deepEqual(offenders, [], "no box-shadow for the favicon img in these blocks");
+  });
+
   it("ICB pin 2: only the listed starter/img rules set a background; the favicon img takes var(--icon-backdrop) in exactly one rule, none inside @media (hover: hover)", async () => {
     const css = await surfaces();
     const BG = /(?:^|[;\s])background(?:-color|-image)?\s*:/;

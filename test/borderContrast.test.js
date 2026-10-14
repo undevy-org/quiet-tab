@@ -230,3 +230,22 @@ describe("AS-ICB-01 icon backdrop", () => {
     assert.ok(r >= 10, r.toFixed(3));
   });
 });
+
+describe("AS-FBO-06 icon outline: a quiet ring that still defines a black favicon plate", () => {
+  const panel = () => rgba(token(dark, "--color-surface")).slice(0, 3);
+  const ring = () => rgba(token(dark, "--icon-outline")).slice(0, 3);
+  it("light: --icon-outline is the keyword transparent (asserted as a string, rgba() does not parse it)", () => {
+    assert.equal(token(light, "--icon-outline"), "transparent");
+  });
+  it("dark: --icon-outline is #3d4652, read from the dark token slice", () => {
+    assert.equal(token(dark, "--icon-outline"), "#3d4652");
+  });
+  it("dark: the ring against the panel is quiet: between 1.5:1 and 2.0:1 (computed 1.67)", () => {
+    const r = ratio(ring(), panel());
+    assert.ok(r >= 1.5 && r <= 2.0, r.toFixed(3));
+  });
+  it("dark: the ring against a black plate is at least 2.0:1 (computed 2.20), so it defines the plate", () => {
+    const r = ratio(ring(), [0, 0, 0]);
+    assert.ok(r >= 2.0, r.toFixed(3));
+  });
+});
