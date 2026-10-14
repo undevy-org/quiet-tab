@@ -22,7 +22,7 @@ Related: `docs/onboarding-starter-rows.md` (decisions 3, 4, 5 and `## Accepted e
 
 ## Current behaviour (`main` after run 32, `ab7b415`)
 
-- Since run 32 a starter icon that is Chrome's default globe is replaced by the letter (`.onboarding-wizard__starter-icon--letter`), after a pending state (`[data-icon-check="pending"]`, `visibility: hidden`); this run does not touch that logic. The letter is now the common look of an icon, so its contrast in an unchecked row matters (backlog 85).
+- Since run 32 a starter icon that is Chrome's default globe is replaced by the letter (`.onboarding-wizard__starter-icon--letter`), after a pending state (`[data-icon-check="pending"]`; `visibility: hidden` then, a neutral chip since run 37); this run does not touch that logic. The letter is now the common look of an icon, so its contrast in an unchecked row matters (backlog 85).
 - A starter row has no hover style: `cursor: pointer` is the only affordance (run 26 `## Accepted exceptions`). The hit target is the transparent checkbox `input` laid over the row; the visible surface has `pointer-events: none`.
 - An unchecked row is `filter: grayscale(1)` on the whole surface, icon `opacity` 0.4 (favicon `img` and letter alike, one rule `.onboarding-wizard__starter-icon`). In the dark theme the grey of the filtered surface is a neutral `rgb(33,33,33)` (the painted pixel: the computed `background-color` of the surface stays `rgb(29,34,41)`) while the dialog is `rgb(29,34,41)`, so the off row looks like a grey block on a blue-grey panel.
 - While Finish writes (`favoritesBusy`), the 8 checkboxes are `disabled` but the rows look normal; a click is ignored silently. No timer ends the busy phase: it lasts as long as the write.
@@ -128,7 +128,7 @@ The change is colour, opacity, cursor and border only: row geometry, sizes, text
 
 - A different layout, size or type of the row, or the favicon handling (run 32).
 - Changing the busy flow itself (guards, focus return), or backlog 80.
-- Backlog 84 (letters hidden from assistive technology) and 86 (empty 1×1 tile while the default-icon check is pending): both are about the run 32 logic, not the starter row styles.
+- Backlog 84 (letters hidden from assistive technology) and 86 (empty 1×1 tile while the default-icon check is pending): both are about the run 32 logic, not the starter row styles (done in run 37, `docs/favicon-letter-pending.md`).
 - Editing `permissions.md`.
 
 ## Process

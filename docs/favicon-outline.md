@@ -79,7 +79,7 @@ Common setup: harness 1280×800, dark theme unless stated, wizard step 2, eight 
 ### AS-FBO-05 Slow and failed answers, quick toggles
 - Given: dark theme; `_favicon` for one starter is held by a deferred promise that the test releases (held longer than the default-icon check timer of 2 s, which starts at the first `check` call, so that check has already failed open when the answer comes; the answer then succeeds), for another starter it fails; the route is asynchronous for the held row and as in `dg-76` for the others (sentinel aborted); a checked favicon row is toggled five times in a row.
 - When: reading the rows while the answer is held, after it, and after the toggles.
-- Then: while held, the `img` is `visibility: hidden` (the run 32 `pending` state) and the pixel outside its box equals the panel; after the answer the successful row shows the ring (`rgb(61, 70, 82)` ±3) and the failed row has been replaced by the letter chip with `box-shadow: none` and no ring pixel; after the five toggles the ring state equals the last state (present when checked, absent when unchecked), with no residue.
+- Then: while held, the `img` is the pending chip (run 37: the letter's fill, `box-shadow: none`; before run 37 it was `visibility: hidden`) and the pixel outside its box equals the panel; after the answer the successful row shows the ring (`rgb(61, 70, 82)` ±3) and the failed row has been replaced by the letter chip with `box-shadow: none` and no ring pixel; after the five toggles the ring state equals the last state (present when checked, absent when unchecked), with no residue.
 - Verified by: E2E `dg-78`.
 
 ### AS-FBO-06 Source pins
