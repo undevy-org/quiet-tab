@@ -292,7 +292,7 @@ img.onboarding-wizard__starter-icon {
 
 /* The favicon while the default-icon check runs is the neutral chip of the letter it may become: the letter's fill, no backdrop and no ring, and its
    content pushed out of the box so the globe is never painted (docs/favicon-letter-pending.md decision 1). No `visibility`: the first-run veil hides
-   the desk and the image inherits it. Specificity (0,2,1) beats the base `img` rule above (0,1,1). The unchecked and hover variants below follow the
+   the desk and the image inherits it. It outranks the base `img` rule above. The unchecked and hover variants below follow the
    letter's own rules (0.6, --soft-fill-strong) so that chip -> letter changes only the glyph. */
 img.onboarding-wizard__starter-icon[data-icon-check="pending"] {
   background: var(--soft-fill);
@@ -358,7 +358,7 @@ img.onboarding-wizard__starter-icon[data-icon-check="pending"] {
   opacity: 0.6;
 }
 
-/* The pending chip is the letter in an unchecked row: 0.6, not the favicon's 0.4 (0,6,2 beats the unchecked img rule above, 0,5,2). */
+/* The pending chip is the letter in an unchecked row: 0.6, not the favicon's 0.4 (it outranks the unchecked img rule above). */
 .onboarding-wizard__starter input[type="checkbox"]:not(:checked) + .onboarding-wizard__starter-surface img.onboarding-wizard__starter-icon[data-icon-check="pending"] {
   opacity: 0.6;
 }
@@ -380,7 +380,7 @@ img.onboarding-wizard__starter-icon[data-icon-check="pending"] {
     background: var(--soft-fill-strong);
   }
 
-  /* The pending chip takes the letter's hover fill (0,7,2 beats its own base rule, 0,2,1). */
+  /* The pending chip takes the letter's hover fill (it outranks the chip's own base rule). */
   .onboarding-wizard__starter input[type="checkbox"]:not(:disabled):hover + .onboarding-wizard__starter-surface img.onboarding-wizard__starter-icon[data-icon-check="pending"] {
     background: var(--soft-fill-strong);
   }

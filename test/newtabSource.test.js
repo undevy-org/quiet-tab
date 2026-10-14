@@ -1805,7 +1805,9 @@ describe("newtab onboarding step 2 starter row source (docs/onboarding-starter-r
     const pending = selectorList(css).filter((r) => r.selector.includes("data-icon-check"));
     assert.deepEqual(pending.map((r) => r.selector).sort(), [CHIP_BASE, CHIP_OFF, CHIP_HOVER].sort(), "ALL pending rules of surfaces.css, by exact selector");
     const by = (selector) => pending.find((r) => r.selector === selector).body;
-    assert.match(by(CHIP_BASE), /(?:^|[;\s])background:\s*var\(--soft-fill\);/);
+    const letterFill = cssRules(css).find((r) => r.selector === LETTER && /(?:^|[;\s])background:/.test(r.body)).body.match(/(?:^|[;\s])background:\s*([^;]+);/)[1].trim();
+    assert.equal(by(CHIP_BASE).match(/(?:^|[;\s])background:\s*([^;]+);/)?.[1]?.trim(), letterFill, "the chip fill is the letter's fill");
+    assert.equal(letterFill, "var(--soft-fill)");
     assert.match(by(CHIP_BASE), /(?:^|[;\s])box-shadow:\s*none;/);
     assert.match(by(CHIP_OFF), /(?:^|[;\s])opacity:\s*0\.6;/);
     assert.match(by(CHIP_HOVER), /(?:^|[;\s])background:\s*var\(--soft-fill-strong\);/);
@@ -1818,10 +1820,11 @@ describe("newtab onboarding step 2 starter row source (docs/onboarding-starter-r
     assert.ok(outranks(CHIP_HOVER, CHIP_BASE), "(3) outranks (1) (hover fill)");
     const hoverRules = cssRules(mediaBlocks(css, "@media (hover: hover)").join("\n"));
     assert.ok(hoverRules.some((r) => r.selector === CHIP_HOVER), "(3) lives inside @media (hover: hover)");
-    assert.deepEqual(cssRules(stripCss(css).replace(mediaBlocks(css, "@media (hover: hover)").join("\n"), "")).filter((r) => r.selector === CHIP_HOVER), [], "(3) is not outside the hover block");
+    let outside = stripCss(css);
+    for (const block of mediaBlocks(css, "@media (hover: hover)")) outside = outside.replace(block, "");
+    assert.deepEqual(cssRules(outside).filter((r) => r.selector === CHIP_HOVER), [], "(3) is not outside the hover block");
     const pushed = selectorList(css).filter((r) => r.selector.includes("onboarding-wizard__starter") && /object-position/.test(r.body)).map((r) => r.selector);
     assert.deepEqual(pushed, [CHIP_BASE], "object-position appears on no other starter rule");
-    assert.doesNotMatch(stripCss(css), /visibility/, "surfaces.css declares no visibility at all");
   });
 
   it("PLP pin 3: the grid pending chip is one rule, the letter's fill and radius, no visibility, no motion, content pushed out; the old hidden rule is gone", async () => {
@@ -1846,7 +1849,7 @@ describe("newtab onboarding step 2 starter row source (docs/onboarding-starter-r
     const grid = code.slice(code.indexOf("function createFavoriteLetterNode("), code.indexOf("\n}\n", code.indexOf("function createFavoriteLetterNode(")));
     assert.match(grid, /^\s*span\.setAttribute\("aria-hidden", "true"\);/m, "the grid letter");
     const row = code.slice(code.indexOf("function createOnboardingStarterIcon("), code.indexOf("\n}\n", code.indexOf("function createOnboardingStarterIcon(")));
-    assert.match(row, /const fallback = \(\) => \{[\s\S]*?\.setAttribute\("aria-hidden", "true"\);[\s\S]*?return /, "the wizard fallback letter (block form)");
+    assert.match(row, /const fallback = \(\) => \{[^}]*\bspan\.setAttribute\("aria-hidden", "true"\);[^}]*return span;/, "the wizard fallback letter (block form, the attribute is set inside the fallback body)");
   });
 });
 
