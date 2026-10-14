@@ -2,7 +2,7 @@
 
 ## Status
 
-`draft` — revision 2 (2026-10-14, after spec review round 1). Run №34 (`starter-rows-icon-chip`). A follow-up of run 33 (`docs/starter-rows-polish.md`, backlog 87 and 88).
+`draft` — revision 3 (2026-10-14, after spec review rounds 1–2 and spec gate round 1). Run №34 (`starter-rows-icon-chip`). A follow-up of run 33 (`docs/starter-rows-polish.md`, backlog 87 and 88).
 
 **Data compatibility: not required** (no storage change).
 
@@ -37,7 +37,7 @@ Related: `docs/starter-rows-polish.md` (decision 2), `docs/onboarding-starter-ro
 
 ## Acceptance scenarios
 
-Common setup: harness **1280×800**, wizard step 2, eight starters; `_favicon` answered with a PNG of a black 16×16 square centred on a transparent 32×32 for the favicon rows (the worst case of backlog 87: a dark glyph that does not cover the box) and failed for one row (letter); tokens resolved through probe spans. The glyph pixel is read at the centre of the icon box and the backdrop pixel inside a corner (within the 4px radius), from a screenshot clip, with a tolerance of ±3 per channel.
+Common setup: harness **1280×800**, wizard step 2, eight starters; `_favicon` answered with a PNG of a black 16×16 square centred on a transparent 32×32 for the favicon rows (the worst case of backlog 87: a dark glyph that does not cover the box) and failed for one row (letter); tokens resolved through probe spans. The glyph pixel is read at (11, 11) of the 22×22 icon box and the backdrop pixel at (3, 3) from the box's top-left corner (inside the 4px corner radius; (0, 0) is outside the rounded corner), from a screenshot clip, with a tolerance of ±3 per channel; the pixel threshold is softer than the computed one (≥ 2.5:1 unchecked) so the dark pixel does not make the check flaky.
 
 ### AS-ICB-01 Dark theme: the favicon sits on a light backdrop
 - Given: dark theme, a favicon row checked and the same row unchecked.
@@ -48,26 +48,30 @@ Common setup: harness **1280×800**, wizard step 2, eight starters; `_favicon` a
 ### AS-ICB-02 Light theme and forced colors are unchanged
 - Given: light theme; forced colors (light and dark).
 - When: reading computed styles of the favicon `img`.
-- Then: light theme: `background-color` is transparent (`rgba(0, 0, 0, 0)`); forced colors: the computed `background-color` of the `img` equals the probe-resolved Canvas and the surface's own background (not painted differently), and no rule inside `@media (forced-colors: active)` sets a `background` on `img.onboarding-wizard__starter-icon` (source pin).
+- Then: light theme: `background-color` is transparent (`rgba(0, 0, 0, 0)`); forced colors: the dark theme (token `#eef1f5`) computes the probe-resolved Canvas, equal to the surface's own background (not painted differently); the light theme (token `transparent`) computes what it computes without the change (`rgba(0, 0, 0, 0)` expected; the plan probe records the actual value before the assertion is written); and no rule inside `@media (forced-colors: active)` sets a `background` on `img.onboarding-wizard__starter-icon` (source pin).
 - Verified by: E2E `dg-76`; `newtabSource` pin.
 
 ### AS-ICB-03 Letter chip, busy and hover are unchanged
 - Given: dark theme.
 - When: reading the letter icon, a hovered favicon row, and a busy row (held write, `failStorageSetAfter` key `quietTabWidgetsMeta`, 9000 ms).
-- Then: the letter chip stays `--soft-fill` (hover: `--soft-fill-strong`); a hovered favicon row keeps the backdrop and the hover fill; a busy row keeps surface `opacity` 0.62 with the backdrop faded by it; `dg-75` and `dg-73` stay green unchanged.
+- Then: the letter chip stays `--soft-fill` (hover: `--soft-fill-strong`); a hovered favicon row keeps the backdrop and the hover fill; a busy row keeps surface `opacity` 0.62 with the backdrop faded by it; `dg-73` stays green unchanged and `dg-75` stays green after its one amended check (Scope).
 - Verified by: E2E `dg-76`, `dg-75`, `dg-73` (full run).
 
 ### AS-ICB-04 CSS tidy-up changes no computed style
 - Given: both themes and forced colors.
 - When: comparing the computed `filter`, `opacity`, `background-color`, `cursor` of surface, icon (favicon and letter) and label in rest, checked, unchecked, hover, focus and busy states against run 33.
 - Then: identical, except the favicon `background-color` of decision 1 in the dark theme; the unchecked `img` and letter still carry `grayscale(1)` with `opacity` 0.4 and 0.6.
-- Verified by: E2E `dg-75` (unchanged and green), `newtabSource` pins.
+- Verified by: E2E `dg-75` (green after its one amended check) and `dg-73`, `newtabSource` pins.
+
+## Paint-only
+
+The change is a background colour on the favicon `img` plus a CSS tidy-up: no geometry, text, DOM, tab order or animation changes, at every window width (500, 320 and the 600 px high window included), so keyboard behaviour and `prefers-reduced-motion` are untouched; `dg-73` AS-OSR-10 geometry checks must stay green.
 
 ## Review focus
 
 - Does the light chip look right in the dark panel (a bright square next to the muted label), checked and unchecked? Is it too loud in a checked row? (AS-ICB-01)
 - A favicon with its own transparent background and a light glyph (white on transparent) on the light chip: unreadable? (the case the chip creates; the owner accepted the trade-off, the lens reports how bad it is)
-- The checked row: bright squares (about 14:1 against the panel) next to quiet letter chips (about 1.1:1) in one list: is the list uneven?
+- The checked row: bright squares (about 14:1 against the panel) next to quiet letter chips (about 1.2:1, 1.22 computed) in one list: is the list uneven?
 - Busy and hover look unchanged (AS-ICB-03).
 
 ## Accepted exceptions
@@ -75,8 +79,8 @@ Common setup: harness **1280×800**, wizard step 2, eight starters; `_favicon` a
 - A light favicon with a transparent background (a white glyph) is now white on `#eef1f5` in the dark theme: weaker than before. Accepted with the owner's choice of a light backdrop; a per-icon luminance check is out of scope.
 - The grid tiles keep bare favicons.
 - Under forced colors there is no backdrop (browser override); a black glyph stays hard to see in forced colors dark, as before.
-- A white or light glyph on a transparent background is weaker on the light backdrop in the dark theme: computed 1.13:1 (checked) and 1.09:1 (unchecked), against about 14.8:1 on the bare panel before. One class of invisible icons replaces the other, by the owner's choice.
-- Before the image loads (or if its load fails and the letter swap has not run yet) the empty `img` shows the light 22×22 square for a moment.
+- A white or light glyph on a transparent background is weaker on the light backdrop in the dark theme: computed 1.13:1 (checked) and 1.09:1 (unchecked), against about 16:1 on the bare panel before (15.99 computed). One class of invisible icons replaces the other, by the owner's choice.
+- Before the image loads the empty `img` shows the light 22×22 square for a moment. While the run 32 default-icon check is pending (`[data-icon-check="pending"]`, `visibility: hidden`) the `img` and its backdrop are hidden together; if the image fails to load, the square shows until the letter swap runs. Other low-contrast glyphs (grey, tinted) also get weaker against `#eef1f5`, not only white.
 - A busy unchecked row (`opacity` 0.62 on the surface, 0.4 on the icon) measures 2.35:1: the row is inactive, the threshold does not apply.
 
 ## Non-goals
