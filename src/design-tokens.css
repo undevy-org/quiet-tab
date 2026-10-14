@@ -31,6 +31,9 @@
   /* Backdrop under a favicon in the onboarding starter rows. Light theme: none. Dark theme: a light square, because a
      dark favicon on the dark panel is unreadable at any opacity. */
   --icon-backdrop: transparent;
+  /* A quiet 1 px ring around the favicon in the onboarding starter rows (checked rows only). Light theme: none. Dark theme: a mid grey that
+     gives a favicon with its own dark plate an edge against the panel without framing the other icons. Decorative, deliberately below 3:1. */
+  --icon-outline: transparent;
 
   --focus-ring: #111318; /* tile keyboard focus ring: solid, >= 3:1 on the page and the panel (WCAG 1.4.11) */
   --focus: rgb(0 0 0 / 24%);
@@ -121,6 +124,7 @@
     --color-fill-soft: #2a313b;
     --color-fill-soft-strong: #343c48;
     --icon-backdrop: #eef1f5;
+    --icon-outline: #3d4652;
 
     --focus-ring: #f4f6f8;
     --focus: rgb(255 255 255 / 28%);

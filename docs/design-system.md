@@ -59,6 +59,7 @@ new names where applicable.
 | `--color-fill-soft` | Hover list rows, focused input background |
 | `--color-fill-soft-strong` | Focused button background |
 | `--icon-backdrop` | Backdrop under a favicon in the onboarding starter rows: `transparent` in light, `#eef1f5` in dark (a dark favicon on the dark panel is unreadable at any opacity) |
+| `--icon-outline` | A quiet 1 px ring around the favicon in the onboarding starter rows, checked rows only: `transparent` in light, `#3d4652` in dark (1.67:1 against the panel, 2.20:1 against a black plate; decorative, deliberately below 3:1) |
 | `--focus-ring` | Solid focus outline on grid tiles (≥ 3:1, WCAG 1.4.11) |
 | `--focus-overlay-ring` | 2px focus ring in overlays (`--soft-ring` alias) |
 | `--focus` | 3px focus outline on buttons, inputs and segmented options outside overlays (legacy name, no semantic token yet) |
