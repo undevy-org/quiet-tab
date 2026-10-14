@@ -2,7 +2,7 @@
 
 ## Status
 
-`draft` — revision 4 (2026-10-14, after spec review rounds 1–3). Run №36 (`favicon-outline`). A follow-up of run 35 (`docs/favicon-backdrop.md`, backlog 91 and 92) and run 34 (`docs/starter-rows-icon-chip.md`).
+`implemented` — revision 4 (2026-10-14, after spec review rounds 1–3). Run №36 (`favicon-outline`). A follow-up of run 35 (`docs/favicon-backdrop.md`, backlog 91 and 92) and run 34 (`docs/starter-rows-icon-chip.md`).
 
 **Data compatibility: not required** (no storage change; no-users policy, `agent-config/CLAUDE.md`).
 
