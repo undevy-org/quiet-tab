@@ -2,7 +2,7 @@
 
 ## Status
 
-`draft` — revision 2 (2026-10-14, after spec review round 1). Run №35 (`favicon-backdrop`), branch A of its kickoff (the real-favicon probe decided: no luminance-based backdrop). A follow-up of run 34 (`docs/starter-rows-icon-chip.md`, backlog 89 and 90).
+`draft` — revision 3 (2026-10-14, after spec review rounds 1–2). Run №35 (`favicon-backdrop`), branch A of its kickoff (the real-favicon probe decided: no luminance-based backdrop). A follow-up of run 34 (`docs/starter-rows-icon-chip.md`, backlog 89 and 90).
 
 **Data compatibility: not required** (no storage change; no-users policy, `agent-config/CLAUDE.md`).
 
@@ -40,16 +40,16 @@ A luminance-based backdrop would change 2 of 69 icons and none of the eight star
 
 ## Decisions
 
-1. **Comment (backlog 89 а).** The comment above the backdrop rule says: the backdrop is not repeated in the hover block because the hover fill is painted on the row surface and the icon keeps its own backdrop; and not in `@media (forced-colors: active)` because in forced colors the dark-theme backdrop is replaced by Canvas and `forced-color-adjust` stays at its default, so nothing keeps it. A source pin checks that the comment directly above the rule names hover and forced colors. No computed style changes.
-2. **Backlog 89 (б) closed as not reproducible** (see the intake log). No `data-icon-ready`, no `:not([src])`. `docs/starter-rows-icon-chip.md` § Accepted exceptions: the sentence about "the empty light square until its image decodes" is replaced by "not observed on a reachable path (run 35)".
+1. **Comment (backlog 89 а).** The comment above the backdrop rule says: the backdrop is not repeated in the hover block because the hover fill is painted on the row surface and the icon keeps its own backdrop; and not in `@media (forced-colors: active)` because in forced colors the dark-theme backdrop is replaced by Canvas and `forced-color-adjust` stays at its default, so nothing keeps it. A source pin reads the RAW CSS text (the helpers strip comments), captures the comment block that is followed, after whitespace only, by the rule `img.onboarding-wizard__starter-icon {` (`/\/\*((?:(?!\*\/)[\s\S])*)\*\/\s*img\.onboarding-wizard__starter-icon\s*\{/`) and requires the reasons, not only the words: `/hover[\s\S]*surface/i` and `/forced-colors[\s\S]*Canvas/i` (the current comment already has the words `hover` and `forced-colors`, so the pin is RED on `main` until the text is rewritten). No computed style changes.
+2. **Backlog 89 (б) closed as not reproducible** (see the intake log). Reasons: the only `showOnboardingWizard` call is `src/newtab.js:1446`, guarded by `onboardingWizardShownThisLoad` (`:1437`); the wizard is built before the first grid render, so no verdict exists yet, `checker.failed` is false and all eight `img` get `pending`; without `faviconBaseUrl` a letter is created instead of an `img` (`:1518`). No `data-icon-ready`, no `:not([src])`. `docs/starter-rows-icon-chip.md` § Accepted exceptions: the sentence about "the empty light square until its image decodes" is replaced by "not observed on a reachable path (run 35)".
 3. **Probe numbers become accepted exceptions (backlog 90 closed).** `docs/starter-rows-icon-chip.md` § Accepted exceptions gets the probe table (compact, the same numbers as above) and states that dark plates and the light-plate merge are accepted and that no per-icon backdrop is built; the "every row" wording of its Decision 1 gets a pointer to this spec.
-4. **E2E helpers (backlog 89 в), not a product change.** From `dg-75` and `dg-76` the helpers that are verbatim equal move into `.private/e2e/lib/starterRows.mjs`: `rgbOf`, `alphaOf`, `transparent`, `lumRGB`, `ratioRGB`, `setChecked`, `noErrors`, `safe`, `nextFrames`, `park`, `waitSoft`, `waitFill`. Everything that differs stays local: `over`, `rowState`, `tokens`, `hoverRow`, `unhover`, `focusRowByKeyboard`, `toStep2`, `withDesk`, `routeFavicons`, and the module constants. (Review round 1 table: the helpers with different signatures or bodies are not merged; merging `rowState`/`withDesk` would change the checks.) Self-check: the check names and counts of `dg-73`, `dg-75`, `dg-76` are identical before and after (recorded once on `origin/main`), all three green, and a deliberate break of one shared helper turns a named check red.
+4. **E2E helpers (backlog 89 в), not a product change.** From `dg-75` and `dg-76` the helpers that are verbatim equal move into `.private/e2e/lib/starterRows.mjs`: `rgbOf`, `alphaOf`, `transparent`, `lumRGB`, `ratioRGB`, `setChecked`, `noErrors`, `safe`, `nextFrames`, `park`, `waitSoft`, `waitFill`. `setChecked` and `waitFill` read `BOXES` (built from `STEP2` from `WIZARD`) and `HOVER_PAINT_WAIT_MS`, whose values are equal in both files: the lib file exports `STEP2`, `BOXES` and `HOVER_PAINT_WAIT_MS` and both scenarios import them (the signatures and the checks do not change). Everything else that differs stays local: `over`, `rowState`, `tokens`, `hoverRow`, `unhover`, `focusRowByKeyboard`, `toStep2`, `withDesk`, `routeFavicons`. `dg-73` has its own copies of some helpers; it is not touched, it only takes part in the before/after self-check. (Review round 1 table: the helpers with different signatures or bodies are not merged; merging `rowState`/`withDesk` would change the checks.) Self-check: the check names and counts of `dg-73`, `dg-75`, `dg-76` are identical before and after (recorded once on `origin/main`), all three green, and a deliberate break of one shared helper turns a named check red.
 5. **Unchanged.** Backdrop colours and tokens, hover, busy, opacity, grayscale, the letter chip, the grid tiles, the DOM, tab order, names, storage, `src/newtab.js`, the default-icon check, `CHANGELOG.md` (no behaviour change; a comment and docs only).
 
 ## Scope
 
 - `src/surfaces.css` (the comment), `test/newtabSource.test.js` (the comment pin), `docs/starter-rows-icon-chip.md` (§ Accepted exceptions, Decision 1 pointer; status stays `implemented`), this spec (`implemented`).
-- `.private/e2e/lib/starterRows.mjs` (new), `dg-75`, `dg-76` (imports).
+- `.private/e2e/lib/starterRows.mjs` (new), `dg-75`, `dg-76` (imports); `dg-73` unchanged.
 
 ## Acceptance scenarios
 
@@ -62,8 +62,8 @@ Common setup where an E2E applies: harness 1280×800, wizard step 2, eight start
 - Verified by: E2E `dg-73`, `dg-75`, `dg-76`.
 
 ### AS-FBC-02 The comment explains the missing hover and forced-colors backdrop
-- Then: the comment block directly above `img.onboarding-wizard__starter-icon { background: var(--icon-backdrop) }` contains the words `hover` and `forced-colors`; there is still exactly one backdrop rule for the favicon `img`, none inside `@media (hover: hover)` or `@media (forced-colors: active)` (the existing ICB pins 2 and 3 stay green).
-- Verified by: `test/newtabSource.test.js` (new pin, proven by mutation: removing a word turns it red).
+- Then: the comment block directly above `img.onboarding-wizard__starter-icon { background: var(--icon-backdrop) }` matches the pin of Decision 1 (reasons about the hover surface and the forced-colors Canvas; the pin is red on `main`, green after the rewrite); there is still exactly one backdrop rule for the favicon `img`, none inside `@media (hover: hover)` or `@media (forced-colors: active)` (the existing ICB pins 2 and 3 stay green).
+- Verified by: `test/newtabSource.test.js` (new pin: red on `main` before the comment is rewritten, and mutation: removing the Canvas or the surface reason turns it red).
 
 ### AS-FBC-03 E2E helper extraction changes no check
 - Given: `dg-73`, `dg-75`, `dg-76` run on `origin/main` (before) and on the branch (after).
