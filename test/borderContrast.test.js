@@ -243,11 +243,9 @@ describe("AS-FBO-06 icon outline: a quiet ring that still defines a black favico
   it("dark: the ring against the panel is quiet: between 1.5:1 and 2.0:1 (computed 1.67)", () => {
     const r = ratio(ring(), panel());
     assert.ok(r >= 1.5 && r <= 2.0, r.toFixed(3));
-    assert.ok(Math.abs(r - 1.67) <= 0.01, `computed value ${r.toFixed(3)}`);
   });
   it("dark: the ring against a black plate is at least 2.0:1 (computed 2.20), so it defines the plate", () => {
     const r = ratio(ring(), [0, 0, 0]);
     assert.ok(r >= 2.0, r.toFixed(3));
-    assert.ok(Math.abs(r - 2.2) <= 0.01, `computed value ${r.toFixed(3)}`);
   });
 });

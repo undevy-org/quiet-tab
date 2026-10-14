@@ -1650,8 +1650,9 @@ describe("newtab onboarding step 2 starter row source (docs/onboarding-starter-r
     layers.push(value.slice(from).trim());
     return layers;
   };
-  const shadowOf = (body) => body.match(/(?:^|[;\s])box-shadow:\s*([^;]+);/)?.[1]?.trim() ?? null;
-  const RING_LAYER = /^0 0 0 \d+px\s+(var\(|#|rgb)/;
+  const shadowOf = (body) => body.match(/(?:^|[;\s])box-shadow:\s*([^;}]+)/)?.[1]?.trim() ?? null;
+  // a ring layer is any layer that is not inset and not `none`
+  const isRingLayer = (layer) => layer !== "none" && !/^inset\b/.test(layer);
 
   it("FBO pin 1: --icon-outline is transparent in the light :root and #3d4652 in the dark media block", async () => {
     const tokens = await readFile(new URL("../src/design-tokens.css", import.meta.url), "utf8");
@@ -1670,14 +1671,14 @@ describe("newtab onboarding step 2 starter row source (docs/onboarding-starter-r
     assert.equal(shadowOf(withShadow.find((r) => r.selector === IMG_OFF).body), "none", "an unchecked row has no ring");
   });
 
-  it("FBO pin 3: no letter chip rule and no grid favicon rule has a ring layer (a shadow with a colour and no inset)", async () => {
+  it("FBO pin 3: no letter chip rule and no grid favicon rule has a ring layer (a shadow that is neither inset nor none)", async () => {
     const files = { "surfaces.css": await surfaces(), "newtab.css": await readFile(new URL("../src/newtab.css", import.meta.url), "utf8") };
     const offenders = [];
     for (const [file, css] of Object.entries(files)) {
       for (const r of selectorList(css)) {
         if (!(r.selector.includes("--letter") || r.selector.includes(".favorite-icon"))) continue;
         const value = shadowOf(r.body);
-        if (value !== null && shadowLayers(value).some((layer) => RING_LAYER.test(layer))) offenders.push(`${file}: ${r.selector}`);
+        if (value !== null && shadowLayers(value).some(isRingLayer)) offenders.push(`${file}: ${r.selector}`);
       }
     }
     assert.deepEqual(offenders, [], "the ring belongs to the starter favicon img only");

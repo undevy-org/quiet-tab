@@ -274,8 +274,8 @@
 
 /* The favicon sits on --icon-backdrop (a light square in the dark theme). Not repeated in the hover block: the hover fill is painted
    on the row surface and the icon keeps its own backdrop. Not in forced-colors: the dark-theme backdrop becomes Canvas there and
-   forced-color-adjust stays at its default, so nothing keeps it. The 1 px --icon-outline ring on this rule follows the same logic: it is not
-   repeated in hover and the browser drops it in forced colors. */
+   forced-color-adjust stays at its default, so nothing keeps it. The 1 px --icon-outline ring on this rule follows the same logic: it is
+   not repeated in hover and the browser drops it in forced colors. */
 img.onboarding-wizard__starter-icon {
   background: var(--icon-backdrop);
   box-shadow: 0 0 0 1px var(--icon-outline);
@@ -332,7 +332,8 @@ img.onboarding-wizard__starter-icon {
 
 /* An unchecked row reads "off" without a grey block: the surface keeps the dialog colour, only the icon is greyed and
    faded; the muted label and the empty check carry the rest. The favicon fades to 0.4, the letter to 0.6 (the letter is
-   the row's identity glyph and must stay >= 3:1 against its chip, docs/starter-rows-polish.md decision 2). */
+   the row's identity glyph and must stay >= 3:1 against its chip, docs/starter-rows-polish.md decision 2). The favicon's
+   --icon-outline ring is dropped too (box-shadow: none below). */
 .onboarding-wizard__starter input[type="checkbox"]:not(:checked) + .onboarding-wizard__starter-surface img.onboarding-wizard__starter-icon,
 .onboarding-wizard__starter input[type="checkbox"]:not(:checked) + .onboarding-wizard__starter-surface .onboarding-wizard__starter-icon--letter {
   filter: grayscale(1);
