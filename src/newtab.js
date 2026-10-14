@@ -323,8 +323,8 @@ function getDefaultFaviconChecker() {
 
 // Shared by the grid tile and the onboarding row so the rules cannot drift. Call it BEFORE `image.src` is set and
 // before the node is inserted. A known "default" verdict returns the letter node to use instead of the image; a
-// known "real" verdict or a failed checker returns null and leaves the image as it is; an unknown URL is hidden
-// (`data-icon-check="pending"`, set now, before insertion) until its first `load` has been classified.
+// known "real" verdict or a failed checker returns null and leaves the image as it is; an unknown URL shows the
+// neutral chip (`data-icon-check="pending"`, set now, before insertion; no globe pixel) until its first `load` has been classified.
 function attachDefaultFaviconCheck(image, url, makeLetter) {
   const checker = getDefaultFaviconChecker();
   if (!checker || checker.failed) return null;
