@@ -1593,14 +1593,43 @@ describe("newtab onboarding step 2 starter row source (docs/onboarding-starter-r
     for (const rule of starter.filter((r) => r.selector !== IMG_OFF && r.selector !== LETTER_OFF)) {
       assert.doesNotMatch(rule.body, /filter/, `${rule.selector} must not carry a filter`);
     }
-    const img = starter.filter((r) => r.selector === IMG_OFF);
-    assert.equal(img.length, 1, "exactly one unchecked favicon img rule");
-    assert.match(img[0].body, /(?:^|[;\s])filter:\s*grayscale\(1\);/);
+    // The filter lives in ONE merged rule; `selectorList` already splits its comma list, so the set comes from `cssRules`.
+    const withFilter = cssRules(css).filter((r) => /(?:^|[;\s])filter:\s*grayscale\(1\);/.test(r.body) && r.selector.includes("onboarding-wizard__starter"));
+    assert.equal(withFilter.length, 1, "exactly one starter rule carries grayscale(1) (the merged rule)");
+    assert.deepEqual(withFilter[0].selector.split(",").map((s) => s.trim()).sort(), [IMG_OFF, LETTER_OFF].sort(), "the merged rule is exactly the unchecked favicon img + the unchecked letter");
+    const opacityOf = (selector) => starter.filter((r) => r.selector === selector && /(?:^|[;\s])opacity:/.test(r.body));
+    const img = opacityOf(IMG_OFF);
+    assert.equal(img.length, 1, "exactly one opacity rule for the unchecked favicon img");
     assert.match(img[0].body, /(?:^|[;\s])opacity:\s*0\.4;/);
-    const letter = starter.filter((r) => r.selector === LETTER_OFF);
-    assert.equal(letter.length, 1, "exactly one unchecked letter rule");
-    assert.match(letter[0].body, /(?:^|[;\s])filter:\s*grayscale\(1\);/);
+    const letter = opacityOf(LETTER_OFF);
+    assert.equal(letter.length, 1, "exactly one opacity rule for the unchecked letter");
     assert.match(letter[0].body, /(?:^|[;\s])opacity:\s*0\.6;/);
+  });
+
+  it("ICB pin 1: --icon-backdrop is transparent in the light :root and #eef1f5 in the dark media block", async () => {
+    const tokens = await readFile(new URL("../src/design-tokens.css", import.meta.url), "utf8");
+    const css = stripCss(tokens);
+    const dark = mediaBlock(css, "@media (prefers-color-scheme: dark)");
+    const lightPart = css.replace(dark, "");
+    const decl = (text) => [...text.matchAll(/--icon-backdrop:\s*([^;]+);/g)].map((m) => m[1].trim());
+    assert.deepEqual(decl(lightPart), ["transparent"], "light value");
+    assert.deepEqual(decl(dark), ["#eef1f5"], "dark value");
+  });
+
+  it("ICB pin 2: exactly one starter-icon rule without --letter sets a background (img.onboarding-wizard__starter-icon, var(--icon-backdrop)), outside @media (hover: hover)", async () => {
+    const css = await surfaces();
+    const icon = starterRules(css).filter((r) => r.selector.includes(".onboarding-wizard__starter-icon") && !r.selector.includes("--letter"));
+    const withBg = icon.filter((r) => /(?:^|[;\s])background(?:-color|-image)?:/.test(r.body));
+    assert.deepEqual(withBg.map((r) => r.selector), ["img.onboarding-wizard__starter-icon"], "one background rule, exact selector");
+    assert.match(withBg[0].body, /(?:^|[;\s])background:\s*var\(--icon-backdrop\);/);
+    const hoverRules = cssRules(mediaBlocks(css, "@media (hover: hover)").join("\n"));
+    assert.deepEqual(hoverRules.filter((r) => /icon-backdrop/.test(r.body)).map((r) => r.selector), [], "no backdrop rule inside (hover: hover)");
+  });
+
+  it("ICB pin 3: no rule for the starter icon (except --letter) or an img sets a background inside any @media (forced-colors: active) block", async () => {
+    const forced = mediaBlocks(await surfaces(), "@media (forced-colors: active)").flatMap((b) => cssRules(b));
+    const offenders = forced.flatMap((r) => r.selector.split(",").map((s) => s.trim()).filter((s) => ((s.includes(".onboarding-wizard__starter-icon") && !s.includes("--letter")) || /\bimg\b/.test(s)) && /(?:^|[;\s])background(?:-color|-image)?:/.test(r.body)));
+    assert.deepEqual(offenders, [], "forced colors replace the backdrop; nothing is added there");
   });
 
   it("SRP pin 4: busy rows are muted by the design-system disabled tokens and the real input shows cursor wait; the enabled input keeps cursor pointer", async () => {

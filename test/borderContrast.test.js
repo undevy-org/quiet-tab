@@ -193,3 +193,35 @@ describe("AS-SRP-02/03 starter rows polish contrast", () => {
     assert.ok(r < 3, r.toFixed(3));
   });
 });
+
+describe("AS-ICB-01 icon backdrop", () => {
+  const OFF = '.onboarding-wizard__starter input[type="checkbox"]:not(:checked) + .onboarding-wizard__starter-surface';
+  const IMG_OFF = `${OFF} img.onboarding-wizard__starter-icon`;
+  // The unchecked favicon is faded by the `opacity` of its rule (0.4 today): read it from the CSS, fail readably if the rule is gone.
+  const faviconOpacity = () => {
+    const found = rules(sources["surfaces.css"]).filter((r) => r.selector.split(",").some((s) => s.trim() === IMG_OFF) && /(?:^|[;\s])opacity:/.test(r.body));
+    assert.equal(found.length, 1, `exactly one opacity rule for ${IMG_OFF} expected in surfaces.css, found ${found.length}`);
+    const m = found[0].body.match(/(?:^|[;\s])opacity:\s*([0-9.]+)\s*;/);
+    assert.ok(m, `no numeric opacity in the rule for ${IMG_OFF}`);
+    return Number(m[1]);
+  };
+  const glyphOverBackdrop = (backdrop, panel, alpha) => ratio(over([0, 0, 0, alpha], panel), over([...backdrop, alpha], panel));
+  const panel = () => rgba(token(dark, "--color-surface")).slice(0, 3);
+  const backdrop = () => rgba(token(dark, "--icon-backdrop")).slice(0, 3);
+
+  it("light: --icon-backdrop is the keyword transparent (rgba() does not parse it, asserted as a string)", () => {
+    assert.equal(token(light, "--icon-backdrop"), "transparent");
+  });
+  it("dark: --icon-backdrop is #eef1f5, read from the dark token slice", () => {
+    assert.equal(token(dark, "--icon-backdrop"), "#eef1f5");
+  });
+  it("dark: a black glyph over the backdrop, both blended with --panel at the unchecked favicon opacity, is at least 3:1", () => {
+    const alpha = faviconOpacity();
+    const r = glyphOverBackdrop(backdrop(), panel(), alpha);
+    assert.ok(r >= 3, `alpha ${alpha}: ${r.toFixed(3)}`);
+  });
+  it("dark: a black glyph over the backdrop in a checked row (alpha 1) is at least 10:1", () => {
+    const r = glyphOverBackdrop(backdrop(), panel(), 1);
+    assert.ok(r >= 10, r.toFixed(3));
+  });
+});
