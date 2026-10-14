@@ -2,7 +2,7 @@
 
 ## Status
 
-`draft` — revision 1 (2026-10-14). Run №36 (`favicon-outline`). A follow-up of run 35 (`docs/favicon-backdrop.md`, backlog 91 and 92) and run 34 (`docs/starter-rows-icon-chip.md`).
+`draft` — revision 2 (2026-10-14, after spec review round 1). Run №36 (`favicon-outline`). A follow-up of run 35 (`docs/favicon-backdrop.md`, backlog 91 and 92) and run 34 (`docs/starter-rows-icon-chip.md`).
 
 **Data compatibility: not required** (no storage change; no-users policy, `agent-config/CLAUDE.md`).
 
@@ -34,8 +34,8 @@ Related: `docs/starter-rows-icon-chip.md`, `docs/favicon-backdrop.md`, `src/desi
 1. **A quiet outline (the owner's request).** A new token `--icon-outline` in `src/design-tokens.css`: `transparent` in the light theme, `#3d4652` in the dark theme. `img.onboarding-wizard__starter-icon` gets `box-shadow: 0 0 0 1px var(--icon-outline)`: a 1 px ring OUTSIDE the 22×22 box that follows its 4px radius, so the icon pixels, the box size, the row layout and the tab order do not change. `#3d4652` was chosen from four candidates on real icons (probe report): 1.67:1 against the panel and 2.20:1 against a black plate, so the shape of a black plate reads and a coloured or white icon hardly notices it; the stronger candidates (`#545e6c` 2.43:1, `--color-border-control` 3.28:1) frame every icon and compete with it. The same ring for every favicon: no luminance or plate detection.
 2. **Not visible in an unchecked row (the owner's request).** The existing unchecked `img` rule (the one with `opacity: 0.4`) also sets `box-shadow: none`. A busy row (surface `opacity` 0.62) fades the ring with the row; hover and focus are unchanged.
 3. **Not in the light theme, not on the grid, not on the letter chip.** The light token is `transparent` (the ring is invisible; the rule itself is theme-independent). The grid tiles (`.favorite-tile`, `.favorite-icon`) and the letter chip (`.onboarding-wizard__starter-icon--letter`) get nothing. Forced colors: the browser drops `box-shadow` there; no rule is added inside `@media (forced-colors: active)` (checked by a source pin and measured in E2E).
-4. **Backlog 91 and 92 closed with data.** 92: the probe above (real `_favicon`, real page icons). 91: the wedge is the backdrop doing its job where an icon is transparent (a rounded plate has transparent corners); at most 2.6 px, on 2 of 8 dark plates (eBay, Vercel). Not fixed in the product: a larger box radius (6 px: wedge 1.5 px, 8 px: 0.7 px) would round the corners of every icon (X, Amazon, Medium) and still leave a thin wedge; the outline follows the box, so the wedge sits inside the ring. Recorded as an accepted exception with the numbers; the owner can ask for radius 6 later (screenshots `r6c1`, `r8c1` in the run report).
-5. **Docs corrected.** `docs/favicon-backdrop.md` (probe table: "the backdrop helps 1, none of the starters") and `docs/starter-rows-icon-chip.md` § Accepted exceptions get a pointer to the real-icon numbers; the run 35 statement about starters is marked as an artefact of the proxy.
+4. **Backlog 91 and 92 closed with data.** 92: the probe above (real `_favicon`, real page icons). 91: the wedge is the backdrop doing its job where an icon is transparent (a rounded plate has transparent corners); at most 2.6 px, on 2 of 8 dark plates (eBay, Vercel); the "about 5 px per corner" of the backlog entry was measured on a synthetic plate, real icons are smaller. Not fixed in the product: a larger box radius (for the dark plates 6 px gives a 1.5 px wedge and 8 px 0.7 px; for all 47 plates the maximum is 1.8 and 1.0 px) would round the corners of every icon (X, Amazon, Medium) and still leave a thin wedge; the outline follows the box, so the wedge sits inside the ring. Recorded as an accepted exception with the numbers; the owner can ask for radius 6 later (screenshots `r6c1`, `r8c1` in the run report).
+5. **Docs corrected (listed, so nothing contradicts this spec after the merge).** `docs/favicon-backdrop.md`: the probe table row "the backdrop helps 1, none of the starters" gets a pointer to the real-icon numbers (an artefact of the proxy); its Non-goal "an outline or ring for dark plates (owner declined these on 2026-10-14)" is dated to run 35 and followed by "decided later in run 36 (`docs/favicon-outline.md`): a quiet ring in checked rows only"; its exception "almost vanishes in an unchecked row" stays true for the unchecked row only ("in a checked row the run 36 ring outlines it"). `docs/starter-rows-icon-chip.md` § Accepted exceptions: the sentence "almost vanishes there" about a dark plate gets the same qualification and a pointer to this spec; its Decision 1 note and the probe bullet get the real-icon correction.
 6. **Unchanged.** Backdrop colours, hover, busy, opacity, grayscale, the letter chip, DOM, names, tab order, storage, `src/newtab.js`, `CHANGELOG.md` gets one `[Unreleased]` line (visible change).
 
 ## Scope
@@ -46,7 +46,7 @@ Related: `docs/starter-rows-icon-chip.md`, `docs/favicon-backdrop.md`, `src/desi
 
 ## Acceptance scenarios
 
-Common setup: harness 1280×800, dark theme unless stated, wizard step 2, eight starters; `_favicon` answered with a PNG per row (the `dg-76` black-square generator; a white 22×22 square for a light plate; a failed row for the letter); the ring pixel is read in a screenshot clip 1 px outside the box (x = −1 from the box's left edge, y = 11) with a tolerance of ±3 per channel.
+Common setup: harness 1280×800, dark theme unless stated, wizard step 2, eight starters; `_favicon` answered with a PNG per row (the `dg-76` black-square generator; a white 22×22 square for a light plate; a failed row for the letter); the ring pixel is read in a screenshot clip as `Math.round(left) − 1` (the box left edge can be fractional), y = 11, taking the best of the three pixels x − 2 … x (the ring is 1 px wide), with a tolerance of ±3 per channel; to the left of the box lies the 10 px padding of the row surface on the `--panel` colour (no `overflow` clips the ring: the surface has none, the list clips only outside the row).
 
 ### AS-FBO-01 A black plate gets a visible but quiet outline (checked row, dark theme)
 - Given: a checked favicon row whose PNG is a fully opaque black square.
@@ -63,7 +63,7 @@ Common setup: harness 1280×800, dark theme unless stated, wizard step 2, eight 
 ### AS-FBO-03 Light theme, forced colors, letter chip, grid
 - Given: light theme; forced colors (light and dark); a letter-chip row; the desk behind the wizard after Finish.
 - When: reading the favicon `img` of a checked row, the letter chip, and a grid tile icon.
-- Then: light theme: the pixel outside the box equals the panel (the token is transparent), so no ring is visible; forced colors: computed `box-shadow` is `none` (measured; the browser removes it); the letter chip has `box-shadow: none`; a grid `.favorite-icon` has `box-shadow: none`; no rule inside `@media (forced-colors: active)` sets a `box-shadow` (source pin).
+- Then: light theme: computed `box-shadow` is NOT `none` but has a transparent colour (`rgba(0, 0, 0, 0) 0px 0px 0px 1px`) and the pixel outside the box equals the panel, so no ring is visible; forced colors: computed `box-shadow` is `none` in dark and light (measured in review round 1 on a blank page: `none` under `forcedColors: active`, the ring colour otherwise; `dg-77` measures it on the real row); the letter chip has `box-shadow: none`; a grid `.favorite-icon` has `box-shadow: none`; no rule inside `@media (forced-colors: active)` sets a `box-shadow` (source pin).
 - Verified by: E2E `dg-77`; `newtabSource` pins.
 
 ### AS-FBO-04 Nothing else changes; every state keeps working
@@ -72,8 +72,14 @@ Common setup: harness 1280×800, dark theme unless stated, wizard step 2, eight 
 - Then: all three scenarios stay green with the check lists equal to the recorded baseline (a one-time before/after name comparison, as in run 35); the `img` and row rects equal `origin/main`; no horizontal overflow at 320 and 500 px; the ring is not clipped by the row (the 10 px side padding holds it).
 - Verified by: E2E `dg-73`, `dg-75`, `dg-76`, `dg-77`.
 
+### AS-FBO-06 Slow and failed answers, quick toggles
+- Given: dark theme; `_favicon` for one starter is held for 3 s (longer than the 2 s default-icon check timer, then succeeds), for another it fails; a checked favicon row is toggled five times in a row.
+- When: reading the rows while the answer is held, after it, and after the toggles.
+- Then: while held, the `img` is `visibility: hidden` (the run 32 `pending` state) and the pixel outside its box equals the panel; after the answer the successful row shows the ring (`rgb(61, 70, 82)` ±3) and the failed row has been replaced by the letter chip with `box-shadow: none` and no ring pixel; after the five toggles the ring state equals the last state (present when checked, absent when unchecked), with no residue.
+- Verified by: E2E `dg-77`.
+
 ### AS-FBO-05 Source pins
-- Then: `--icon-outline` is `transparent` in the light `:root` and `#3d4652` in the dark media block (raw token slices); exactly one `box-shadow` rule sets the ring, on `img.onboarding-wizard__starter-icon` with `0 0 0 1px var(--icon-outline)`; the unchecked `img` rule sets `box-shadow: none`; no `box-shadow` for the letter chip or the grid icons; none inside `@media (hover: hover)` or `@media (forced-colors: active)`; no `transition`. Each pin is proven by mutation.
+- Then: `--icon-outline` is `transparent` in the light `:root` and `#3d4652` in the dark media block (raw token slices). The pins select rules BY SELECTOR (surfaces.css already has unrelated `box-shadow` rules: the inset focus ring of the row surface, `box-shadow: none` of the surface in `@media (forced-colors: active)`, others; they stay): among the rules whose selector contains `img.onboarding-wizard__starter-icon` exactly two set `box-shadow`: the base rule `img.onboarding-wizard__starter-icon` with `0 0 0 1px var(--icon-outline)` and the unchecked `img` rule (`OFF img.onboarding-wizard__starter-icon`, the one with `opacity: 0.4`) with `none`; no rule whose selector contains `--letter` or `.favorite-icon` / `.favorite-tile` sets a ring (`box-shadow` with a colour and no `inset`); no rule for `img.onboarding-wizard__starter-icon` inside `@media (hover: hover)` or `@media (forced-colors: active)` sets `box-shadow`; no `transition` (`SRP pin 1` stays). The ring goes into the SAME base rule as the backdrop, and the comment above it (`FBC pin 1` keeps matching) gets one more sentence: the ring is not repeated in hover for the same reason as the backdrop and the browser drops it in forced colors. Each pin is proven by mutation.
 - Verified by: `test/newtabSource.test.js`, `test/borderContrast.test.js`.
 
 ## Paint-only
@@ -89,7 +95,8 @@ A box-shadow ring of 1 px and a token: no geometry, text, DOM, tab order or anim
 
 ## Accepted exceptions
 
-- The ring is decorative (the label names the row, the `img` has `alt=""`): 1.67:1 against the panel is below the 3:1 of WCAG 1.4.11, on purpose (owner: quiet, must not compete with the icon).
+- The ring is not the boundary of a control and carries no information alone (the row, its checkbox and its label carry state and name; the `img` has `alt=""`), so the 3:1 of WCAG 1.4.11 does not apply: 1.67:1 against the panel is deliberate (owner: quiet, must not compete with the icon). On a hovered row (`--soft-fill`) it is 1.37:1 against the fill and 1.60:1 against a black plate.
+- Forced colors: no ring (the browser sets `box-shadow` to `none`); a black plate stays hard to tell from the canvas there, as in run 34.
 - A black plate in an unchecked row still almost vanishes (1.15:1): the owner asked for no outline there.
 - The backdrop wedge in the corners of rounded dark plates (eBay, Vercel: 1.8 and 2.4 px) and the light discs on the square backdrop (Spotify, Reddit, Google: 23 of 47 plates have a wedge above 1 px) stay; a larger box radius is not applied.
 - A light plate merges with the backdrop (1.1:1 on average), a white or light glyph on transparent (WhatsApp, Walmart, 2 of 67) is weaker on it: unchanged from runs 34–35.
