@@ -362,12 +362,12 @@ button.weather-tile {
   object-fit: contain;
 }
 
-/* Default-favicon check in flight (grid tile): the image shows the neutral chip of the letter it may become (the fill and radius of
+/* Default-favicon check in flight (grid tile): the image shows the neutral chip of the letter it may become (the themed fill, `--letter-fill`, and the radius of
    `.favorite-letter` below) and its content is pushed out of the box, so Chrome's grey globe is never painted
    (docs/favicon-letter-pending.md, docs/favicon-globe-fallback.md). No `visibility` here on purpose: the first-run veil hides the desk with
    `visibility: hidden` and the image must inherit it. The onboarding starter icon has its own rules in surfaces.css. */
 .favorite-icon[data-icon-check="pending"] {
-  background: rgb(255 255 255 / 12%);
+  background: var(--letter-fill);
   border-radius: 7px;
   object-position: 100px 0;
 }
@@ -376,7 +376,7 @@ button.weather-tile {
   display: grid;
   place-items: center;
   border-radius: 7px;
-  background: rgb(255 255 255 / 12%);
+  background: var(--letter-fill);
   color: var(--text);
   font-size: 15px;
   font-weight: 800;
