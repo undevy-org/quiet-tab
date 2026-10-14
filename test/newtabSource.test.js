@@ -1561,6 +1561,12 @@ describe("newtab onboarding step 2 starter row source (docs/onboarding-starter-r
   const LETTER = ".onboarding-wizard__starter-icon--letter";
   const IMG_OFF = `${OFF} img.onboarding-wizard__starter-icon`;
   const LETTER_OFF = `${OFF} ${LETTER}`;
+  // The pending chip rules of docs/favicon-letter-pending.md decision 1 (run 37): the pending favicon img is a chip with the letter's fill, pushed out of its box.
+  const PEND = '[data-icon-check="pending"]';
+  const ICON = "img.onboarding-wizard__starter-icon";
+  const CHIP_BASE = `${ICON}${PEND}`; // rule (1)
+  const CHIP_OFF = `${OFF} ${ICON}${PEND}`; // rule (2)
+  const CHIP_HOVER = `${HOVER} ${ICON}${PEND}`; // rule (3), inside @media (hover: hover)
   // Splits a selector list on commas. Limitation: a comma inside `:not(a, b)` would be split wrongly (no such selector exists today).
   const selectorList = (css) => cssRules(css).flatMap((r) => r.selector.split(",").map((s) => ({ selector: s.trim(), body: r.body })));
   const starterRules = (css) => selectorList(css).filter((r) => r.selector.includes("onboarding-wizard__starter"));
@@ -1602,9 +1608,12 @@ describe("newtab onboarding step 2 starter row source (docs/onboarding-starter-r
     // without touching the two pinned rules.
     assert.deepEqual(
       starter.filter((r) => /(?:^|[;\s])opacity\s*:/.test(r.body)).map((r) => r.selector).sort(),
-      [INPUT, IMG_OFF, LETTER_OFF, `${INPUT}:disabled + ${SURFACE}`].sort(),
-      "the only starter rules with opacity"
+      [INPUT, IMG_OFF, LETTER_OFF, CHIP_OFF, `${INPUT}:disabled + ${SURFACE}`].sort(),
+      "the only starter rules with opacity (the unchecked pending chip, rule (2), is the letter's 0.6)"
     );
+    const chipOff = starter.filter((r) => r.selector === CHIP_OFF);
+    assert.equal(chipOff.length, 1, "exactly one rule for the unchecked pending chip");
+    assert.match(chipOff[0].body, /(?:^|[;\s])opacity:\s*0\.6;/);
     const opacityOf = (selector) => starter.filter((r) => r.selector === selector && /(?:^|[;\s])opacity:/.test(r.body));
     const img = opacityOf(IMG_OFF);
     assert.equal(img.length, 1, "exactly one opacity rule for the unchecked favicon img");
@@ -1666,7 +1675,8 @@ describe("newtab onboarding step 2 starter row source (docs/onboarding-starter-r
 
   it("FBO pin 2: of the rules for the favicon img exactly two set a box-shadow: the ring in the base rule, none in the unchecked rule", async () => {
     const withShadow = selectorList(await surfaces()).filter((r) => r.selector.includes(RING_IMG) && shadowOf(r.body) !== null);
-    assert.deepEqual(withShadow.map((r) => r.selector).sort(), [RING_IMG, IMG_OFF].sort(), "the rules that set a box-shadow on the favicon img");
+    assert.deepEqual(withShadow.map((r) => r.selector).sort(), [RING_IMG, IMG_OFF, CHIP_BASE].sort(), "the rules that set a box-shadow on the favicon img (the pending chip drops the ring, rule (1))");
+    assert.equal(shadowOf(withShadow.find((r) => r.selector === CHIP_BASE).body), "none", "the pending chip has no ring");
     assert.equal(shadowOf(withShadow.find((r) => r.selector === RING_IMG).body), "0 0 0 1px var(--icon-outline)", "the base rule draws the 1 px ring from the token");
     assert.equal(shadowOf(withShadow.find((r) => r.selector === IMG_OFF).body), "none", "an unchecked row has no ring");
   });
@@ -1696,7 +1706,7 @@ describe("newtab onboarding step 2 starter row source (docs/onboarding-starter-r
     const BG = /(?:^|[;\s])background(?:-color|-image)?\s*:/;
     const CHECK = ".onboarding-wizard__starter-check";
     const CHECKED = `${INPUT}:checked + ${SURFACE} ${CHECK}`;
-    const allowed = [SURFACE, HOVER, `${HOVER} ${LETTER}`, LETTER, CHECK, CHECKED, `${CHECKED}::after`, "img.onboarding-wizard__starter-icon"];
+    const allowed = [SURFACE, HOVER, `${HOVER} ${LETTER}`, LETTER, CHECK, CHECKED, `${CHECKED}::after`, "img.onboarding-wizard__starter-icon", CHIP_BASE, CHIP_HOVER];
     const withBg = selectorList(css).filter((r) => (r.selector.includes("onboarding-wizard__starter") || /\bimg\b/.test(r.selector)) && BG.test(r.body));
     assert.deepEqual(withBg.map((r) => r.selector).filter((s) => !allowed.includes(s)), [], "a background on a starter or img rule outside the allowed list");
     const icon = withBg.filter((r) => r.selector === "img.onboarding-wizard__starter-icon");
@@ -1705,7 +1715,7 @@ describe("newtab onboarding step 2 starter row source (docs/onboarding-starter-r
     const hoverRules = cssRules(mediaBlocks(css, "@media (hover: hover)").join("\n"));
     assert.deepEqual(hoverRules.filter((r) => /icon-backdrop/.test(r.body)).map((r) => r.selector), [], "no backdrop rule inside (hover: hover)");
     const hoverBg = hoverRules.flatMap((r) => r.selector.split(",").map((s) => s.trim()).filter((s) => BG.test(r.body)));
-    assert.deepEqual(hoverBg.filter((s) => s !== HOVER && s !== `${HOVER} ${LETTER}`), [], "a hover rule other than the surface and the letter chip sets a background");
+    assert.deepEqual(hoverBg.filter((s) => s !== HOVER && s !== `${HOVER} ${LETTER}` && s !== CHIP_HOVER), [], "a hover rule other than the surface, the letter chip and the pending chip sets a background");
   });
 
   it("ICB pin 3: no rule for the starter icon (except --letter) or an img sets a background inside any @media (forced-colors: active) block", async () => {
@@ -1758,6 +1768,85 @@ describe("newtab onboarding step 2 starter row source (docs/onboarding-starter-r
     const focus = all.find((r) => r.selector === FOCUS);
     assert.ok(focus, "focus rule");
     assert.match(focus.body, /box-shadow:\s*inset 0 0 0 2px var\(--focus-ring\);/);
+  });
+
+  // ---- run 37 (docs/favicon-letter-pending.md): the pending chip and the hidden letter ---------------------------------------------------------
+  // Specificity as [ids, classes + attributes + pseudo-classes (a :not() argument counts), types + pseudo-elements].
+  const specificity = (selector) => {
+    let sel = selector.replace(/:not\(([^)]*)\)/g, " $1 ");
+    const attrs = (sel.match(/\[[^\]]*\]/g) ?? []).length;
+    sel = sel.replace(/\[[^\]]*\]/g, "");
+    const ids = (sel.match(/#[\w-]+/g) ?? []).length;
+    const classes = (sel.match(/\.[\w-]+/g) ?? []).length;
+    const pseudoElements = (sel.match(/::[\w-]+/g) ?? []).length;
+    const pseudoClasses = (sel.replace(/::[\w-]+/g, "").match(/:[\w-]+/g) ?? []).length;
+    const types = (sel.replace(/[.#:][\w-]+/g, " ").match(/(?:^|[\s+>~])([a-z][\w-]*)/gi) ?? []).length;
+    return [ids, classes + attrs + pseudoClasses, types + pseudoElements];
+  };
+  const outranks = (a, b) => {
+    const x = specificity(a);
+    const y = specificity(b);
+    for (let i = 0; i < 3; i += 1) if (x[i] !== y[i]) return x[i] > y[i];
+    return false;
+  };
+  const pushOut = (body) => Number(body.match(/(?:^|[;\s])object-position:\s*(\d+)px\s+0(?:px)?;/)?.[1] ?? NaN);
+
+  it("PLP pin 1: the specificity function reads the real selectors as expected", () => {
+    assert.deepEqual(specificity(RING_IMG), [0, 1, 1]);
+    assert.deepEqual(specificity(CHIP_BASE), [0, 2, 1]);
+    assert.deepEqual(specificity(IMG_OFF), [0, 5, 2]);
+    assert.deepEqual(specificity(CHIP_OFF), [0, 6, 2]);
+    assert.deepEqual(specificity(CHIP_HOVER), [0, 7, 2]);
+    assert.deepEqual(specificity('.favorite-icon[data-icon-check="pending"]'), [0, 2, 0]);
+  });
+
+  it("PLP pin 2: the wizard pending chip is exactly three rules with the letter's fill, no visibility, no motion, content pushed out; each outranks the rule it overrides", async () => {
+    const css = await surfaces();
+    const pending = selectorList(css).filter((r) => r.selector.includes("data-icon-check"));
+    assert.deepEqual(pending.map((r) => r.selector).sort(), [CHIP_BASE, CHIP_OFF, CHIP_HOVER].sort(), "ALL pending rules of surfaces.css, by exact selector");
+    const by = (selector) => pending.find((r) => r.selector === selector).body;
+    assert.match(by(CHIP_BASE), /(?:^|[;\s])background:\s*var\(--soft-fill\);/);
+    assert.match(by(CHIP_BASE), /(?:^|[;\s])box-shadow:\s*none;/);
+    assert.match(by(CHIP_OFF), /(?:^|[;\s])opacity:\s*0\.6;/);
+    assert.match(by(CHIP_HOVER), /(?:^|[;\s])background:\s*var\(--soft-fill-strong\);/);
+    assert.ok(pushOut(by(CHIP_BASE)) >= 40, "rule (1) pushes the content out by at least the biggest box (40 px)");
+    for (const rule of pending) {
+      assert.doesNotMatch(rule.body, /visibility|transition|animation|filter/, `${rule.selector}: no visibility (the first-run veil must hide the chip), motion or filter`);
+    }
+    assert.ok(outranks(CHIP_BASE, RING_IMG), "(1) outranks the base img rule (background, ring)");
+    assert.ok(outranks(CHIP_OFF, IMG_OFF), "(2) outranks the unchecked img rule (opacity 0.4)");
+    assert.ok(outranks(CHIP_HOVER, CHIP_BASE), "(3) outranks (1) (hover fill)");
+    const hoverRules = cssRules(mediaBlocks(css, "@media (hover: hover)").join("\n"));
+    assert.ok(hoverRules.some((r) => r.selector === CHIP_HOVER), "(3) lives inside @media (hover: hover)");
+    assert.deepEqual(cssRules(stripCss(css).replace(mediaBlocks(css, "@media (hover: hover)").join("\n"), "")).filter((r) => r.selector === CHIP_HOVER), [], "(3) is not outside the hover block");
+    const pushed = selectorList(css).filter((r) => r.selector.includes("onboarding-wizard__starter") && /object-position/.test(r.body)).map((r) => r.selector);
+    assert.deepEqual(pushed, [CHIP_BASE], "object-position appears on no other starter rule");
+    assert.doesNotMatch(stripCss(css), /visibility/, "surfaces.css declares no visibility at all");
+  });
+
+  it("PLP pin 3: the grid pending chip is one rule, the letter's fill and radius, no visibility, no motion, content pushed out; the old hidden rule is gone", async () => {
+    const css = stripCss(await readFile(new URL("../src/newtab.css", import.meta.url), "utf8"));
+    const rules = cssRules(css);
+    const pending = rules.filter((r) => r.selector.split(",").some((s) => s.includes("data-icon-check")));
+    assert.deepEqual(pending.map((r) => r.selector), ['.favorite-icon[data-icon-check="pending"]'], "ALL data-icon-check rules of newtab.css");
+    const chip = pending[0].body;
+    const letter = rules.find((r) => r.selector === ".favorite-letter" && /border-radius/.test(r.body)).body;
+    const decl = (body, prop) => body.match(new RegExp(`(?:^|[;\\s])${prop}:\\s*([^;]+);`))?.[1]?.trim();
+    assert.equal(decl(chip, "background"), decl(letter, "background"), "the chip fill is the letter's fill");
+    assert.equal(decl(chip, "border-radius"), decl(letter, "border-radius"), "the chip radius is the letter's radius");
+    assert.ok(pushOut(chip) >= 40, "content pushed out by at least the biggest box (40 px)");
+    assert.doesNotMatch(chip, /visibility|transition|animation|opacity|filter/, "no visibility (veil), motion, opacity or filter");
+    assert.ok(specificity(pending[0].selector)[1] > specificity(".favorite-icon")[1], "outranks the bare .favorite-icon rule");
+    const veil = rules.find((r) => r.selector === '.desktop[data-veiled="true"]');
+    assert.ok(veil && /visibility:\s*hidden/.test(veil.body), "the veil still hides the desk with visibility: hidden (the chip inherits it)");
+  });
+
+  it("PLP pin 4: both letter nodes are aria-hidden (the name is carried by the tile aria-label and the row label)", async () => {
+    const code = await source();
+    const grid = code.slice(code.indexOf("function createFavoriteLetterNode("), code.indexOf("\n}\n", code.indexOf("function createFavoriteLetterNode(")));
+    assert.match(grid, /^\s*span\.setAttribute\("aria-hidden", "true"\);/m, "the grid letter");
+    const row = code.slice(code.indexOf("function createOnboardingStarterIcon("), code.indexOf("\n}\n", code.indexOf("function createOnboardingStarterIcon(")));
+    assert.match(row, /const fallback = \(\) => \{[\s\S]*?\.setAttribute\("aria-hidden", "true"\);[\s\S]*?return /, "the wizard fallback letter (block form)");
   });
 });
 
@@ -1890,14 +1979,5 @@ describe("default favicon fallback source pins (run 32, docs/favicon-globe-fallb
     assert.match(body, /=== "default"\)?\s*\{?\s*return fallback;/);
     assert.match(body, /loadImage:\s*(?:async\s*)?\(\)\s*=>\s*image\b/);
     assert.doesNotMatch(body, /loadImage:\s*loadBrowserImage/);
-  });
-
-  it("pending-rule: newtab.css has exactly one data-icon-check rule, [data-icon-check=\"pending\"] hiding the image without changing its box", async () => {
-    const css = (await readFile(new URL("../src/newtab.css", import.meta.url), "utf8")).replace(/\/\*[\s\S]*?\*\//g, "");
-    assert.equal((css.match(/data-icon-check/g) ?? []).length, 1, "no other data-icon-check selector");
-    const rule = css.match(/(?:^|\})\s*([^{}]*\[data-icon-check="pending"\][^{}]*)\{([^{}]*)\}/);
-    assert.ok(rule, "the pending rule");
-    assert.match(rule[1].trim(), /^(?:img)?\[data-icon-check="pending"\]$/, "the selector is exactly [data-icon-check=\"pending\"], optionally on img");
-    assert.match(rule[2], /^\s*visibility:\s*hidden;?\s*$/, "the body is visibility: hidden only (box unchanged, no opacity)");
   });
 });
