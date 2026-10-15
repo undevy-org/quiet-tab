@@ -1,35 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { defaultColumnsForItems, placeTooltip } from "../src/widgetsLayout.js";
-
-const square = { tileSize: "square" };
-const wide = { tileSize: "wide" };
-const legacy = {}; // pre-tileSize items have no tileSize at all
-
-describe("defaultColumnsForItems", () => {
-  it("uses the default for an empty set", () => {
-    assert.equal(defaultColumnsForItems([]), 6);
-  });
-
-  it("counts one column per square (or size-less) tile", () => {
-    assert.equal(defaultColumnsForItems([square, legacy, square]), 3);
-    assert.equal(defaultColumnsForItems([square]), 1);
-  });
-
-  it("counts two columns per wide tile so the row does not wrap on upgrade", () => {
-    assert.equal(defaultColumnsForItems([wide, square]), 3);
-    assert.equal(defaultColumnsForItems([wide, wide]), 4);
-  });
-
-  it("never returns fewer than 2 when any tile is wide", () => {
-    assert.equal(defaultColumnsForItems([wide]), 2);
-  });
-
-  it("clamps to 12 for large sets", () => {
-    assert.equal(defaultColumnsForItems(Array.from({ length: 30 }, () => square)), 12);
-    assert.equal(defaultColumnsForItems(Array.from({ length: 10 }, () => wide)), 12);
-  });
-});
+import { placeTooltip } from "../src/widgetsLayout.js";
 
 describe("placeTooltip", () => {
   const vp = { width: 1280, height: 800 };
@@ -79,8 +50,8 @@ describe("placeTooltip", () => {
 });
 
 describe("widgetsLayout exports", () => {
-  it("exports only what is still imported: defaultColumnsForItems (v1 migration) and placeTooltip", async () => {
+  it("exports only what is still imported: placeTooltip", async () => {
     const mod = await import("../src/widgetsLayout.js");
-    assert.deepEqual(Object.keys(mod).sort(), ["defaultColumnsForItems", "placeTooltip"]);
+    assert.deepEqual(Object.keys(mod).sort(), ["placeTooltip"]);
   });
 });

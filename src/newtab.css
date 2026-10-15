@@ -470,7 +470,7 @@ button.weather-tile {
   color: var(--muted);
 }
 
-/* Messages that must be read in full (e.g. the locked-migration recovery hint). */
+/* Messages that must be read in full (e.g. the newer-version message). */
 .status--full {
   display: block;
   -webkit-line-clamp: unset;

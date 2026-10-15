@@ -4,6 +4,8 @@
 
 `implemented`
 
+(миграция удалена в прогоне №40, docs/remove-migrations.md): `migrateV1ToV2` mentioned below no longer exists.
+
 Decision: **do it**. The owner checked the extension in the browser (2026-10-05): a free drag can only reach one row below the lowest tile, and sideways it reaches "a bit further" but never the edges of the tab. Both limits are deliberate rules of the desktop grid (`2026-10-02-desktop-grid-design`), not regressions; the owner wants them replaced: the visible window is divided into columns and rows, and a tile can be dropped on any free cell of it.
 
 ## Intake log
