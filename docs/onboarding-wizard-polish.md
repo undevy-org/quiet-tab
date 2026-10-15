@@ -144,6 +144,8 @@ Common setup: the E2E harness with `autoPrompt: true`; `dg-60`'s first-run seed 
 - With Settings below the first screen the focus ring is not in view after Finish (owner decision 2026-10-15).
 - Locked rows give no explanation beyond the existing error text (owner chose "lock the rows").
 - The Reload button of the failure chip and any deliberate pointer click inside the guard (including a click on the weather dialog's city field within 300 ms after Escape closed the stacked city modal) are lost; `dg-58` waits accordingly.
+- The swallowed second click of a double click still moves the focus (its `pointerdown`/`mousedown` is not guarded): after a double click on Finish, Back or Skip the focus is on the tile or row under the point (or `body`), not on Settings / the step title / the first row (final-gate Minor L2-01, backlog 99).
+- While the rows are locked (decision 3) the starter list scrolls with the wheel but not from the keyboard: it has no tab stop and the disabled boxes cannot take focus (final-gate Minor L3-01, backlog 98); Back and Finish stay reachable and assistive technology lists every row.
 - No live announcement on a step change: Step 1 → 2 moves focus to the first enabled row and the dialog's name switches (`aria-labelledby`); Back focuses the step title; the progress label is read when the person navigates to it.
 - Save of the change-mode city modal, and Escape/backdrop of it, are not repeated in E2E: they share `hideCityModal` (source pin).
 - `docs/post-onboarding-grid.md` AS-POG-07 (the page scrolls so that Settings' ring lies inside a 400 px window) is superseded by the owner decision of decision 2; `dg-65` group 7 now expects `scrollY` 0 and the island's bottom edge below the window.
