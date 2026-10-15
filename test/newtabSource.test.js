@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { describe, it } from "node:test";
 
 const NEWTAB_SOURCE = new URL("../src/newtab.js", import.meta.url);
@@ -301,13 +301,43 @@ describe("newtab favorites source", () => {
     assert.match(code, /setAttribute\("aria-labelledby", labelSpan\.id\)/);
   });
 
-  it("migrates legacy local favorites into sync storage before the first favorites read", async () => {
+  it("the bootstrap has no migration step: early newer check, then ensureWidgetsLayout, then getState (AS-RM-05)", async () => {
     const code = await source();
     assert.match(code, /from "\.\/widgetsStore\.js"/);
-    assert.match(code, /migrateToWidgets\(localStorageArea, syncStorageArea\)/);
+    assert.match(code, /import \{\s*WIDGETS_META_KEY,\s*createWidgetsStore,\s*ensureWidgetsLayout,\s*inspectWidgetsMeta\s*\} from "\.\/widgetsStore\.js";/);
+    const boot = code.slice(code.indexOf("if (favoritesRoot) {\n  void (async () => {"), code.indexOf("})();", code.indexOf("if (favoritesRoot)")));
+    const order = ['inspectWidgetsMeta(rawMeta) === "newer"', "await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });", "widgetsState = await widgetsService.getState();"].map((n) => boot.indexOf(n));
+    assert.ok(order.every((i) => i >= 0), order.join());
+    assert.deepEqual([...order].sort((a, b) => a - b), order);
+    assert.match(boot, /if \(inspectWidgetsMeta\(rawMeta\) === "newer"\) \{\s*widgetsNewer = true;\s*renderFavorites\(\);\s*return;\s*\}/);
   });
 
-  it("shows the locked-migration message in full, without the status line clamp", async () => {
+  it("the early meta read sits in its own try whose catch sets no lock flag, and the boot goes on (AS-RM-05b)", async () => {
+    const code = await source();
+    const boot = code.slice(code.indexOf("if (favoritesRoot) {\n  void (async () => {"), code.indexOf("})();", code.indexOf("if (favoritesRoot)")));
+    assert.match(
+      boot,
+      /let rawMeta = \{\};\s*try \{\s*if \(hasStorageArea\(syncStorageArea\)\) rawMeta = await syncStorageArea\.get\(WIDGETS_META_KEY\);\s*\} catch \{\s*rawMeta = \{\};\s*\}/
+    );
+    const early = boot.slice(boot.indexOf("let rawMeta = {};"), boot.indexOf('if (inspectWidgetsMeta(rawMeta) === "newer")'));
+    assert.doesNotMatch(early, /widgetsNewer|favoritesError|renderFavorites|return/);
+    // the only other read, getState, has its own catch that shows the storage error text
+    assert.match(boot, /widgetsState = await widgetsService\.getState\(\);\s*\} catch \(error\) \{\s*favoritesError = error instanceof Error \? error\.message : String\(error\);/);
+  });
+
+  it("no migration symbol or deleted message string is left anywhere in src/ (AS-RM-05)", async () => {
+    const files = (await readdir(new URL("../src/", import.meta.url))).filter((name) => /\.(js|css|html)$/.test(name));
+    const banned = [
+      /migrateToWidgets/, /migrateWidgetsToV2/, /migrateWidgetsToV3/, /widgetsMigrationFailed/, /centerShift/, /migrateV1ToV2/, /isValidGridV2/,
+      /defaultColumnsForItems/, /V1_WIDGETS_MESSAGE/, /V1_MAX_COLUMNS/, /GRID_POSITIONS/, /Couldn't move your favorites/, /still being updated to the new layout/
+    ];
+    for (const name of files) {
+      const text = await readFile(new URL(`../src/${name}`, import.meta.url), "utf8");
+      for (const pattern of banned) assert.doesNotMatch(text, pattern, `${name}: ${pattern}`);
+    }
+  });
+
+  it("shows long page messages (newer-version, storage error) in full, without the status line clamp", async () => {
     const css = await readFile(new URL("../src/newtab.css", import.meta.url), "utf8");
     assert.match(css, /\.status--full\s*\{[^}]*-webkit-line-clamp: unset;/s);
     assert.match(css, /\.status--full\s*\{[^}]*overflow: visible;/s);
@@ -330,12 +360,6 @@ describe("newtab favorites source", () => {
     assert.ok(render.indexOf("const focusTarget = focusedWidgetId();") < render.indexOf("favoritesRoot.replaceChildren(grid);"));
     assert.ok(render.indexOf("favoritesRoot.replaceChildren(grid);") < render.indexOf("restoreFocus(focusTarget);"));
   });
-  it("locks the favorites UI when the migration fails instead of exposing an editable empty grid", async () => {
-    const code = await source();
-    assert.match(code, /let widgetsMigrationFailed = false;/);
-    assert.match(code, /widgetsMigrationFailed = true;/);
-    assert.match(code, /if \(widgetsMigrationFailed\) \{\s*favoritesRoot\.replaceChildren\(/);
-  });
 
   it("no longer publishes a weather reserve: weather tiles are cells of the desktop grid", async () => {
     const code = await source();
@@ -343,16 +367,15 @@ describe("newtab favorites source", () => {
     assert.doesNotMatch(code, /--weather-reserve/);
     assert.match(code, /createWeatherMetricTile\(item, cell, view\)/);
   });
-  it("locks the grid with the newer-version message before anything else and runs the v2 bootstrap chain in order (R7)", async () => {
+  it("locks the grid with the newer-version message before anything else and runs the bootstrap in order (R7)", async () => {
     const code = await source();
     assert.match(code, /if \(widgetsNewer\) \{\s*favoritesRoot\.replaceChildren\(createStatus\(NEWER_WIDGETS_MESSAGE/);
-    assert.ok(code.indexOf("if (widgetsNewer)") < code.indexOf("if (widgetsMigrationFailed) {\n    favoritesRoot"));
+    assert.ok(code.indexOf("if (widgetsNewer)") < code.indexOf("if (!widgetsState) {\n    // Unavailable APIs"));
     assert.match(code, /inspectWidgetsMeta\(rawMeta\) === "newer"/);
-    assert.match(code, /const migration = await migrateToWidgets\(localStorageArea, syncStorageArea\);\s*if \(migration\?\.newer\) \{\s*widgetsNewer = true;/);
     assert.match(code, /await ensureWidgetsLayout\(syncStorageArea, \{ screen: firstScreen\(\) \}\)/);
     assert.match(code, /widgetsEnsureFailed = true;/);
     const boot = code.slice(code.indexOf("if (favoritesRoot) {\n  void (async () => {"), code.indexOf("})();", code.indexOf("if (favoritesRoot)")));
-    const order = ['inspectWidgetsMeta(rawMeta) === "newer"', "await migrateToWidgets(", "await migrateWidgetsToV2(syncStorageArea);", "await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });", "widgetsState = await widgetsService.getState();"].map((n) => boot.indexOf(n));
+    const order = ['inspectWidgetsMeta(rawMeta) === "newer"', "await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });", "widgetsState = await widgetsService.getState();"].map((n) => boot.indexOf(n));
     assert.ok(order.every((i) => i >= 0), order.join());
     assert.deepEqual([...order].sort((a, b) => a - b), order);
   });
@@ -649,7 +672,7 @@ describe("newtab onboarding wizard boot source", () => {
       "hasLocation: Boolean(weatherLocation)",
       'item.type === "weather-metric" && item.enabled === true',
       "weatherAvailable: Boolean(weatherService && weatherPromptStore && onboardingStore)",
-      "gridLocked: widgetsNewer || widgetsMigrationFailed"
+      "gridLocked: widgetsNewer"
     ]) {
       assert.ok(live.includes(part), part);
     }
@@ -660,7 +683,7 @@ describe("newtab onboarding wizard boot source", () => {
     const start = code.indexOf('window.addEventListener("resize", () => {');
     assert.ok(start > -1);
     const handler = code.slice(start, code.indexOf("\n});\n", start));
-    assert.match(handler, /if \(!widgetsState \|\| widgetsNewer \|\| widgetsMigrationFailed \|\| renderedColumns === 0\) return;/);
+    assert.match(handler, /if \(!widgetsState \|\| widgetsNewer \|\| renderedColumns === 0\) return;/);
   });
 
   it("veils the desk from showOnboardingWizard and clears it from hideOnboardingWizard or hideCityModal, before focus", async () => {
@@ -963,13 +986,6 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     assert.doesNotMatch(click, /moveWidget|deleteFavorite|updateWeatherMetric/);
   });
 
-  it("a failed v1 → v2 migration locks the grid exactly like the legacy migration failure", async () => {
-    const code = await source();
-    const boot = code.slice(code.indexOf("if (favoritesRoot) {\n  void (async () => {"));
-    const tryBlock = boot.slice(0, boot.indexOf("} catch (error) {\n      widgetsMigrationFailed = true;"));
-    assert.ok(tryBlock.includes("await migrateWidgetsToV2(syncStorageArea);"), "v2 migration runs inside the locking try");
-    assert.ok(tryBlock.indexOf("await migrateToWidgets(") < tryBlock.indexOf("await migrateWidgetsToV2("));
-  });
 
   it("shows a failed ensure in the page-level status line (text only)", async () => {
     const code = await source();
@@ -1067,16 +1083,6 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     assert.match(css, /\.desktop-grid > \.tile-remove:focus-visible \{\s*outline: 3px solid var\(--focus-ring\);/);
   });
 
-  it("Task 11: bootstrap runs the v1 -> v2 step whenever the sync area exists and locks on a newer result", async () => {
-    const code = await source();
-    const boot = code.slice(code.indexOf("if (favoritesRoot) {\n  void (async () => {"), code.indexOf("})();", code.indexOf("if (favoritesRoot)")));
-    // The legacy chain needs both areas; the v1 -> v2 step only sync (a profile without chrome.storage.local still migrates).
-    assert.match(boot, /if \(hasStorageArea\(localStorageArea\) && hasStorageArea\(syncStorageArea\)\) \{\s*const migration = await migrateToWidgets\(localStorageArea, syncStorageArea\);[\s\S]*?\n      \}\n      if \(hasStorageArea\(syncStorageArea\)\) \{/);
-    assert.match(boot, /const v2 = await migrateWidgetsToV2\(syncStorageArea\);\s*if \(v2\?\.meta === "newer"\) \{\s*widgetsNewer = true;\s*renderFavorites\(\);\s*return;/);
-    // R7 order: legacy chain, v1 -> v2, ensure, first read.
-    const order = ["await migrateToWidgets(", "await migrateWidgetsToV2(", "await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });", "widgetsState = await widgetsService.getState()"].map((m) => boot.indexOf(m));
-    assert.ok(order.every((at, i) => at > 0 && (i === 0 || at > order[i - 1])), JSON.stringify(order));
-  });
 
   it("run 17 (AS-VC-01): the first screen is measured once, right before ensureWidgetsLayout, with the drag's own definition of the first screen", async () => {
     const code = await source();
@@ -1094,23 +1100,13 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     assert.equal(fn(code, "recoverFromGoneLink").split("firstScreen(").length - 1, 0);
     const boot = code.slice(code.indexOf("if (favoritesRoot) {\n  void (async () => {"), code.indexOf("})();", code.indexOf("if (favoritesRoot)")));
     const call = boot.indexOf("await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });");
-    assert.ok(call > boot.indexOf("await migrateWidgetsToV3(") && call < boot.indexOf("widgetsState = await widgetsService.getState();"));
-    // evaluated before the first render of the desk: after the locking catch (which returns) nothing renders before the call
-    const betweenCatchAndCall = boot.slice(boot.indexOf("widgetsMigrationFailed = true;", boot.indexOf("await migrateWidgetsToV3(")), call);
-    assert.ok(betweenCatchAndCall.indexOf("return;") < betweenCatchAndCall.indexOf("if (hasStorageArea(syncStorageArea))"), "the locking catch returns before the ensure");
-    assert.equal((betweenCatchAndCall.match(/renderFavorites\(\)/g) ?? []).length, 1, "only the locking catch renders before the call (it returns)");
+    assert.ok(call > boot.indexOf('inspectWidgetsMeta(rawMeta) === "newer"') && call < boot.indexOf("widgetsState = await widgetsService.getState();"));
+    // evaluated before the first render of the desk: the only render before the call is the early newer lock (which returns)
+    const beforeCall = boot.slice(boot.indexOf("let rawMeta = {};"), call);
+    assert.equal((beforeCall.match(/renderFavorites\(\)/g) ?? []).length, 1, "only the early newer lock renders before the call (it returns)");
   });
-  it("run 15: the bootstrap runs the v2 -> v3 step after the v2 step, inside the locking try, and locks on a newer result", async () => {
+  it("run 15: the page works in displayed cells", async () => {
     const code = await source();
-    const boot = code.slice(code.indexOf("if (favoritesRoot) {\n  void (async () => {"), code.indexOf("})();", code.indexOf("if (favoritesRoot)")));
-    assert.match(code, /import \{[^}]*\bmigrateWidgetsToV3\b[^}]*\} from "\.\/widgetsStore\.js"/);
-    assert.match(boot, /const v3 = await migrateWidgetsToV3\(syncStorageArea\);\s*if \(v3\?\.meta === "newer"\) \{\s*widgetsNewer = true;\s*renderFavorites\(\);\s*return;/);
-    // R7 order: legacy chain, v1 -> v2, v2 -> v3, ensure, first read.
-    const order = ["await migrateToWidgets(", "await migrateWidgetsToV2(", "await migrateWidgetsToV3(", "await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });", "widgetsState = await widgetsService.getState()"].map((m) => boot.indexOf(m));
-    assert.ok(order.every((at, i) => at > 0 && (i === 0 || at > order[i - 1])), JSON.stringify(order));
-    // a failure of the v3 step goes through the same catch as the v2 step: the grid is locked with the migration-failure text
-    const tryBlock = boot.slice(0, boot.indexOf("} catch (error) {\n      widgetsMigrationFailed = true;"));
-    assert.ok(tryBlock.includes("await migrateWidgetsToV3(syncStorageArea);"), "v3 migration runs inside the locking try");
     // the page works in displayed cells: it never converts between the displayed and the stored frame itself
     assert.doesNotMatch(code, /toStored|toDisplayed|originColumn/);
   });

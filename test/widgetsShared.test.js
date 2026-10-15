@@ -1,14 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
-  DEFAULT_GRID_COLUMNS,
-  GRID_POSITIONS,
   MAX_CHROME_WIDGETS,
   MAX_FAVORITE_WIDGETS,
-  MAX_GRID_COLUMNS,
   MAX_WEATHER_METRIC_WIDGETS,
   MAX_WIDGETS,
-  MIN_GRID_COLUMNS,
   NEWER_WIDGETS_MESSAGE,
   WEATHER_METRIC_IDS,
   WIDGETS_MUTATION_LOCK_NAME,
@@ -30,16 +26,6 @@ describe("widgetsShared", () => {
     ]);
     assert.equal(weatherMetricKey("weather:airQuality"), "airQuality");
     assert.match(NEWER_WIDGETS_MESSAGE, /newer version of Quiet Tab/);
-  });
-
-  it("allows exactly the three grid positions", () => {
-    assert.deepEqual([...GRID_POSITIONS].sort(), ["bottom", "center", "top"]);
-  });
-
-  it("bounds columns between 1 and 12 with a default of 6", () => {
-    assert.equal(MIN_GRID_COLUMNS, 1);
-    assert.equal(MAX_GRID_COLUMNS, 12);
-    assert.equal(DEFAULT_GRID_COLUMNS, 6);
   });
 
   it("caps favorites at 200 and leaves room for the 4 weather metrics and 2 chrome tiles in the total", () => {

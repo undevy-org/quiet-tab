@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   CHROME_IDS, canPlace, cellFromPoint, displayLayout, effectiveColumns, gridMetrics, isValidGrid,
-  migrateV1ToV2, placeMissing, placeNew, placeResized, viewportRows
+  placeMissing, placeNew, placeResized, viewportRows
 } from "../src/desktopLayout.js";
 import * as engine from "../src/desktopLayout.js"; // the whole-window drag helpers (AS-DL-01..06, 11)
 
@@ -115,14 +115,6 @@ describe("isValidGrid (v3: a signed x counts from the center line)", () => {
     assert.equal(isValidGrid(g(0.5, 0)), false);
     assert.equal(isValidGrid(g(-0.5, 0)), false);
     assert.equal(isValidGrid(undefined), false);
-  });
-  it("isValidGridV2 keeps the non-negative x of the v1/v2 readers", () => {
-    assert.equal(engine.isValidGridV2(g(0, 0, 2, 2)), true);
-    assert.equal(engine.isValidGridV2(g(11, 4)), true);
-    assert.equal(engine.isValidGridV2(g(-1, 0)), false);
-    assert.equal(engine.isValidGridV2(g(0, -1)), false);
-    assert.equal(engine.isValidGridV2(g(0, 0, 3, 1)), false);
-    assert.equal(engine.isValidGridV2(undefined), false);
   });
 });
 
@@ -326,33 +318,6 @@ describe("defaults and self-heal (decision 6; AS-CG-01, 09 b, 15)", () => {
   });
 });
 
-describe("centerShift (decision 7; AS-CG-08)", () => {
-  const on = (id, x, w = 1, y = 0) => ({ id, type: "favorite", grid: g(x, y, w, 1) });
-  const defaultRowV2 = () => [
-    metricItem("weather:temperature", g(0, 0)), metricItem("weather:precipitation", g(1, 0, 2, 1)),
-    metricItem("weather:airQuality", g(3, 0, 2, 1)), metricItem("weather:uv", g(5, 0)),
-    chromeItem("chrome:settings", g(6, 0)), chromeItem("chrome:add", g(7, 0))
-  ];
-  it("centers the bounding box of the on-grid items: 8 wide -4, 15 wide -7, 11 wide -5", () => {
-    assert.equal(engine.centerShift(defaultRowV2()), -4);
-    assert.equal(engine.centerShift([...defaultRowV2(), ...Array.from({ length: 7 }, (_, i) => on(`f${i}`, 8 + i))]), -7);
-    assert.equal(engine.centerShift(Array.from({ length: 11 }, (_, i) => on(`f${i}`, i))), -5);
-  });
-  it("uses the left edge and the right end of a wide tile", () => {
-    assert.equal(engine.centerShift([on("a", 0), on("b", 3, 2)]), -2); // [0, 5): floor(5/2) = 2
-    assert.equal(engine.centerShift([on("a", 4), on("b", 6)]), -(4 + 1)); // [4, 7): minX 4 + floor(3/2)
-  });
-  it("hidden metrics and items without a valid grid do not count", () => {
-    const items = [...defaultRowV2().filter((item) => item.id !== "weather:uv"), metricItem("weather:uv", g(20, 0), false), { id: "loose", type: "favorite" }];
-    assert.equal(engine.centerShift(items), -4); // on-grid columns [0, 8)
-  });
-  it("nothing on the grid means no shift, and the shift is a plain +0", () => {
-    assert.equal(Object.is(engine.centerShift([]), 0), true);
-    assert.equal(Object.is(engine.centerShift([{ id: "x", type: "favorite" }, metricItem("weather:uv", g(3, 0), false)]), 0), true);
-    assert.equal(Object.is(engine.centerShift([on("a", 0)]), 0), true); // a single tile at column 0: no -0
-  });
-});
-
 describe("placement rules", () => {
   const layout = displayLayout([favAt(12)("a", g(0, 0)), favAt(12)("b", g(1, 0))], 12);
   it("rejects overlap, overflow and rows further than one below the lowest", () => {
@@ -527,56 +492,6 @@ describe("clampDropCell (AS-DL-02, 03, 05, 08; decision 3)", () => {
   });
   it("a block wider than the grid still lands on column 0, never negative", () => {
     assert.deepEqual(engine.clampDropCell({ x: 5, y: 0 }, { w: 2, h: 1 }, 1, 3), { x: 0, y: 0 });
-  });
-});
-
-describe("migrateV1ToV2 (spec AS-12, AS-12b)", () => {
-  const metric = (id, size, enabled = true) => ({ id, type: "weather-metric", tileSize: size, enabled });
-  const v1 = [
-    { id: "fw", type: "favorite", tileSize: "wide" }, { id: "fs", type: "favorite", tileSize: "square" },
-    metric("weather:temperature", "square"), metric("weather:precipitation", "wide"),
-    metric("weather:airQuality", "wide"), metric("weather:uv", "square")
-  ];
-  it("AS-12: exact grids at 6 columns", () => {
-    assert.deepEqual(plain(migrateV1ToV2(v1, 6)), {
-      fw: g(0, 0, 2, 1), fs: g(2, 0), "weather:temperature": g(3, 0), "weather:precipitation": g(4, 0, 2, 1),
-      "weather:airQuality": g(0, 1, 2, 1), "weather:uv": g(2, 1), "chrome:settings": g(3, 1), "chrome:add": g(4, 1)
-    });
-  });
-  it("backfills a hole (first-free rule)", () => {
-    const items = [{ id: "a", type: "favorite", tileSize: "wide" }, { id: "b", type: "favorite", tileSize: "wide" }, { id: "c", type: "favorite", tileSize: "square" }];
-    const out = migrateV1ToV2(items, 3);
-    assert.deepEqual([out.get("a"), out.get("b"), out.get("c")], [g(0, 0, 2, 1), g(0, 1, 2, 1), g(2, 0)]);
-  });
-  it("a wide item at 1 column becomes 1×1", () => {
-    assert.deepEqual(migrateV1ToV2([{ id: "a", type: "favorite", tileSize: "wide" }], 1).get("a"), g(0, 0));
-  });
-  it("hidden metrics take no cell and get a placeholder sized from tileSize", () => {
-    const out = migrateV1ToV2([{ id: "a", type: "favorite", tileSize: "square" }, metric("weather:precipitation", "wide", false)], 6);
-    assert.deepEqual(out.get("weather:precipitation"), g(0, 0, 2, 1));
-    assert.deepEqual(out.get("chrome:settings"), g(1, 0));
-  });
-  it("AS-12b: resume after an interrupted run equals an uninterrupted run, with holes and >25 items", () => {
-    const items = Array.from({ length: 27 }, (_, i) => ({ id: `f${i}`, type: "favorite", tileSize: i % 3 === 2 ? "square" : "wide" }));
-    const full = migrateV1ToV2(items, 3);
-    const resumed = migrateV1ToV2(items.map((item, i) => (i < 25 ? { ...item, grid: full.get(item.id) } : item)), 3);
-    assert.deepEqual(plain(resumed), plain(full));
-  });
-  it("a v1 columns value above 12 (never stored by v1) still packs over 12 columns", () => {
-    const items = Array.from({ length: 14 }, (_, i) => ({ id: `f${i}`, type: "favorite", tileSize: "square" }));
-    const out = migrateV1ToV2(items, 40);
-    assert.deepEqual(out.get("f11"), g(11, 0));
-    assert.deepEqual(out.get("f12"), g(0, 1));
-  });
-  it("resume reads existing grids with the non-negative v2 check: a negative x is unplaced and is packed again (decision 8)", () => {
-    const items = [{ id: "a", type: "favorite", tileSize: "square", grid: g(-1, 0) }, { id: "b", type: "favorite", tileSize: "square", grid: g(2, 0) }];
-    const out = migrateV1ToV2(items, 6);
-    assert.deepEqual(out.get("b"), g(2, 0));
-    assert.deepEqual(out.get("a"), g(0, 0));
-  });
-  it("resume keeps an existing chrome grid", () => {
-    const items = [{ id: "a", type: "favorite", tileSize: "square", grid: g(0, 0) }, { id: "chrome:settings", type: "chrome", grid: g(5, 0) }];
-    assert.deepEqual(migrateV1ToV2(items, 6).get("chrome:settings"), g(5, 0));
   });
 });
 
