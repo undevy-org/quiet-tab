@@ -2,9 +2,8 @@
 // src/desktopLayout.js — pure grid engine: no DOM, no storage. Spec: § Grid metrics, § Display layout, § Placement rules.
 // Since layout version 3 (docs/centered-grid.md) a stored `grid.x` is signed and counts from the window's center line:
 // displayed column = grid.x + originColumn(C). Everything in this module that takes a "layout" works in DISPLAYED cells;
-// `toStored` / `toDisplayed` convert, and `placeMissing` / `centerShift` work on stored grids.
+// `toStored` / `toDisplayed` convert, and `placeMissing` works on stored grids.
 export const MIN_COLUMNS = 2;
-export const V1_MAX_COLUMNS = 12; // v1 stored `columns` 1..12 and never more; only migrateV1ToV2 clamps to it
 export const REFERENCE_COLUMNS = 12;
 export const CHROME_IDS = { settings: "chrome:settings", add: "chrome:add" };
 
@@ -52,12 +51,6 @@ export function isValidGrid(grid) {
     (grid.w === 1 || grid.w === 2) &&
     (grid.h === 1 || grid.h === 2)
   );
-}
-
-// v1/v2: `x` counted from the left column, so it is never negative. The v1/v2 readers (migrateV1ToV2's resume branch,
-// the v2 -> v3 step) use this check, not the signed one.
-export function isValidGridV2(grid) {
-  return isValidGrid(grid) && grid.x >= 0;
 }
 
 const cellKey = (x, y) => `${x},${y}`;
@@ -280,55 +273,6 @@ export function placeMissing(missingIds, existing, screen) {
     const { w, h } = defaultSize(id);
     out.set(id, toStored({ x, y: block.y, w, h }, REFERENCE_COLUMNS));
     x += w;
-  }
-  return out;
-}
-
-// The one-time v2 -> v3 shift (decision 7). `items` are v2 items read with the v2 grid check (a bad grid is absent). The
-// bounding columns [minX, maxEnd) of the on-grid items with a grid are centered: shift = -(minX + floor(width / 2)).
-// No on-grid item with a grid means 0. Always a plain +0, never -0.
-export function centerShift(items) {
-  let minX = Infinity;
-  let maxEnd = -Infinity;
-  for (const item of items) {
-    if (!isOnGrid(item) || !isValidGrid(item.grid)) continue;
-    minX = Math.min(minX, item.grid.x);
-    maxEnd = Math.max(maxEnd, item.grid.x + item.grid.w);
-  }
-  if (minX === Infinity) return 0;
-  return 0 - (minX + Math.floor((maxEnd - minX) / 2));
-}
-
-// v1 → v2 packing. `items` are v1 items in v1 order (favorites then metrics) and may already carry a valid grid
-// (resume). `columns` = v1 meta.columns. Returns Map id -> grid for every item plus both chrome tiles.
-export function migrateV1ToV2(items, columns) {
-  const C = Math.min(V1_MAX_COLUMNS, Math.max(1, columns));
-  const hidden = (item) => item.type === "weather-metric" && item.enabled === false;
-  const occupied = new Set();
-  const out = new Map();
-
-  for (const item of items) {
-    if (!hidden(item) && isValidGridV2(item.grid)) {
-      mark(occupied, item.grid);
-      out.set(item.id, item.grid);
-    }
-  }
-  for (const item of items) {
-    if (out.has(item.id)) continue;
-    if (hidden(item)) {
-      out.set(item.id, { x: 0, y: 0, w: item.tileSize === "wide" ? 2 : 1, h: 1 });
-      continue;
-    }
-    const wide = item.tileSize === "wide" && C >= 2;
-    const spot = firstFree(occupied, wide ? 2 : 1, 1, C);
-    mark(occupied, spot);
-    out.set(item.id, spot);
-  }
-  for (const id of [CHROME_IDS.settings, CHROME_IDS.add]) {
-    if (out.has(id)) continue;
-    const spot = firstFree(occupied, 1, 1, C);
-    mark(occupied, spot);
-    out.set(id, spot);
   }
   return out;
 }

@@ -10,11 +10,6 @@ export function weatherMetricKey(id) {
 }
 export const NEWER_WIDGETS_MESSAGE =
   "Your saved widgets were written by a newer version of Quiet Tab and can't be edited here. Update Quiet Tab to keep using them.";
-// v1 meta only (columns/position were removed by the desktop grid); kept for the v1 -> v2 migration validators.
-export const GRID_POSITIONS = new Set(["top", "bottom", "center"]);
-export const MIN_GRID_COLUMNS = 1;
-export const MAX_GRID_COLUMNS = 12;
-export const DEFAULT_GRID_COLUMNS = 6;
 export const MAX_FAVORITE_WIDGETS = 200;
 export const MAX_WEATHER_METRIC_WIDGETS = 4;
 export const MAX_CHROME_WIDGETS = 2;

@@ -32,10 +32,7 @@ import {
   WIDGETS_META_KEY,
   createWidgetsStore,
   ensureWidgetsLayout,
-  inspectWidgetsMeta,
-  migrateToWidgets,
-  migrateWidgetsToV2,
-  migrateWidgetsToV3
+  inspectWidgetsMeta
 } from "./widgetsStore.js";
 import { placeTooltip } from "./widgetsLayout.js";
 import { MAX_FAVORITE_WIDGETS, NEWER_WIDGETS_MESSAGE, weatherMetricKey } from "./widgetsShared.js";
@@ -246,10 +243,6 @@ const weatherService =
     : null;
 
 let widgetsState = null;
-// Set when the legacy → widgets migration fails. The favorites UI is then locked (no
-// gear, no mutations): an editable empty grid would let the user create widgets meta,
-// after which the still-present legacy data would be treated as stale and deleted.
-let widgetsMigrationFailed = false;
 // Edit mode / menu / dialog / drag (pure state, desktopUiState.js). Normal mode only until the later tasks wire it.
 let desktopUi = createDesktopUiState();
 let favoritesError = "";
@@ -1429,7 +1422,7 @@ function promptLiveState() {
     hasLocation: Boolean(weatherLocation),
     anyMetricEnabled: items.some((item) => item.type === "weather-metric" && item.enabled === true),
     weatherAvailable: Boolean(weatherService && weatherPromptStore && onboardingStore),
-    gridLocked: widgetsNewer || widgetsMigrationFailed
+    gridLocked: widgetsNewer
   };
 }
 
@@ -2644,10 +2637,6 @@ function renderDesktop() {
     favoritesRoot.replaceChildren(createStatus(NEWER_WIDGETS_MESSAGE, { error: true, live: "assertive", full: true }));
     return;
   }
-  if (widgetsMigrationFailed) {
-    favoritesRoot.replaceChildren(createStatus(favoritesError, { error: true, live: "assertive", full: true }));
-    return;
-  }
   if (!widgetsState) {
     // Unavailable APIs or a failed read: say so instead of an empty, silently broken page.
     favoritesRoot.replaceChildren(...(favoritesError ? [createStatus(favoritesError, { error: true, live: "assertive", full: true })] : []));
@@ -2709,7 +2698,7 @@ window.addEventListener("resize", () => {
   cancelDrag(); // Review focus 1: a viewport change cancels an active drag (tile returns, nothing written)
   cancelAnimationFrame(resizeFrame);
   resizeFrame = requestAnimationFrame(() => {
-    if (!widgetsState || widgetsNewer || widgetsMigrationFailed || renderedColumns === 0) return; // nothing is rendered yet: the first render (after the first-run decision) lays the grid out
+    if (!widgetsState || widgetsNewer || renderedColumns === 0) return; // nothing is rendered yet: the first render (after the first-run decision) lays the grid out
     if (currentColumns() !== renderedColumns || gridMetrics(viewportWidth()).cell !== renderedCell) renderFavorites();
     placeAddMenu(); // after the re-render: the Add tile may have moved
   });
@@ -3073,49 +3062,17 @@ if (favoritesRoot) {
       return;
     }
 
-    // R7 bootstrap order: legacy → widgets v1, v1 → v2, v2 → v3, then ensure, then the first read. No read or mutation runs
-    // before the v3 migration has succeeded; any failure locks the grid and leaves the stored data untouched.
+    // Bootstrap order: early `newer` check, then ensure, then the first read. A `newer` meta (another device or a rollback)
+    // is never written: the grid is locked read-only. A rejected early read is not fatal (rawMeta = {}): it fails again in
+    // getState, whose catch shows the storage error, and ensureWidgetsLayout has its own catch.
+    let rawMeta = {};
     try {
-      const rawMeta = hasStorageArea(syncStorageArea)
-        ? await syncStorageArea.get(WIDGETS_META_KEY)
-        : {};
-      if (inspectWidgetsMeta(rawMeta) === "newer") {
-        widgetsNewer = true;
-        renderFavorites();
-        return;
-      }
-
-      // The legacy chain reads the old local blob too; the v1 → v2 step needs only the sync area.
-      if (hasStorageArea(localStorageArea) && hasStorageArea(syncStorageArea)) {
-        const migration = await migrateToWidgets(localStorageArea, syncStorageArea);
-        if (migration?.newer) {
-          widgetsNewer = true;
-          renderFavorites();
-          return;
-        }
-      }
-      if (hasStorageArea(syncStorageArea)) {
-        // A meta that turned newer meanwhile (another device) locks like the check above; an invalid meta is left
-        // as it is (no message decided yet, backlog L1-02).
-        const v2 = await migrateWidgetsToV2(syncStorageArea);
-        if (v2?.meta === "newer") {
-          widgetsNewer = true;
-          renderFavorites();
-          return;
-        }
-        // v2 -> v3 (docs/centered-grid.md): one set() call shifts a v2 layout to the center line; a `v2` meta that is still
-        // there afterwards (the write failed) throws into the catch below and locks like a failed v1 -> v2 step.
-        const v3 = await migrateWidgetsToV3(syncStorageArea);
-        if (v3?.meta === "newer") {
-          widgetsNewer = true;
-          renderFavorites();
-          return;
-        }
-      }
-    } catch (error) {
-      widgetsMigrationFailed = true;
-      favoritesError =
-        "Couldn't move your favorites to the new layout — Chrome Sync storage may be full or unavailable. Free up some sync space, then reload this tab to try again. Your favorites are kept.";
+      if (hasStorageArea(syncStorageArea)) rawMeta = await syncStorageArea.get(WIDGETS_META_KEY);
+    } catch {
+      rawMeta = {};
+    }
+    if (inspectWidgetsMeta(rawMeta) === "newer") {
+      widgetsNewer = true;
       renderFavorites();
       return;
     }
@@ -3169,7 +3126,7 @@ if (favoritesRoot) {
     }
 
     if (event.target.closest('[data-chrome-role="settings"]')) {
-      if (widgetsState && !widgetsNewer && !widgetsMigrationFailed) setEditMode(!desktopUi.editMode);
+      if (widgetsState && !widgetsNewer) setEditMode(!desktopUi.editMode);
       return;
     }
 
