@@ -2095,6 +2095,13 @@ describe("onboarding wizard polish source pins (run 42, docs/onboarding-wizard-p
     }
   });
 
+  it("AS-OWP-01: opening the city modal or the wizard clears the guard of the previous close", async () => {
+    const code = await source();
+    assert.match(functionText(code, "clearPostCloseClickGuard"), /postCloseGuardUntil = 0;/);
+    assert.match(functionText(code, "showCityModal"), /clearPostCloseClickGuard\(\);/);
+    assert.match(functionText(code, "showOnboardingWizard"), /clearPostCloseClickGuard\(\);/);
+  });
+
   it("AS-OWP-05: the preventScroll flag travels on the pendingFocus value and only the wizard close sets it", async () => {
     const code = await source();
     const hideWizard = functionText(code, "hideOnboardingWizard");

@@ -290,6 +290,11 @@ function armPostCloseClickGuard() {
   postCloseGuardUntil = performance.now() + POST_CLOSE_CLICK_GUARD_MS;
 }
 
+// A modal that opens again means the person is acting on purpose: its own buttons must not be swallowed by the guard of the previous close.
+function clearPostCloseClickGuard() {
+  postCloseGuardUntil = 0;
+}
+
 document.addEventListener(
   "click",
   (event) => {
@@ -1351,6 +1356,7 @@ function showCityModal(mode, openerSelector) {
   )
     return false;
   cityModalError = "";
+  clearPostCloseClickGuard();
   let root = null;
   try {
     root = buildCityModal(mode, weatherLocationError ? null : currentLocation());
@@ -1879,6 +1885,7 @@ function showOnboardingWizard() {
   onboardingStartersCommitted = false;
   onboardingFlagWriteFailedOnce = false;
   cityModalError = "";
+  clearPostCloseClickGuard();
   let root = null;
   try {
     root = buildOnboardingWizard();

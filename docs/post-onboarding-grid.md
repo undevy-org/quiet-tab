@@ -159,7 +159,7 @@ Common setup unless noted: harness **1280×800** (cell 72, gap 8, pad 16, **14**
 ### AS-POG-07 Low window
 - Given: harness 1280×400 (4 first-screen rows).
 - When: Finish with k = 6 (`H = 5`).
-- Then: island applied at displayed row 0 (`centeredDefaultRow(4, 5) = 0`), shape per table; its bottom edge is at 408 px in a 400 px window; focus goes to Settings as after every Finish (`docs/onboarding-wizard.md` AS-OB-31), the page scrolls so that Settings' rect plus its focus ring lies inside the window, and `scrollY ≤ 16`.
+- Then: island applied at displayed row 0 (`centeredDefaultRow(4, 5) = 0`), shape per table; its bottom edge is at 408 px in a 400 px window; focus goes to Settings as after every Finish (`docs/onboarding-wizard.md` AS-OB-31), the page scrolls so that Settings' rect plus its focus ring lies inside the window, and `scrollY ≤ 16`. **Superseded 2026-10-15 (run 42, `docs/onboarding-wizard-polish.md` decision 2, owner):** Finish focuses Settings without scrolling; `scrollY` stays 0 and the ring of a Settings tile below the window is not brought into view.
 - Verified by: unit; E2E (new post-onboarding scenario file).
 
 ### AS-POG-08 One write, nothing intermediate
