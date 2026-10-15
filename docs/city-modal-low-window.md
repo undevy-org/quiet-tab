@@ -137,6 +137,15 @@ All run in the E2E harness (`quiet-tab-notes/e2e/lib/harness.mjs`), real Chromiu
   6. Notes repo: `superpowers/plans/2026-10-03-city-error-ux.md` names the scenario exactly: `15-city-modal-layout` 47/47 (and 46/47 for the intermediate run), not "58/58" and "57/58".
 - Verified by: the independent verifier reads the diff (copy lens in the design review for items 1-3); `grep -n "chrome tile\|hint tile\|City window" CHANGELOG.md` finds nothing in `[Unreleased]`.
 
+### AS-LW-06 Placement order of the suggestions list in a compact window
+
+Added after the run (restated without reserve numbers by `docs/modal-overlay-design.md`, AS-MO-14).
+
+- Given: the city modal with three suggestions for `Tbil`, at each tested width, over a range of window heights.
+- When: the window height is lowered step by step.
+- Then: the list flips from overlay to docked at ONE measured height per width and stays docked below it (monotonic); below the flip the list is docked with no inline `max-height` and the dialog scrolls; from the flip up it is an overlay with an inline `max-height` and the dialog does not scroll for it; the list stays horizontally inside the dialog box; the retired `city-modal__dialog--compact` class and `--city-feedback-reserve` property never appear.
+- Verified by: `dg-49-city-modal-placement-order.mjs`.
+
 ## Coverage note: resetting the error variable
 
 Not an acceptance scenario (nothing observable). The intake asks for a behavioural E2E check that `clearCityError` resets `cityModalError`. None can fail: `syncCityModal` has four callers in `src/newtab.js` (:822 in the field's Enter handler, :976 in the form's submit handler, :2406 and :2427 in `changeCity`) and each assigns `cityModalError` immediately before the call (`"Enter a city name"`, `""`, the message from the `catch`). `buildCityModal` reads the variable only at open, and `showCityModal` (:996) and `hideCityModal` (:1039) reset it first. While a request runs the field is disabled, so no `input` event arrives. The reset in the helper guards a future caller. The plan therefore keeps the source test in `test/cityModalFeedback.test.js`, adds a comment there with this reasoning, and lists the mutation in its table as "equivalent through the UI; covered by the source test". If the implementer finds a UI path that exposes the difference, the check goes into `dg-48` with the mutation run as evidence.
