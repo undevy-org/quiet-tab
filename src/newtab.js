@@ -280,6 +280,31 @@ const LOCATION_REVERSE_TIMEOUT_MS = 8000;
 let cityModalOpenedAt = 0;
 let cityModalHadFocus = false; // D14: focus was inside the modal at some point since it opened
 const CITY_MODAL_BACKDROP_GUARD_MS = 300;
+// The second click of a double click on a button of the wizard or the city modal arrives after the node is gone (or the step has
+// switched) and lands on the tile or row under it (docs/onboarding-wizard-polish.md decision 1). A pointer click (detail > 0) in this window after the close is swallowed;
+// keyboard activation (detail 0) is not guarded.
+const POST_CLOSE_CLICK_GUARD_MS = 300;
+let postCloseGuardUntil = 0;
+
+function armPostCloseClickGuard() {
+  postCloseGuardUntil = performance.now() + POST_CLOSE_CLICK_GUARD_MS;
+}
+
+// A modal that opens again means the person is acting on purpose: its own buttons must not be swallowed by the guard of the previous close.
+function clearPostCloseClickGuard() {
+  postCloseGuardUntil = 0;
+}
+
+document.addEventListener(
+  "click",
+  (event) => {
+    if (event.detail > 0 && performance.now() < postCloseGuardUntil) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  },
+  true
+);
 const CITY_REQUEST_TIMEOUT_MS = 15000;
 
 function effectiveWeatherResult() {
@@ -1331,6 +1356,7 @@ function showCityModal(mode, openerSelector) {
   )
     return false;
   cityModalError = "";
+  clearPostCloseClickGuard();
   let root = null;
   try {
     root = buildCityModal(mode, weatherLocationError ? null : currentLocation());
@@ -1372,6 +1398,7 @@ function hideCityModal() {
   weatherFormGeneration += 1; // late suggestion responses are ignored
   cityModalRoot.remove();
   cityModalRoot = null;
+  armPostCloseClickGuard();
   revealDesk(); // before focus is restored: Settings must be visible when applyPendingFocus runs
   weatherUi = closeCityModalState(weatherUi);
   cityModalError = "";
@@ -1470,9 +1497,16 @@ function syncOnboardingWizardUi() {
   if (finishBtn instanceof HTMLButtonElement) finishBtn.disabled = finishBusy;
   const backBtn = onboardingWizardRoot.querySelector('[data-onboarding-action="back"]');
   if (backBtn instanceof HTMLButtonElement) backBtn.disabled = finishBusy;
+  // Once the links are written (a later Finish only writes the flag) the rows are locked: a new check would be lost silently.
   onboardingWizardRoot.querySelectorAll('[data-onboarding-step="2"] input[type="checkbox"]').forEach((box) => {
-    if (box instanceof HTMLInputElement) box.disabled = finishBusy;
+    if (box instanceof HTMLInputElement) box.disabled = finishBusy || onboardingStartersCommitted;
   });
+  const list = onboardingWizardRoot.querySelector(".onboarding-wizard__starters");
+  if (list instanceof HTMLElement) {
+    if (onboardingStartersCommitted) list.dataset.startersLocked = "true";
+    else delete list.dataset.startersLocked;
+  }
+  onboardingWizardRoot.querySelector(".onboarding-wizard__progress")?.setAttribute("aria-label", `Step ${progressPillCount(onboardingStep)} of 2`);
   if (dialog) dialog.setAttribute("aria-busy", String((weatherBusy && !locating) || finishBusy));
 }
 
@@ -1487,15 +1521,18 @@ function onboardingStep2ActionsAllowed() {
 function goToOnboardingStep2() {
   onboardingStep = 2;
   onboardingStep2EnteredAt = performance.now();
-  onboardingFinishError = "";
+  armPostCloseClickGuard(); // the second click of a double click on Skip/Continue lands on the row under the button
+  if (!onboardingStartersCommitted) onboardingFinishError = ""; // locked rows keep their explanation
   syncOnboardingWizardUi();
-  const firstBox = onboardingWizardRoot?.querySelector('[data-onboarding-step="2"] input[type="checkbox"]');
-  firstBox?.focus();
+  // a disabled row cannot take focus: with every row locked the focus goes to Finish
+  const firstBox = onboardingWizardRoot?.querySelector('[data-onboarding-step="2"] input[type="checkbox"]:not(:disabled)');
+  (firstBox ?? onboardingWizardRoot?.querySelector('[data-onboarding-action="finish"]'))?.focus();
 }
 
 function goToOnboardingStep1({ focusTitle = false } = {}) {
   onboardingStep = 1;
-  onboardingFinishError = "";
+  armPostCloseClickGuard(); // the second click of a double click on Back lands on Skip, which sits at the same place
+  if (!onboardingStartersCommitted) onboardingFinishError = "";
   syncOnboardingWizardUi();
   if (focusTitle) {
     const title = onboardingWizardRoot?.querySelector("#onboarding-step1-title");
@@ -1575,7 +1612,8 @@ function buildOnboardingWizard() {
   dialog.setAttribute("aria-modal", "true");
   dialog.setAttribute("aria-labelledby", "onboarding-step1-title");
   const progress = createNode("div", "onboarding-wizard__progress");
-  progress.setAttribute("aria-hidden", "true");
+  progress.setAttribute("role", "img"); // the pills are decoration; the step is named for assistive technology only
+  progress.setAttribute("aria-label", "Step 1 of 2");
   progress.append(createNode("span", "onboarding-wizard__pill onboarding-wizard__pill--active"), createNode("span", "onboarding-wizard__pill"));
   const step1 = createNode("div", "onboarding-wizard__step");
   step1.dataset.onboardingStep = "1";
@@ -1698,6 +1736,7 @@ function hideOnboardingWizard({ completed = false } = {}) {
   weatherFormGeneration += 1;
   onboardingWizardRoot.remove();
   onboardingWizardRoot = null;
+  armPostCloseClickGuard();
   onboardingStep = 1;
   onboardingStep2EnteredAt = 0;
   onboardingStarterChecks = defaultStarterChecks();
@@ -1709,6 +1748,9 @@ function hideOnboardingWizard({ completed = false } = {}) {
   if (favoritesRoot) favoritesRoot.inert = false;
   if (focusWasInside || completed) {
     pendingFocus = [SETTINGS_TILE_SELECTOR];
+    // Finish closes the wizard while favoritesBusy, so this call returns at once and renderFavorites() applies the focus later: the
+    // flag rides on the pending value, a later assignment of pendingFocus drops it (docs/onboarding-wizard-polish.md decision 2).
+    pendingFocus.preventScroll = true;
     applyPendingFocus();
   }
 }
@@ -1845,6 +1887,7 @@ function showOnboardingWizard() {
   onboardingStartersCommitted = false;
   onboardingFlagWriteFailedOnce = false;
   cityModalError = "";
+  clearPostCloseClickGuard();
   let root = null;
   try {
     root = buildOnboardingWizard();
@@ -2619,7 +2662,9 @@ function restoreFocus(target) {
   suppressTooltipOnFocus = true;
   try {
     const node = favoritesRoot.querySelector(selector) ?? (target.badge ? favoritesRoot.querySelector(SETTINGS_TILE_SELECTOR) : null);
-    node?.focus();
+    // the node was focused before the re-render replaced it: putting the focus back must not scroll the page (docs/onboarding-wizard-polish.md
+    // decision 2: a re-render right after Finish re-focused Settings and scrolled to it)
+    node?.focus({ preventScroll: true });
   } finally {
     suppressTooltipOnFocus = false;
   }
@@ -3003,12 +3048,13 @@ function applyPendingFocus() {
   }
 
   const selectors = pendingFocus;
+  const preventScroll = selectors.preventScroll === true;
   pendingFocus = null;
 
   for (const selector of selectors) {
     const target = document.querySelector(selector); // an opener may live in a desktop dialog, outside the grid
     if (target instanceof HTMLElement && !target.matches(":disabled")) {
-      target.focus();
+      target.focus({ preventScroll });
       return;
     }
   }

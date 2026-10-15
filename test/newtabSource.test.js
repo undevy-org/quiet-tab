@@ -2065,3 +2065,92 @@ describe("default favicon fallback source pins (run 32, docs/favicon-globe-fallb
     assert.doesNotMatch(body, /loadImage:\s*loadBrowserImage/);
   });
 });
+
+describe("onboarding wizard polish source pins (run 42, docs/onboarding-wizard-polish.md)", () => {
+  function functionText(code, name) {
+    const start = code.search(new RegExp(`^(?:async )?function ${name}\\(`, "m"));
+    assert.notEqual(start, -1, `function ${name} exists`);
+    const rest = code.slice(start + 1);
+    const next = rest.search(/^(?:async )?function |^const |^let |^\/\/ /m);
+    return next === -1 ? code.slice(start) : code.slice(start, start + 1 + next);
+  }
+
+  it("AS-OWP-01: a document capture listener swallows pointer clicks for 300 ms after a close (decision 1)", async () => {
+    const code = await source();
+    assert.match(code, /const POST_CLOSE_CLICK_GUARD_MS = 300;/);
+    assert.match(functionText(code, "armPostCloseClickGuard"), /postCloseGuardUntil = performance\.now\(\) \+ POST_CLOSE_CLICK_GUARD_MS;/);
+    const listener = code.match(/document\.addEventListener\(\s*"click",\s*\(event\) => \{([\s\S]*?)\},\s*true\s*\);/);
+    assert.ok(listener, "a capture-phase click listener on document");
+    assert.match(listener[1], /event\.detail > 0 && performance\.now\(\) < postCloseGuardUntil/);
+    assert.match(listener[1], /event\.preventDefault\(\);/);
+    assert.match(listener[1], /event\.stopPropagation\(\);/);
+  });
+
+  it("AS-OWP-01/03: both close functions arm the guard once the node is removed", async () => {
+    const code = await source();
+    for (const [name, removal] of [["hideOnboardingWizard", "onboardingWizardRoot.remove();"], ["hideCityModal", "cityModalRoot.remove();"]]) {
+      const body = functionText(code, name);
+      assert.equal(body.split("armPostCloseClickGuard();").length, 2, `${name} arms the guard exactly once`);
+      assert.ok(body.indexOf(removal) !== -1 && body.indexOf(removal) < body.indexOf("armPostCloseClickGuard();"), `${name}: armed after the node is removed`);
+    }
+  });
+
+  it("AS-OWP-14: both wizard step transitions arm the guard too (a double click on Skip/Continue/Back)", async () => {
+    const code = await source();
+    for (const name of ["goToOnboardingStep2", "goToOnboardingStep1"]) {
+      assert.equal(functionText(code, name).split("armPostCloseClickGuard();").length, 2, `${name} arms the guard once`);
+    }
+  });
+
+  it("AS-OWP-01: opening the city modal or the wizard clears the guard of the previous close", async () => {
+    const code = await source();
+    assert.match(functionText(code, "clearPostCloseClickGuard"), /postCloseGuardUntil = 0;/);
+    assert.match(functionText(code, "showCityModal"), /clearPostCloseClickGuard\(\);/);
+    assert.match(functionText(code, "showOnboardingWizard"), /clearPostCloseClickGuard\(\);/);
+  });
+
+  it("AS-OWP-05: the preventScroll flag travels on the pendingFocus value and only the wizard close sets it", async () => {
+    const code = await source();
+    const hideWizard = functionText(code, "hideOnboardingWizard");
+    assert.match(hideWizard, /pendingFocus = \[SETTINGS_TILE_SELECTOR\];\s*(?:\/\/[^\n]*\s*)*pendingFocus\.preventScroll = true;/);
+    assert.doesNotMatch(functionText(code, "hideCityModal"), /preventScroll/);
+    const apply = functionText(code, "applyPendingFocus");
+    assert.match(apply, /const selectors = pendingFocus;\s*const preventScroll = selectors\.preventScroll === true;\s*pendingFocus = null;/);
+    assert.match(apply, /target\.focus\(\{ preventScroll \}\);/);
+    assert.equal(code.split("preventScroll = true").length, 2, "one place sets the flag");
+    // a re-render that happens after the focus (the node is replaced) restores it without scrolling too
+    assert.match(functionText(code, "restoreFocus"), /node\?\.focus\(\{ preventScroll: true \}\);/);
+  });
+
+  it("AS-OWP-07: the starter checkboxes are disabled while busy OR once the links are committed, and the list says so", async () => {
+    const code = await source();
+    const sync = functionText(code, "syncOnboardingWizardUi");
+    assert.match(sync, /box\.disabled = finishBusy \|\| onboardingStartersCommitted;/);
+    assert.match(sync, /list\.dataset\.startersLocked = "true"/);
+    assert.match(sync, /delete list\.dataset\.startersLocked/);
+    const css = await appStyles();
+    assert.match(
+      css,
+      /\.onboarding-wizard__starters\[data-starters-locked="true"\] input\[type="checkbox"\]:disabled \{\s*cursor: default;\s*\}/
+    );
+    assert.match(css, /\.onboarding-wizard__starter input\[type="checkbox"\]:disabled \{\s*cursor: wait;\s*\}/, "the busy rule is untouched");
+  });
+
+  it("AS-OWP-13: Back/Skip after the commit keeps the error and focuses an enabled row or Finish", async () => {
+    const code = await source();
+    const step2 = functionText(code, "goToOnboardingStep2");
+    assert.match(step2, /if \(!onboardingStartersCommitted\) onboardingFinishError = "";/);
+    assert.match(step2, /input\[type="checkbox"\]:not\(:disabled\)/);
+    assert.match(step2, /\[data-onboarding-action="finish"\]/);
+    assert.match(functionText(code, "goToOnboardingStep1"), /if \(!onboardingStartersCommitted\) onboardingFinishError = "";/);
+  });
+
+  it("AS-OWP-09: the progress is an image with a step label, not hidden", async () => {
+    const code = await source();
+    const build = functionText(code, "buildOnboardingWizard");
+    assert.match(build, /progress\.setAttribute\("role", "img"\);/);
+    assert.match(build, /progress\.setAttribute\("aria-label", "Step 1 of 2"\);/);
+    assert.doesNotMatch(build, /progress\.setAttribute\("aria-hidden"/);
+    assert.match(functionText(code, "syncOnboardingWizardUi"), /\.onboarding-wizard__progress"\)\?\.setAttribute\("aria-label", `Step \$\{progressPillCount\(onboardingStep\)\} of 2`\)/);
+  });
+});
