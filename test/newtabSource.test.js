@@ -2098,12 +2098,14 @@ describe("onboarding wizard polish source pins (run 42, docs/onboarding-wizard-p
   it("AS-OWP-05: the preventScroll flag travels on the pendingFocus value and only the wizard close sets it", async () => {
     const code = await source();
     const hideWizard = functionText(code, "hideOnboardingWizard");
-    assert.match(hideWizard, /pendingFocus = \[SETTINGS_TILE_SELECTOR\];\s*pendingFocus\.preventScroll = true;/);
+    assert.match(hideWizard, /pendingFocus = \[SETTINGS_TILE_SELECTOR\];\s*(?:\/\/[^\n]*\s*)*pendingFocus\.preventScroll = true;/);
     assert.doesNotMatch(functionText(code, "hideCityModal"), /preventScroll/);
     const apply = functionText(code, "applyPendingFocus");
     assert.match(apply, /const selectors = pendingFocus;\s*const preventScroll = selectors\.preventScroll === true;\s*pendingFocus = null;/);
     assert.match(apply, /target\.focus\(\{ preventScroll \}\);/);
     assert.equal(code.split("preventScroll = true").length, 2, "one place sets the flag");
+    // a re-render that happens after the focus (the node is replaced) restores it without scrolling too
+    assert.match(functionText(code, "restoreFocus"), /node\?\.focus\(\{ preventScroll: true \}\);/);
   });
 
   it("AS-OWP-07: the starter checkboxes are disabled while busy OR once the links are committed, and the list says so", async () => {

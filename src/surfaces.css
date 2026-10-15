@@ -396,6 +396,11 @@ img.onboarding-wizard__starter-icon[data-icon-check="pending"] {
   opacity: var(--control-disabled-opacity);
 }
 
+/* Locked rows (the links are already written, docs/onboarding-wizard-polish.md): dimmed like the busy rows, but nothing is loading. */
+.onboarding-wizard__starters[data-starters-locked="true"] input[type="checkbox"]:disabled {
+  cursor: default;
+}
+
 /* Inside the surface: the list scrolls (overflow-y: auto) and would clip a ring outside a full-width row. */
 .onboarding-wizard__starter input[type="checkbox"]:focus-visible + .onboarding-wizard__starter-surface {
   box-shadow: inset 0 0 0 2px var(--focus-ring);
