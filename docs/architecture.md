@@ -16,12 +16,12 @@ forecast cache and a per-device "city prompt dismissed" flag persist to
 | File | Responsibility |
 | --- | --- |
 | `src/newtab.js` | Renders the desktop grid (links, weather tiles, the "Set a city" hint tile, the Settings and Add tiles), edit mode (jiggle, − badges, pointer drag with drop highlight and autoscroll), the desktop dialogs (add link, edit link without a Delete button, delete confirm, hide-weather confirm, weather edit), the Add menu, the page status line, the shared tooltip layer and the city modal, and wires them to the services. The only file that touches the DOM. |
-| `src/desktopLayout.js` | Pure grid engine: grid metrics and the (always even) column count for a viewport width, grid validation (`isValidGrid` with a signed `x`, `isValidGridV2` for the v1/v2 readers), the stored/displayed frame (`originColumn`, `toStored`, `toDisplayed`), the displayed layout (`displayLayout`, a stateless anchored repack of the stored grids for the current column count), placement rules (`canPlace`, `placeResized`, `placeNew` nearest to the center, `cellFromPoint`), the default block (`placeMissing`, with the vertical centering of its first placement: `centeredDefaultRow`, `defaultBlockRows`), the one-time v2 → v3 shift (`centerShift`) and the v1 → v2 packing (`migrateV1ToV2`). |
+| `src/desktopLayout.js` | Pure grid engine: grid metrics and the (always even) column count for a viewport width, grid validation (`isValidGrid` with a signed `x`), the stored/displayed frame (`originColumn`, `toStored`, `toDisplayed`), the displayed layout (`displayLayout`, a stateless anchored repack of the stored grids for the current column count), placement rules (`canPlace`, `placeResized`, `placeNew` nearest to the center, `cellFromPoint`), the default block (`placeMissing`, with the vertical centering of its first placement: `centeredDefaultRow`, `defaultBlockRows`). |
 | `src/desktopUiState.js` | Pure UI state for edit mode, the Add menu, the open dialog and an active drag, and the Escape layering (`escapeLayer`). |
-| `src/widgetsStore.js` | Validates, reads, and writes persisted widgets state (links, weather metrics and chrome tiles, each with a `grid`), sharded across `chrome.storage.sync` keys; reads are lenient about a missing or malformed `grid`. Also holds the legacy favorites → widgets v1 migration, the v1 → v2 migration (`migrateWidgetsToV2`), the v2 → v3 migration (`migrateWidgetsToV3`), `ensureWidgetsLayout` (defaults and self-heal), `inspectWidgetsMeta` and the write guard (`assertWritable`) that refuses `newer`, `v2`, `v1`, and `invalid` metas (only `valid` and `missing` are writable). |
+| `src/widgetsStore.js` | Validates, reads, and writes persisted widgets state (links, weather metrics and chrome tiles, each with a `grid`), sharded across `chrome.storage.sync` keys; reads are lenient about a missing or malformed `grid`. Also holds `ensureWidgetsLayout` (defaults and self-heal), `inspectWidgetsMeta` (`missing|valid|newer|invalid`; a v1/v2 meta is `invalid`) and the write guard (`assertWritable`) that refuses `newer` and `invalid` metas (only `valid` and `missing` are writable). |
 | `src/widgetsService.js` | Add/update/delete for links, `updateWeatherMetric` (size, shown/hidden) and `moveWidget` (drop at a cell, `PlacementError` when the block is taken). Every mutation takes the current column count, runs under the mutation lock, checks `assertWritable` first, applies the action to the displayed layout of fresh storage and persists the displayed grid of every widget. |
-| `src/widgetsShared.js` | Shared widget constants (types, weather metric ids, caps, the v1 column bounds and positions still read by the migration, lock name, newer-version message). |
-| `src/widgetsLayout.js` | `defaultColumnsForItems` (column count of the legacy favorites → widgets v1 migration) and `placeTooltip` (edge-aware tooltip placement). |
+| `src/widgetsShared.js` | Shared widget constants (types, weather metric ids, caps, lock name, newer-version message). |
+| `src/widgetsLayout.js` | `placeTooltip` (edge-aware tooltip placement). |
 | `src/favoritesShared.js` | Shared favorites constants (icon modes, color sources, tile sizes) and helpers. |
 | `src/favoriteIcon.js` | Chooses a favicon, custom image, or letter icon for a tile. (The default-globe check on top of it lives in `defaultFavicon.js` and `newtab.js`; see `docs/favicon-globe-fallback.md`.) |
 | `src/defaultFavicon.js` | Tells Chrome's grey default `_favicon` globe from a real icon: pure exact-pixel comparison (`isDefaultFaviconPixels`), a per-page-load checker (one sentinel image, 2 s timeout, fail open) and an in-memory verdict cache. |
@@ -106,8 +106,7 @@ row `Y0 = max(0, floor((R − blockRows) / 2))` from the first screen (`R` rows 
 `viewportRows`, `blockRows` the displayed height of the six tiles at the page's
 column count) instead of row 0, searching by distance from `Y0` (above first); the
 self-heal of 1..5 tiles and `placeNew` stay row-0 first, and a stored `y` is never
-recomputed. The one-time v2 → v3 shift centers the bounding columns of the on-grid
-items (`centerShift`).
+recomputed.
 
 **Writes.** Every explicit action (drag, add, edit, resize, delete, hide,
 restore) is a read-modify-write under the mutation lock: read fresh storage,
@@ -118,40 +117,15 @@ widgets. Editing while the window is narrow therefore re-bases the stored layout
 to the narrow arrangement. `getState()` tolerates a `meta.order` entry whose item
 key hasn't propagated from another device yet by filtering it out; the next write
 drops that id from `order` (and removes its key), so an item that arrives after that
-write is no longer listed. The v1 → v2 migration, by contrast, keeps such absent ids
-in the new `order`, so an item that syncs in late is still shown (unplaced). There
+write is no longer listed. There
 is no `storage.onChanged` listener: a tab that is open while another writes shows
 stale data until its own next action or reload.
 
-**Bootstrap.** Before the first read, `newtab.js` runs, under the same mutation
-lock as every mutation:
+**Bootstrap.** Before the first read, `newtab.js` reads the raw meta
+(`inspectWidgetsMeta`: `missing|valid|newer|invalid`) and then runs, under the same
+mutation lock as every mutation:
 
-1. `migrateToWidgets()` (needs `chrome.storage.local` too): moves the old
-   favorites-only storage (`quietTabFavoritesMeta` + `quietTabFavorite:<id>` in
-   sync, or the older single-blob `quietTabFavorites` in local) into the widgets
-   v1 layout. A valid widgets meta is authoritative; leftover legacy keys are
-   removed. Items are written in chunks of 25 with each chunk's legacy keys
-   deleted right after, and the meta last.
-2. `migrateWidgetsToV2()` (sync only): packs a valid v1 layout with the v1 column
-   count, so the user's arrangement is kept. Links then metrics, enabled ones
-   only, each at the first free block (a v1 `wide` tile is 2×1); then
-   `chrome:settings` and `chrome:add`. Items are written in chunks of 25 (keeping
-   their legacy `tileSize` for one release, so a not-yet-updated device can still
-   read them), then the meta `version: 2` last; listed ids whose key has not synced
-   yet are kept at the end of its `order`. Until the meta is v2 the run
-   repeats; items that already carry a grid keep it, so a resumed run ends with
-   the grids of an uninterrupted one. This step writes version 2 explicitly (`x`
-   counted from the left column).
-3. `migrateWidgetsToV3()` (sync only, only for a valid v2 meta, re-read under the
-   lock): centers the arrangement once. Items are read as v2 wrote them (a
-   non-negative `x`; an invalid item is neither rewritten nor deleted). The
-   bounding columns `[minX, maxEnd)` of the on-grid items (links, chrome tiles,
-   enabled metrics) with a grid give `shift = −(minX + floor((maxEnd − minX) /
-   2))`; every readable item with a grid, hidden metrics included, gets `x +
-   shift`, and the v3 meta (same `order`, same `createdAt`, new `updatedAt`) goes
-   out in the same single `set()` call, so storage is fully v2 or fully v3. A
-   rejected write leaves storage as it was and locks the grid like a failed step 2.
-4. `ensureWidgetsLayout()`: adds any missing weather metric and chrome tile as one
+1. `ensureWidgetsLayout()`: adds any missing weather metric and chrome tile as one
    block (see Placement) with the default sizes (temperature 1×1, precipitation
    2×1, air quality 2×1, UV 1×1, Settings and Add 1×1), item keys before the
    meta; idempotent. The call receives the first screen of this boot,
@@ -160,26 +134,26 @@ lock as every mutation:
    (−4,Y0), precipitation (−3,Y0), air quality (−1,Y0), UV (1,Y0), Settings
    (2,Y0), Add (3,Y0), with `Y0` the centered row of the first screen (4 at
    1280×800); without a valid `screen`, or for a partial self-heal, the row is 0.
-   A legacy or v1 user's four metrics land as one block in the first row with room
-   for all of them, which is below the links. It writes nothing for a newer, v2, v1
-   or malformed meta. A write failure is non-fatal: the grid renders without the
-   missing tiles and the page status line says so until the next open retries.
+   It writes nothing for a newer or invalid meta. A write failure is non-fatal: the
+   grid renders without the missing tiles and the page status line says so until the
+   next open retries.
+2. `getState()`.
 
-If step 1, 2 or 3 fails, the grid is locked with an error and a reload advice
-instead of an editable empty grid, and the stored data is left untouched for the
-next attempt.
+There is no migration (removed in run 40, `docs/remove-migrations.md`): keys of
+earlier versions (the favorites-only `quietTabFavoritesMeta`,
+`quietTabFavorite:<id>` and `quietTabFavorites`) are neither read nor deleted, and
+a v1 or v2 widgets meta is read as `invalid`.
 
 A meta whose `version` is newer than this build understands (written by a newer
-version on another device) is never touched: the migrations and the ensure step
-write and delete nothing, every service mutation fails first with the
-newer-version message (`assertWritable`), and the grid is locked read-only with
-that message, also after a resize. Every write is likewise refused while the stored
-meta is still v1 or v2 (an upgrade in progress, possibly on another device) or malformed,
-with a message to reload the tab: from those metas a read is empty, so a write would
-orphan every stored widget. A build from before the centered grid reads a
-v3 meta the same way (newer, read-only), as a build from before the desktop grid
-does with a v2 or v3 meta. A malformed meta is left alone by the
-ensure step.
+version on another device) is never touched: the ensure step writes and deletes
+nothing, every service mutation fails first with the newer-version message
+(`assertWritable`), and the grid is locked read-only with that message, also after a
+resize. Every write is likewise refused while the stored meta is invalid (malformed,
+or a v1/v2 meta of an older build), with a message to reload the tab: from such a
+meta a read is empty, so a write would orphan every stored widget. A build from
+before the centered grid reads a v3 meta the same way (newer, read-only), as a build
+from before the desktop grid does with a v2 or v3 meta. An invalid meta is left alone
+by the ensure step.
 
 `manifest.json` pins the extension id with a `key` (see "Extension id" below), so
 separate "Load unpacked" installs from different directories get the same id on
@@ -369,8 +343,8 @@ touch scroll, window resize, entering edit mode or a drag, and every grid render
 
 ## Concurrency
 
-Multiple new tab pages can exist at once. Widgets mutations (and the bootstrap
-migrations) are serialized
+Multiple new tab pages can exist at once. Widgets mutations (and the bootstrap)
+are serialized
 with the Web Locks API using one extension-wide lock name. A promise-chain
 fallback provides deterministic behavior in environments without Web Locks
 and in Node.js tests.

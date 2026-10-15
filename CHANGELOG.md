@@ -67,6 +67,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The "Current: …" line in the Change city window, the extra space kept under the city
   field for an error, and the Delete button in the Edit link dialog (links are still
   deleted with − in edit mode).
+- The migration code (legacy favorites → widgets v1 → v2 → v3) and its upgrade tests.
+  Data of earlier versions is ignored: the old favorites keys are neither read nor
+  deleted, and a v1 or v2 widgets layout is read as unsupported, like a damaged one
+  (an empty read-only desk, nothing is written). Quiet Tab has no users on those
+  versions (`docs/remove-migrations.md`).
 
 ### Fixed
 
@@ -209,11 +214,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Favorites are stored in a new widgets layout (`quietTabWidgetsMeta` /
   `quietTabWidget:<id>`, layout version 3) where every widget stores its own cell
-  (`grid: { x, y, w, h }`, with `x` counted from the center line of the grid). Existing favorites are migrated automatically on the
-  first open, keeping their arrangement; the migration is chunked and resumable,
-  locks the grid with an explanation and "reload this tab" advice (never clipped)
-  if it fails, leaves your data untouched in that case, and never runs over data
-  written by a newer version. A widget whose cell is missing or broken is kept and
+  (`grid: { x, y, w, h }`, with `x` counted from the center line of the grid). A widget whose cell is missing or broken is kept and
   placed at the free cell nearest to the center instead of being dropped.
 - The Settings and Add tiles are restored automatically if they are ever missing
   from the synced layout.
@@ -250,10 +251,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Notes
 
 - Update Quiet Tab on every device that shares your Chrome Sync. Version 0.1.0 does
-  not read the new layout (the migration removes the old favorites keys), so a
-  device still on 0.1.0 shows no links until it is updated, and a link added there
-  in the meantime is not carried over: the updated version treats it as leftover
-  old data and removes it.
+  not read the new layout, so a device still on 0.1.0 shows no links until it is
+  updated. The updated version does not read or convert the favorites that 0.1.0
+  stored (the migration was removed, see Removed above): it starts from a fresh desk.
 - If you update with no city set, the city modal appears once on your next new tab.
   Leaving that tab without closing the modal does not count as closing it, so it
   appears again on the next new tab. The choice to close it is remembered per

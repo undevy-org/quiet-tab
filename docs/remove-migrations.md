@@ -2,7 +2,7 @@
 
 ## Status
 
-`draft` — closes backlog 37. No UI change: the page for a normal (v3) install is identical.
+`implemented` — closes backlog 37. No UI change: the page for a normal (v3) install is identical.
 
 ## Intake log
 
@@ -46,7 +46,7 @@ Removed (with every export only these used; the implementer greps for stragglers
 
   - **New**: `dg-81-old-data-ignored.mjs` (AS-RM-02, 02b, 03; groups A–D).
   - **Harness**: keep `legacyStorage` (used by `dg-14` and `dg-81`), `legacyFavorite`, `widgetStorageV2`/`favV2`, `buildFromRef`, `removeStorageAreaInit`, `clearStorageFault` and the fault helpers; delete `widgetStorageP2` (no user); rename the v1 `widgetStorage` to `widgetStorageV1` and keep it for `dg-81` only (its `columns`/`position` options stay, they are the v1 shape); add a `remove` recorder next to `recordSyncSets` (or compare `syncGet` before/after with `stableJson`, which also catches removals); drop imports left unused (`dg-57`: `legacyStorage`, `widgetStorage`, `widgetStorageV2`, `favV2` where only the removed groups used them). Empty-profile groups launch with `autoPrompt: true` as `dg-14`.
-- Stale comments naming a deleted symbol are fixed: `widgetsStore.js` l.33, 42–43, 113, 148, 276–277, 679–680; `desktopLayout.js` l.4, 57–58; `newtab.js` l.249, 3076–3077, 3098; `newtab.css:473`; `widgetsShared.js:13`; `widgetsLayout.js:7–8`.
+- Stale comments naming a deleted symbol are fixed: `widgetsStore.js` l.33, 38, 42–43, 113, 148, 276–277, 679–680; `desktopLayout.js` l.4, 57–58; `newtab.js` l.249, 3076–3077, 3098; `newtab.css:473`; `widgetsShared.js:13`; `widgetsLayout.js:7–8`.
 - Docs: `agent-config/CLAUDE.md` (Architecture: store API line and `desktopLayout` line; "Widgets storage sharding" bootstrap steps 1–3 and the lock paragraph; the "existing migration code stays until a separate task" bullet of the policy and the "(legacy → v1 → v2 → v3)" mention), `docs/architecture.md` (Bootstrap steps 1–3, the v1 → v2 absent-id remark, the locked-state paragraph, module table rows), `docs/widget-drag-limits.md`, `docs/centered-grid.md` and the other specs that describe the migration get a one-line "migration removed in run 40" note under their Status only when their text claims the code exists, `CHANGELOG.md` `[Unreleased]`, backlog 37 closed, roadmap R40 struck.
 
 ## Non-goals
@@ -79,8 +79,8 @@ Common Given: Chrome with the unpacked extension, 1280×800, fresh profile unles
 
 ### AS-RM-03 A v1 or v2 widgets meta is read-only, never written or migrated
 - Given: `sync` holds a valid v2 meta (and, in a second run, a valid v1 meta) with items.
-- When: open a new tab and wait for the boot to settle (the desk is rendered, `#favorites` present).
-- Then: every key of `sync` and `local` is byte-identical afterwards and `recordSyncSets` records zero `set` calls and the `syncGet` before/after comparison (`stableJson`) shows no removal (nothing migrated, ensured or deleted); no console error; the desk has no `.favorite-tile`, no `.weather-tile`, no Settings or Add tile, and its DOM (tile count 0, `#desktop-status` text) equals the one an `invalid` meta (`{ version: 1, order: "x" }`, as `09` AS-5b) gives in the same run. The page offers no action (no Add tile), so no UI write is attempted; the stated behaviour is: empty grid, no message, nothing written. Keys are compared with `stableJson`; `assertWritable` refusing `invalid` is pinned by unit test (AS-RM-06).
+- When: open a new tab and wait for the boot to settle (`#favorites .desktop-grid` present).
+- Then: every key of `sync` and `local` is byte-identical afterwards and `recordSyncSets` records zero `set` calls and the `syncGet` before/after comparison (`stableJson`) shows no removal (nothing migrated, ensured or deleted); no console error; the desk has no `.favorite-tile`, no `.weather-tile`, no Settings or Add tile, and its DOM (tile count 0, `#desktop-status` text) equals the one an `invalid` meta (`{ version: 1, order: "x" }`, as `09` AS-5b) gives in the same run; that reference is group E of `dg-81`. The page offers no action (no Add tile), so no UI write is attempted; the stated behaviour is: empty grid, no message, nothing written. Keys are compared with `stableJson`; `assertWritable` refusing `invalid` is pinned by unit test (AS-RM-06).
 - Verified by: E2E `dg-81-old-data-ignored.mjs`.
 
 ### AS-RM-04 A newer meta still locks read-only
@@ -118,6 +118,7 @@ Common Given: Chrome with the unpacked extension, 1280×800, fresh profile unles
 - Scenarios/states: a seeded old meta must not write anything, anywhere (the old code wrote on every boot).
 - Visual/layout: none (no UI change); one look at a v3 desk for sameness.
 - Accessibility/texts: the deleted message strings must not be reachable from any state.
+- Stale comments: `widgetsStore.js` l.38 (names a deleted symbol) is on the list of comments to fix (Scope).
 
 ## Accepted exceptions
 
