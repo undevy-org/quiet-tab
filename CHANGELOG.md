@@ -75,6 +75,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- First-run wizard polish (`docs/onboarding-wizard-polish.md`): a second pointer click right after the wizard or the city modal closes (the second click of a double click on Finish, Cancel, Save) no longer lands on the link under the button (a 300 ms click guard; keyboard activation is not guarded); Finish focuses Settings without scrolling the page (also after Escape or the backdrop on step 2; a re-render no longer re-focuses with a scroll); once the starter links are written and only the completion flag failed, the starter rows are locked (dimmed, not focusable) instead of silently losing a new check; the progress pills have the accessible name "Step 1 of 2" / "Step 2 of 2". E2E `dg-82-onboarding-wizard-polish.mjs`; `dg-65` group 7 and `docs/post-onboarding-grid.md` AS-POG-07 are superseded (no scroll to bring Settings' ring into a short window).
 - A link whose site Chrome has no cached icon shows the letter on the colored tile instead of Chrome's grey globe (grid tiles,
   onboarding rows and the automatic tile color); a real icon is kept; if the check cannot run, the icon stays as it is
   (`docs/favicon-globe-fallback.md`).
