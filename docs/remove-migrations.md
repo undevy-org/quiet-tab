@@ -96,8 +96,8 @@ Common Given: Chrome with the unpacked extension, 1280×800, fresh profile unles
 - Verified by: `test/newtabSource.test.js` for `newtab.js`, and a `grep` over all of `src/` in the Task 3 report.
 
 ### AS-RM-05b A failing early meta read does not blank the page silently
-- Given: unit level, a storage area whose first `get(WIDGETS_META_KEY)` rejects.
-- When: the source pin and a behavioural test of the extracted boot order run.
+- Given: the source of `newtab.js` (no module is extracted; the boot stays in `newtab.js`).
+- When: `npm test` runs.
 - Then: the early read sits in its own `try` whose `catch` does not set a lock flag; the boot continues to `ensureWidgetsLayout` and `getState`; no unhandled rejection.
 - Verified by: `test/newtabSource.test.js` pin on the shape of the early read.
 
