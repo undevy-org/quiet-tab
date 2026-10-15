@@ -2095,6 +2095,13 @@ describe("onboarding wizard polish source pins (run 42, docs/onboarding-wizard-p
     }
   });
 
+  it("AS-OWP-14: both wizard step transitions arm the guard too (a double click on Skip/Continue/Back)", async () => {
+    const code = await source();
+    for (const name of ["goToOnboardingStep2", "goToOnboardingStep1"]) {
+      assert.equal(functionText(code, name).split("armPostCloseClickGuard();").length, 2, `${name} arms the guard once`);
+    }
+  });
+
   it("AS-OWP-01: opening the city modal or the wizard clears the guard of the previous close", async () => {
     const code = await source();
     assert.match(functionText(code, "clearPostCloseClickGuard"), /postCloseGuardUntil = 0;/);

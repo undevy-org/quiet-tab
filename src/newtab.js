@@ -280,8 +280,8 @@ const LOCATION_REVERSE_TIMEOUT_MS = 8000;
 let cityModalOpenedAt = 0;
 let cityModalHadFocus = false; // D14: focus was inside the modal at some point since it opened
 const CITY_MODAL_BACKDROP_GUARD_MS = 300;
-// The second click of a double click on a button of the wizard or the city modal arrives after the node is gone and lands on the tile
-// under it (docs/onboarding-wizard-polish.md decision 1). A pointer click (detail > 0) in this window after the close is swallowed;
+// The second click of a double click on a button of the wizard or the city modal arrives after the node is gone (or the step has
+// switched) and lands on the tile or row under it (docs/onboarding-wizard-polish.md decision 1). A pointer click (detail > 0) in this window after the close is swallowed;
 // keyboard activation (detail 0) is not guarded.
 const POST_CLOSE_CLICK_GUARD_MS = 300;
 let postCloseGuardUntil = 0;
@@ -1521,6 +1521,7 @@ function onboardingStep2ActionsAllowed() {
 function goToOnboardingStep2() {
   onboardingStep = 2;
   onboardingStep2EnteredAt = performance.now();
+  armPostCloseClickGuard(); // the second click of a double click on Skip/Continue lands on the row under the button
   if (!onboardingStartersCommitted) onboardingFinishError = ""; // locked rows keep their explanation
   syncOnboardingWizardUi();
   // a disabled row cannot take focus: with every row locked the focus goes to Finish
@@ -1530,6 +1531,7 @@ function goToOnboardingStep2() {
 
 function goToOnboardingStep1({ focusTitle = false } = {}) {
   onboardingStep = 1;
+  armPostCloseClickGuard(); // the second click of a double click on Back lands on Skip, which sits at the same place
   if (!onboardingStartersCommitted) onboardingFinishError = "";
   syncOnboardingWizardUi();
   if (focusTitle) {
