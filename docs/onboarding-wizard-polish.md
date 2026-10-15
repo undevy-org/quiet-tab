@@ -124,6 +124,12 @@ Common setup: the E2E harness with `autoPrompt: true`; `dg-60`'s first-run seed 
 - Then: step 2 is shown with the 8 rows still disabled (3 checked), the error text "Couldn't save setup. Try again." is still there, and focus is on Finish (not on `body`); Finish then completes as in AS-OWP-07.
 - Verified by: E2E `dg-82`.
 
+## Review focus
+
+1. Scenarios: every close path arms the guard (the `hideOnboardingWizard` and `hideCityModal` exits of decision 1), no path where a legitimate click after 300 ms is blocked, the slow-write case (AS-OWP-12), the interplay with `ONBOARDING_STEP2_GUARD_MS` and `recentlyChosen()`; the k ≥ 1 / k = 0 / failed-batch matrix of decision 3 including Back after the failure (AS-OWP-13); the focus really lands without scroll on every path that closes the wizard (decision 2 travels with the deferred `applyPendingFocus`).
+2. Visual: locked rows read as dimmed, not broken or busy (cursor); the error text next to disabled rows is still understandable; no layout shift.
+3. Accessibility: `role="img"` inside a modal dialog and what is announced on a step change (§ Accepted exceptions); disabled rows leave the tab order without trapping focus; focus on Settings off screen (decision 2).
+
 ## Accepted exceptions
 
 - A deliberate pointer click within 300 ms after a close is lost (owner-level trade: same value as the opening guard).
