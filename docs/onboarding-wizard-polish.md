@@ -2,7 +2,7 @@
 
 ## Status
 
-`draft` — run №42 (`onboarding-wizard-polish`), cluster "Мастер первого запуска" of the roadmap (R42). Backlog 22, 24, 49, 80 are fixed here; backlog 46, 47, 48 and 50 were reproduced on `origin/main` and closed by triage (§ Triage), 50 keeps one regression pin.
+`draft` — revision 2 (2026-10-15: spec review 1 and spec gate round 1 applied). Run №42 (`onboarding-wizard-polish`), cluster "Мастер первого запуска" of the roadmap (R42). Backlog 22, 24, 49, 80 are fixed here; backlog 46, 47, 48 and 50 were reproduced on `origin/main` and closed by triage (§ Triage), 50 keeps one regression pin.
 
 **Data compatibility: not required** (no storage change; no-users policy, `agent-config/CLAUDE.md`).
 
@@ -30,77 +30,77 @@ Related: `docs/onboarding-wizard.md` (decisions 3, 6, 7; AS-OB-05, 07, 20, 24), 
 
 ## Decisions
 
-1. **A click guard after the wizard or the city modal closes (backlog 22).** New constant `POST_CLOSE_CLICK_GUARD_MS = 300` (the value of `CITY_MODAL_BACKDROP_GUARD_MS`, named separately because it measures the other end). `hideOnboardingWizard` and `hideCityModal` (every exit: Finish, Escape, backdrop, Cancel, Save, the stacked case) record `postCloseGuardUntil = performance.now() + POST_CLOSE_CLICK_GUARD_MS`. One `click` listener on `document`, capture phase, installed at load: while `performance.now() < postCloseGuardUntil` and `event.detail > 0` (a pointer click; keyboard activation has `detail` 0 and is not guarded), it calls `preventDefault()` and `stopPropagation()`. It covers the desk and, in the stacked case, the weather dialog under the closed city modal. It does not touch `pointerdown`, drag, wheel or keyboard. Not guarded: the transition step 1 → step 2 (it has `ONBOARDING_STEP2_GUARD_MS`).
-2. **Focus after the wizard without scrolling (backlog 24, owner).** `applyPendingFocus` takes `{ preventScroll }`; `hideOnboardingWizard` calls `applyPendingFocus({ preventScroll: true })`, so `target.focus({ preventScroll: true })`. Settings below the first screen keeps focus and the page does not move; its ring is simply off screen until the person scrolls (accepted by the owner). `hideCityModal` and every other `applyPendingFocus` caller are unchanged.
-3. **Rows are locked once the links are written (backlog 80, owner).** In `syncOnboardingWizardUi` a starter checkbox is disabled when `finishBusy || onboardingStartersCommitted`. After a flag-write failure with k ≥ 1 the rows keep their checked state, are dimmed like the busy rows (`--control-disabled-opacity`), cannot be toggled or focused; Back and Finish stay enabled; the next Finish writes only the flag. `onboardingStartersCommitted` is `false` for a failed batch (rows stay active, retry adds), for k = 0 (nothing to protect) and again `false` on the next wizard open.
+1. **A click guard after the wizard or the city modal closes (backlog 22).** New constant `POST_CLOSE_CLICK_GUARD_MS = 300` (the value of `CITY_MODAL_BACKDROP_GUARD_MS`, named separately because it measures the other end). `hideOnboardingWizard` (Finish, Escape and backdrop on step 2, the close after a second flag-write failure; it is called only from `finishOnboardingWizard`) and `hideCityModal` (Escape, backdrop, Cancel, Save, also the stacked case) record `postCloseGuardUntil = performance.now() + POST_CLOSE_CLICK_GUARD_MS` at the moment the node is removed, not when the button was pressed (a slow write closes the wizard seconds after the press). One `click` listener on `document`, capture phase, installed at load: while `performance.now() < postCloseGuardUntil` and `event.detail > 0` (a pointer click, including the second click of a double click whose `detail` is 2; keyboard activation has `detail` 0 and is not guarded), it calls `preventDefault()` and `stopPropagation()`. It is document-wide: it covers the desk, in the stacked case the weather dialog under the closed city modal, and the Reload button of the failure chip (accepted, § Accepted exceptions). It does not touch `pointerdown`, drag, wheel or keyboard. Not guarded: the transition step 1 → step 2 (it has `ONBOARDING_STEP2_GUARD_MS`).
+2. **Focus after the wizard without scrolling (backlog 24, owner).** The flag travels with the pending focus, because on Finish `hideOnboardingWizard` runs while `favoritesBusy` is still true (`startFavoritesAction` is above, `finishFavoritesAction` below, `src/newtab.js:1795-1830`): its `applyPendingFocus()` returns at once and the focus is really set by the following `renderFavorites()` → `applyPendingFocus()` (no arguments). So `hideOnboardingWizard` sets `pendingFocus = [SETTINGS_TILE_SELECTOR]` and then `pendingFocus.preventScroll = true` (a property on the array); `applyPendingFocus()` keeps its signature, reads `selectors.preventScroll === true` and calls `target.focus({ preventScroll })`. Any later assignment of `pendingFocus` creates a new array without the property, so the flag cannot leak into another caller's focus. Same path for Escape, backdrop and the second-flag-failure close. Settings below the first screen keeps focus and the page does not move; its ring is simply off screen until the person scrolls (accepted by the owner). `hideCityModal` and every other assignment of `pendingFocus` are unchanged.
+3. **Rows are locked once the links are written (backlog 80, owner).** In `syncOnboardingWizardUi` a starter checkbox is disabled when `finishBusy || onboardingStartersCommitted`. After a flag-write failure with k ≥ 1 the rows keep their checked state, are dimmed like the busy rows (`--control-disabled-opacity`), cannot be toggled or focused; Back and Finish stay enabled; the next Finish writes only the flag (a second flag failure closes the wizard as today). `onboardingStartersCommitted` is `false` for a failed batch (rows stay active, retry adds) and for k = 0 (nothing to protect); it is reset in `showOnboardingWizard`. Cursor: a locked row must not look busy, so the list gets `data-starters-locked="true"` while the rows are locked and `surfaces.css` gives `.onboarding-wizard__starters[data-starters-locked="true"] input[type="checkbox"]:disabled` `cursor: default` (the busy rule `cursor: wait`, pinned by `dg-75` AS-SRP-04b, stays). Back after the failure: the error text is not cleared by `goToOnboardingStep2`/`goToOnboardingStep1` while `onboardingStartersCommitted` (locked rows keep their explanation), and `goToOnboardingStep2` focuses the first enabled checkbox, or Finish when all are disabled (a disabled box cannot take `focus()`; otherwise focus would fall to `body`).
 4. **The progress has a name (backlog 49, owner).** `.onboarding-wizard__progress` loses `aria-hidden` and gets `role="img"` with `aria-label` "Step 1 of 2" / "Step 2 of 2", set in `syncOnboardingWizardUi` from `onboardingStep` (so Back restores "Step 1 of 2"). The pills stay empty spans (children of `role="img"` are presentational). Nothing visible changes, still no numeric text.
 5. **Back focus is pinned, not changed (backlog 50).** No code change.
 
 ## Scope
 
-- `src/newtab.js` (decisions 1–4), `CHANGELOG.md` `[Unreleased]`, `agent-config/CLAUDE.md` (one sentence on the post-close guard), `docs/onboarding-wizard.md` (note under decision 7: Finish focus does not scroll).
-- Tests: `test/newtabSource.test.js` (pins: the constant and the capture listener on `document` with `detail > 0`; both close functions set the guard; `applyPendingFocus` passes `preventScroll` only from `hideOnboardingWizard`; the checkbox `disabled` expression contains `onboardingStartersCommitted`; the progress has `role="img"`, no `aria-hidden`, label text), mutation-proven after the implementation commit. A new E2E `dg-82-onboarding-wizard-polish.mjs`. Existing helpers that click within 300 ms after a close (`finishWizard`, `finishStep2ZeroLinks`, `dg-60`, `dg-65`) are checked by the full run; a sleep may grow, a check may not be weakened.
+- `src/newtab.js` (decisions 1–4), `src/surfaces.css` (the locked cursor rule), `CHANGELOG.md` `[Unreleased]`, `agent-config/CLAUDE.md` (one sentence on the post-close guard), `docs/onboarding-wizard.md` (note under decision 7: Finish focus does not scroll).
+- Tests: `test/newtabSource.test.js` (pins: the constant and the capture listener on `document` with `detail > 0`; both close functions set the guard; `hideOnboardingWizard` sets `pendingFocus.preventScroll = true` and `applyPendingFocus` passes it to `focus`; `goToOnboardingStep2` keeps the error while committed and focuses an enabled box or Finish; the `data-starters-locked` rule; the checkbox `disabled` expression contains `onboardingStartersCommitted`; the progress has `role="img"`, no `aria-hidden`, label text), mutation-proven after the implementation commit. A new E2E `dg-82-onboarding-wizard-polish.mjs`; the page-side close time comes from a `MutationObserver` that stamps `performance.now()` when `#onboarding-wizard` / `#city-modal` leaves the DOM, and every "N ms after the close" in this spec is measured from that stamp, not from the harness. The class "pointer click within 300 ms after the wizard or the city modal closes" is wider than `dg-60`/`dg-65`: `lib/onboardingWizard.mjs` (`finishWizard`, `finishStep2ZeroLinks`, `finishFromStep1`: `sleep(300)` after a poll that notices the detach, the margin is zero), `dg-58-modal-overlay.mjs` (Escape closes the stacked city modal, then `openCityFromWeather` clicks the city field ~50 ms later and waits 3 s for `#city-modal`), `13-city-modal.mjs`, `15-*`, `dg-29`, `dg-56` and their `waitForTimeout(300)` after `detached`. Task 1 greps all scenarios for pointer actions after a close and runs these first; pauses grow to 400 ms or more, no check is weakened or removed. Pins that stay valid: `test/newtabSource.test.js` `function applyPendingFocus\(\)` (l.354: the signature does not change) and the pins at l.704, l.1065; the new pins read the property assignment in `hideOnboardingWizard` and the `{ preventScroll }` argument of `focus`.
 
 ## Acceptance scenarios
 
-Common setup: the E2E harness with `autoPrompt: true`; `dg-60`'s first-run seed plus filler links (14 per row, `favV3`), the wizard reached with Skip, all rows unchecked unless stated. "The point" is the centre of the Finish (or Cancel) button. A document-level bubble listener counts `click` events that reach a `[data-widget-id]` tile and records `event.detail`.
+Common setup: the E2E harness with `autoPrompt: true`; `dg-60`'s first-run seed plus filler links (14 per row, `favV3`), the wizard reached with Skip and waited 450 ms (past `ONBOARDING_STEP2_GUARD_MS`), all rows unchecked unless stated. "The point" is the centre of the Finish (or Cancel) button. A `MutationObserver` in the page stamps `performance.now()` when the wizard or the city modal leaves the DOM (`closedAt`); a document-level bubble `click` listener records `{ detail, tile, at }` for every click that reaches the document (a suppressed click never does). "N ms after the close" is `at - closedAt`, and each guard scenario asserts the suppressed click's `at - closedAt` is below 300 (premise: a click that arrives later proves nothing). Before a guard scenario, a desk tile's rect contains the point (the desk is veiled, rects are real).
 
 ### AS-OWP-01 Second click after Finish does not reach the tile
-- Given: 1280×800, 140 links, a tile under the Finish button (`elementFromPoint` before Finish is the button; after close it is a tile); also 500×800 and 320×600.
-- When: Finish is clicked with the mouse; 120 ms later a second pointer click at the same point.
-- Then: the wizard is closed; zero `click` events reach any tile or `.desktop` and the page URL is unchanged; the same click 400 ms after the close reaches the tile (count 1).
-- Red on old code (premise): the tile gets the 120 ms click (count 1, the tab navigates).
+- Given: 1280×800, 1280×600, 500×800 and 320×600, 140 links, a desk tile under the Finish button.
+- When: Finish is clicked with the mouse; the wizard closes; a second pointer click at the same point ~120 ms after the close stamp (and, for a double click, `detail` 2).
+- Then: the wizard is closed; no `click` reaches any tile or `.desktop` (the recorder holds only the Finish click) and the page URL is unchanged; the same click ≥ 400 ms after the close stamp reaches the tile.
+- Red on old code (premise): the tile gets the click (count 1, the tab navigates).
 - Verified by: E2E `dg-82`; `newtabSource` pin.
 
-### AS-OWP-02 The guard covers every exit
+### AS-OWP-02 The guard covers every exit of the wizard
 - Given: wizard step 2 (as AS-OWP-01).
-- When: (a) Escape, (b) a backdrop click after the 300 ms guard of opening, then a pointer click on the former point 120 ms later.
-- Then: the click is suppressed in both; the wizard completes as before (flag written).
+- When: (a) Escape; (b) a backdrop click (outside the dialog, over a tile; waited 450 ms after entering step 2, since `ONBOARDING_STEP2_GUARD_MS` also gates the backdrop); (c) the flag write fails twice (`failStorageInit`, Finish pressed twice) so the wizard closes best-effort. Then a pointer click on the former point ~120 ms after the close stamp.
+- Then: the click is suppressed in all three; (a), (b) completed with the flag written, (c) closed without the flag.
 - Verified by: E2E `dg-82`.
 
-### AS-OWP-03 Change-mode city modal: Cancel, Save-less exits and the stacked case
-- Given: the completion flag set, no city (hint tile), 100 links, the modal opened from the hint tile; separately the modal stacked over the weather edit dialog (a city is set).
-- When: Cancel, then 120 ms later a second pointer click at the same point.
-- Then: the second click reaches neither a tile nor a control of the weather dialog (zero `click` events on any element); focus lands as before (opener or Settings). A click 400 ms after the close works.
+### AS-OWP-03 Change-mode city modal: Cancel, and the stacked case
+- Given: the completion flag set, no city (hint tile), 100 links, the modal opened from the hint tile; separately the modal stacked over the weather edit dialog (a city is set, edit mode on).
+- When: Cancel, then ~120 ms after the close stamp a second pointer click at the same point.
+- Then: the second click reaches neither a tile nor a control of the weather dialog (only the Cancel click is recorded; the dialog is still open); focus lands as before (opener or Settings). A click ≥ 400 ms after the close works. Escape, backdrop and Save share `hideCityModal` and are pinned in `newtabSource`, not repeated in E2E.
 - Red on old code (premise): a tile receives the second click.
-- Verified by: E2E `dg-82`.
+- Verified by: E2E `dg-82`; `newtabSource` pin.
 
-### AS-OWP-04 The guard ends, keyboard is not guarded
+### AS-OWP-04 The guard ends; the keyboard is not guarded
 - Given: right after Finish, focus is on Settings.
-- When: Enter is pressed on Settings 50 ms after the close; separately a pointer click on Settings 400 ms after the close.
-- Then: both toggle edit mode (`aria-pressed` true); a pointer click 100 ms after the close on a different tile is suppressed.
+- When: Enter is pressed on Settings 50 ms after the close; separately a pointer click on another tile 100 ms after the close and a pointer click on Settings 450 ms after the close.
+- Then: Enter toggles edit mode (`aria-pressed` true); the tile click 100 ms after is not recorded (recorder length 0 for it); the Settings click at 450 ms is recorded and toggles edit mode.
 - Verified by: E2E `dg-82`.
 
 ### AS-OWP-05 Finish does not scroll the page
-- Given: 140 links, Settings below the first screen (row ≥ 9); 1280×800 and 500×800; also the Escape-on-step-2 exit.
-- When: Finish.
-- Then: `scrollY` is 0 after the close and after 500 ms; `document.activeElement` is the Settings tile (`aria-pressed`); scrolling the page by hand afterwards works and the focus stays.
+- Given: 140 links; premise: Settings' `bottom` is larger than `innerHeight` before Finish and the page can scroll; 1280×800, 1280×600, 500×800 and 320×600.
+- When: Finish; separately Escape on step 2 (completes like Finish).
+- Then: `scrollY` is 0 right after the close and 500 ms later; `document.activeElement` is the Settings tile (`aria-pressed`); scrolling the page by hand afterwards works and the focus stays.
 - Red on old code (premise): `scrollY` 104 (1280×800).
 - Verified by: E2E `dg-82`; `newtabSource` pin.
 
 ### AS-OWP-06 Settings in the first screen keeps focus (unchanged)
-- Given: 40 links, Settings in the first screen.
+- Given: 20 links; premise: Settings' `bottom` is below `innerHeight`.
 - When: Finish.
-- Then: focus on Settings, `scrollY` 0, no regression of `dg-65`'s focus checks.
-- Verified by: E2E `dg-82` and the existing `dg-60`/`dg-65` focus checks.
+- Then: focus on Settings, `scrollY` 0; the existing `dg-60`/`dg-65` focus checks stay green.
+- Verified by: E2E `dg-82`.
 
 ### AS-OWP-07 Flag failure after links were written: rows are locked
 - Given: step 2, 3 default rows checked; `failStorageInit` for the local write of `quietTabOnboardingWizardComplete`.
-- When: Finish (fails), then the person tries to check GitHub (click on the row and Space on a focused row, the latter after Shift+Tab/Tab into the list), then removes the failure and presses Finish again.
-- Then: after the failure the error "Couldn't save setup. Try again." is shown, all 8 checkboxes are `disabled` with their checked state kept (3 checked), the rows have the disabled opacity, focus is on Finish; clicking a row changes nothing; Tab goes Back → Finish only; the second Finish closes the wizard, the desk has the 3 links exactly once, `quietTabOnboardingWizardComplete` is true.
+- When: Finish (fails); the person clicks a row; Shift+Tab is pressed several times; the failure is removed and Finish is pressed again.
+- Then: after the failure "Couldn't save setup. Try again." is shown; all 8 checkboxes are `disabled` with their checked state kept (3 checked); the rows are dimmed (`--control-disabled-opacity`) and show `cursor: default`; focus is on Finish. Clicking a row changes nothing; Shift+Tab visits only Back and Finish (`tabTrapFocusables` skips disabled controls). The second Finish closes the wizard, the desk has the 3 links exactly once, `quietTabOnboardingWizardComplete` is true.
 - Red on old code (premise): the boxes are enabled and a new check is lost.
 - Verified by: E2E `dg-82`; `newtabSource` pin.
 
 ### AS-OWP-08 Rows stay active when nothing was committed
 - Given: step 2; (a) the batch write fails (`failStorageInit` on `quietTabWidgetsMeta`, as AS-OB-19); (b) k = 0 with a flag failure.
-- When: (a) the error shows; (b) Finish with all rows unchecked fails on the flag, then GitHub is checked and Finish pressed.
-- Then: (a) the 8 boxes are enabled; (b) the boxes are enabled and the second Finish adds GitHub.
+- When: (a) the error shows; (b) Finish with all rows unchecked fails on the flag, then GitHub is checked and Finish pressed again.
+- Then: (a) the 8 boxes are enabled; (b) the boxes are enabled and the second Finish adds GitHub (the desk has exactly one link).
 - Verified by: E2E `dg-82`.
 
 ### AS-OWP-09 The progress has a name
 - Given: the wizard on step 1.
 - When: step 1 → 2 (Skip), Back.
-- Then: `.onboarding-wizard__progress` has `role="img"`, no `aria-hidden`, `aria-label` "Step 1 of 2", then "Step 2 of 2", then "Step 1 of 2"; the accessibility tree lists one `img "Step N of 2"` in the dialog and no pill nodes; the element has no text content; pill geometry and colours equal `dg-60` AS-OB-10 (computed 5 px height, colours).
+- Then: `.onboarding-wizard__progress` has `role="img"`, no `aria-hidden`, `aria-label` "Step 1 of 2", then "Step 2 of 2", then "Step 1 of 2"; `locator.ariaSnapshot()` of the dialog lists `img "Step N of 2"` and no pill nodes; the element has no text content; the pills keep the geometry and colours of `docs/onboarding-wizard.md` AS-OB-10 (5 px high, active pills `--border-control`, inactive `--soft-fill`; forced-colours borders are pinned by `dg-75`). No live announcement is added on a step change (§ Accepted exceptions).
 - Verified by: E2E `dg-82`; `newtabSource` pin.
 
 ### AS-OWP-10 Back focus (pin of existing behaviour)
@@ -112,17 +112,26 @@ Common setup: the E2E harness with `autoPrompt: true`; `dg-60`'s first-run seed 
 ### AS-OWP-11 Texts
 - Strings: the progress label "Step 1 of 2" / "Step 2 of 2" (assistive technology only); existing strings unchanged ("Couldn't save setup. Try again." stays the text shown with locked rows).
 
-## Review focus
+### AS-OWP-12 A slow successful Finish: the guard is measured from the close
+- Given: step 2, 3 rows checked, the sync write of `quietTabWidgetsMeta` delayed by 2500 ms (`delayStorageInit`, the write succeeds), a desk tile under Finish.
+- When: pointer clicks at the Finish point every ~200 ms while the write runs; one more ~120 ms after the close stamp.
+- Then: while busy Finish is disabled and the clicks do nothing (no second `finishOnboardingWizard`: the desk gets the 3 links once); the click after the close is suppressed and reaches no tile.
+- Verified by: E2E `dg-82`.
 
-1. Scenarios: every close path sets the guard (Finish, Escape, backdrop on step 2, Cancel, Save, stacked), no path where the guard is armed but never released, nothing blocks a legitimate click after 300 ms; the interplay with `ONBOARDING_STEP2_GUARD_MS` and `recentlyChosen()`; the k ≥ 1 / k = 0 / failed-batch matrix of decision 3.
-2. Visual: locked rows read as dimmed, not broken; the error text next to disabled rows is still understandable; no layout shift from the label.
-3. Accessibility: `role="img"` inside a modal dialog and the order of announcements on step change (title focus vs progress); disabled rows leave the tab order without trapping focus; focus on Settings off screen (decision 2) is announced.
+### AS-OWP-13 Back after the flag failure keeps the rows locked and explained
+- Given: AS-OWP-07 after the failure.
+- When: Back, then Skip on step 1.
+- Then: step 2 is shown with the 8 rows still disabled (3 checked), the error text "Couldn't save setup. Try again." is still there, and focus is on Finish (not on `body`); Finish then completes as in AS-OWP-07.
+- Verified by: E2E `dg-82`.
 
 ## Accepted exceptions
 
 - A deliberate pointer click within 300 ms after a close is lost (owner-level trade: same value as the opening guard).
 - With Settings below the first screen the focus ring is not in view after Finish (owner decision 2026-10-15).
 - Locked rows give no explanation beyond the existing error text (owner chose "lock the rows").
+- The Reload button of the failure chip and any deliberate pointer click inside the guard (including a click on the weather dialog's city field within 300 ms after Escape closed the stacked city modal) are lost; `dg-58` waits accordingly.
+- No live announcement on a step change: Step 1 → 2 moves focus to the first enabled row and the dialog's name switches (`aria-labelledby`); Back focuses the step title; the progress label is read when the person navigates to it.
+- Save of the change-mode city modal, and Escape/backdrop of it, are not repeated in E2E: they share `hideCityModal` (source pin).
 - Backlog 46, 47, 48 closed by triage; no new scenario for them.
 
 ## Non-goals
