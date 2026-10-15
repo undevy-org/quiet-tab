@@ -31,6 +31,7 @@
   /* Backdrop under a favicon in the onboarding starter rows. Light theme: none. Dark theme: a light square, because a
      dark favicon on the dark panel is unreadable at any opacity. */
   --icon-backdrop: transparent;
+  --letter-fill: rgb(0 0 0 / 6%); /* fill of the grid link letter and of the pending chip (docs/light-letter-fill.md); visible on a pale tile */
   /* A quiet 1 px ring around the favicon in the onboarding starter rows (checked rows only). Light theme: none. Dark theme: a mid
      grey that gives a favicon with its own dark plate an edge against the panel without framing the other icons. Decorative,
      deliberately below 3:1. */
@@ -125,6 +126,7 @@
     --color-fill-soft: #2a313b;
     --color-fill-soft-strong: #343c48;
     --icon-backdrop: #eef1f5;
+    --letter-fill: rgb(255 255 255 / 12%);
     --icon-outline: #3d4652;
 
     --focus-ring: #f4f6f8;

@@ -121,6 +121,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Light theme: the replacement letter and the pending chip on grid tiles now have a visible quiet fill (new token `--letter-fill`, 6% black in light; the dark theme keeps 12% white). Before, the fill was almost invisible on a pale tile (E2E `dg-80-light-letter-fill.mjs`, `docs/light-letter-fill.md`).
 - Favicon check (grid tiles and onboarding step 2): while the default-icon check runs, the icon box shows a quiet neutral chip (the fill and radius of the replacement letter, no glyph, no globe pixel) instead of an empty box, and the replacement letter is hidden from assistive technology (`aria-hidden`; the tile and row names are unchanged). E2E `dg-79-favicon-letter-pending.mjs` (run 37, `docs/favicon-letter-pending.md`, backlog 84 and 86).
 - Onboarding step 2: in the dark theme a favicon gets a quiet 1 px outline (`--icon-outline`) in checked rows, so a favicon with its own dark plate keeps its shape against the panel (run 36, `docs/favicon-outline.md`; E2E: new `dg-78-favicon-outline.mjs`).
 

@@ -1851,6 +1851,48 @@ describe("newtab onboarding step 2 starter row source (docs/onboarding-starter-r
     const row = code.slice(code.indexOf("function createOnboardingStarterIcon("), code.indexOf("\n}\n", code.indexOf("function createOnboardingStarterIcon(")));
     assert.match(row, /const fallback = \(\) => \{[^}]*\bspan\.setAttribute\("aria-hidden", "true"\);[^}]*return span;/, "the wizard fallback letter (block form, the attribute is set inside the fallback body)");
   });
+
+  // ---- run 38 (docs/light-letter-fill.md): one themed fill for the grid letter and the pending chip ------------------------------------------------
+  const BG = /(?:^|[;\s])background(?:-color|-image)?\s*:/;
+  const newtabCss = () => readFile(new URL("../src/newtab.css", import.meta.url), "utf8");
+  const GRID_CHIP = '.favorite-icon[data-icon-check="pending"]';
+
+  it("LLF pin 1: --letter-fill is rgb(0 0 0 / 6%) in the light :root and rgb(255 255 255 / 12%) in the dark media block, once each", async () => {
+    const tokens = await readFile(new URL("../src/design-tokens.css", import.meta.url), "utf8");
+    const css = stripCss(tokens);
+    const dark = mediaBlock(css, "@media (prefers-color-scheme: dark)", "design-tokens.css");
+    const lightPart = css.replace(dark, "");
+    const decl = (text) => [...text.matchAll(/--letter-fill:\s*([^;]+);/g)].map((m) => m[1].trim());
+    assert.deepEqual(decl(lightPart), ["rgb(0 0 0 / 6%)"], "light value");
+    assert.deepEqual(decl(dark), ["rgb(255 255 255 / 12%)"], "dark value");
+  });
+
+  it("LLF pin 2: the grid letter and the grid pending chip take their fill from var(--letter-fill) and no other .favorite-letter rule sets a background", async () => {
+    const rules = cssRules(await newtabCss());
+    const letter = rules.filter((r) => r.selector === ".favorite-letter" && BG.test(r.body));
+    assert.equal(letter.length, 1, "exactly one .favorite-letter rule with a background");
+    assert.match(letter[0].body, /(?:^|[;\s])background:\s*var\(--letter-fill\);/);
+    const chip = rules.filter((r) => r.selector === GRID_CHIP && BG.test(r.body));
+    assert.equal(chip.length, 1, "exactly one pending chip rule with a background");
+    assert.match(chip[0].body, /(?:^|[;\s])background:\s*var\(--letter-fill\);/);
+    const others = rules.filter((r) => r.selector.includes(".favorite-letter") && r.selector !== ".favorite-letter" && BG.test(r.body)).map((r) => r.selector);
+    assert.deepEqual(others, [], "no other rule with .favorite-letter in its selector sets a background");
+  });
+
+  it("LLF pin 3: no rule of newtab.css keeps the old 12% white fill literal, in any spelling", async () => {
+    const offenders = cssRules(await newtabCss())
+      .filter((r) => /rgba?\(\s*255\s*[, ]\s*255\s*[, ]\s*255\s*(?:[,/]\s*(?:12%|0?\.12)\s*)\)/.test(r.body))
+      .map((r) => r.selector);
+    assert.deepEqual(offenders, [], "the grid letter fill lives only in --letter-fill");
+  });
+
+  it("LLF pin 4: the wizard letter and chip still take --soft-fill (this run does not touch them)", async () => {
+    const rules = cssRules(await surfaces());
+    const letter = rules.find((r) => r.selector === LETTER && BG.test(r.body));
+    assert.ok(letter, "the wizard letter rule");
+    assert.match(letter.body, /(?:^|[;\s])background:\s*var\(--soft-fill\);/);
+    assert.ok(!/letter-fill/.test(stripCss(await surfaces())), "surfaces.css does not use --letter-fill");
+  });
 });
 
 describe("default favicon fallback source pins (run 32, docs/favicon-globe-fallback.md)", () => {
