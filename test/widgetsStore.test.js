@@ -9,8 +9,7 @@ import {
   inspectWidgetsMeta,
   isWidgetItem,
   isWidgetsState,
-  widgetItemStorageKey,
-  withWidgetsMutationLock
+  widgetItemStorageKey
 } from "../src/widgetsStore.js";
 import { MAX_FAVORITE_WIDGETS, NEWER_WIDGETS_MESSAGE, WEATHER_METRIC_IDS } from "../src/widgetsShared.js";
 
@@ -261,7 +260,7 @@ describe("widgetsStore", () => {
     });
   });
 
-  it("keeps a v2 state with an empty item list readable", async () => {
+  it("keeps a state with an empty item list readable", async () => {
     const store = createWidgetsStore(createMemoryStorageArea(), { now: () => NOW });
     await store.setState(currentState([]));
     assert.deepEqual((await store.getState()).items, []);

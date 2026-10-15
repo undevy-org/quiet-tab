@@ -348,7 +348,7 @@ export function createWidgetsService({
         }
 
         const nextItem = { ...base.items[index] };
-        delete nextItem.tileSize; // v2 writes never carry the legacy size
+        delete nextItem.tileSize; // writes never carry the legacy tileSize
 
         if (Object.hasOwn(payload, "url")) {
           const normalizedUrl = normalizeFavoriteUrl(payload.url);
