@@ -1434,21 +1434,64 @@ describe("modal overlay: tokens, rows, footers, segmented (AS-MO-11, AS-MO-15)",
 });
 
 describe("use my location: reverse lookup timer", () => {
+  // Runs the real `useMyLocation` body in a vm with stubbed collaborators and observes when the timer and the abort controller appear.
   it("starts the 8 s Nominatim abort timer only after the position resolves, so a slow permission prompt keeps the full budget (be771e1)", async () => {
     const code = await source();
     const start = code.indexOf("async function useMyLocation(");
     assert.ok(start > -1, "useMyLocation");
     const body = code.slice(start, code.indexOf("\nfunction syncCityModal(", start));
-    const position = body.indexOf("await getBrowserPosition()");
-    const reverse = body.indexOf("await reverseGeocodeCoordinates(");
-    const timer = body.indexOf("setTimeout(");
-    assert.ok(position > -1 && reverse > position, "position is awaited before the reverse lookup");
-    assert.equal(body.split("LOCATION_REVERSE_TIMEOUT_MS").length - 1, 1, "one reverse timer per attempt");
-    assert.equal(body.split("new AbortController()").length - 1, 1, "one abort controller per attempt");
-    assert.ok(timer > position && timer < reverse, "the timer is armed after the position and before the reverse request");
-    assert.ok(body.indexOf("new AbortController()") > position, "the controller is created after the position resolves");
-  });
+    const timeout = Number(code.match(/const LOCATION_REVERSE_TIMEOUT_MS = (\d+);/)?.[1]);
+    assert.ok(timeout > 0, "LOCATION_REVERSE_TIMEOUT_MS");
 
+    const events = [];
+    let resolvePosition;
+    let resolveReverse;
+    const sandbox = {
+      events,
+      timeout,
+      setTimeout: (_fn, ms) => (events.push(`timer:${ms}`), 1),
+      clearTimeout: () => {},
+      requestAnimationFrame: () => 1,
+      AbortController: class {
+        constructor() {
+          events.push("controller");
+          this.signal = {};
+        }
+        abort() {}
+      },
+      getBrowserPosition: () => new Promise((resolve) => { resolvePosition = resolve; }),
+      reverseGeocodeCoordinates: () => (events.push("reverse"), new Promise((resolve) => { resolveReverse = resolve; })),
+      roundCoordinate: (value) => value,
+      cityDisplayLabel: ({ name }) => name,
+      hideSuggestions: (ui) => ui,
+      locationErrorMessage: () => "error",
+      BrowserLocationError: class extends Error {},
+      WeatherApiError: class extends Error {}
+    };
+    const prelude = `
+      let weatherBusy = false, locating = false, weatherFormGeneration = 0, cityModalError = "", activeCityForm = null, weatherUi = {};
+      let locationStatusNode = null, locationStatusFrame = 0, locationReverseTimer = 0, locationAbortController = null;
+      const LOCATION_REVERSE_TIMEOUT_MS = timeout, LOCATION_BUSY_LABEL = "busy";
+      const weatherService = {};
+      const clearLocationStatus = () => {}, cancelLocationStatusFrame = () => {}, syncCityModalUi = () => {}, focusLocationLink = () => {};
+      const abortLocationLookup = () => {};
+    `;
+    const vm = await import("node:vm");
+    vm.createContext(sandbox);
+    const useMyLocation = vm.runInContext(`${prelude}\n${body}\n;useMyLocation`, sandbox);
+
+    const done = useMyLocation("wizard");
+    await Promise.resolve();
+    assert.deepEqual(events, [], "while the permission prompt is open: no timer, no controller, no reverse request");
+
+    resolvePosition({ latitude: 41.7, longitude: 44.8 });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(events, ["controller", `timer:${timeout}`, "reverse"], "after the position: one controller, one full-budget timer, then the reverse request");
+
+    resolveReverse({ name: "Tbilisi", country: "Georgia", latitude: 41.7, longitude: 44.8 });
+    await done;
+    assert.equal(events.filter((e) => e.startsWith("timer")).length, 1, "one reverse timer per attempt");
+  });
 });
 
 describe("newtab onboarding step 2 starter row source (docs/onboarding-starter-rows.md)", () => {
