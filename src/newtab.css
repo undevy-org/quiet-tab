@@ -396,6 +396,7 @@ button.weather-tile {
 @media (prefers-reduced-motion: reduce) {
   .desktop-grid > .favorite-tile[data-just-added] {
     animation: none;
+    transition: border-color 160ms ease; /* the ring must be at full strength at once, not fade in over the box-shadow transition */
     box-shadow:
       inset 0 1px 0 rgb(255 255 255 / 10%),
       0 1px 4px rgba(var(--favorite-accent-rgb), 0.18),
