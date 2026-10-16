@@ -105,7 +105,47 @@ html {
   animation-delay: -0.14s;
 }
 
+/* A new link's tile that was off screen (docs/link-dialog-validation.md decision 4): a 3 px ring just outside the tile, drawn as
+   one more box-shadow layer (the tile's own overflow: hidden would clip a pseudo-element), full strength until 60 % and then
+   fading out. The resting layers come first in every keyframe so the shadow lists interpolate. --added-delay (negative ms, set
+   inline by newtab.js) keeps the fade going across a re-render. */
+@keyframes tile-added {
+  0%, 60% {
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 10%),
+      0 1px 4px rgba(var(--favorite-accent-rgb), 0.18),
+      0 0 0 3px var(--focus-ring);
+  }
+  100% {
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 10%),
+      0 1px 4px rgba(var(--favorite-accent-rgb), 0.18),
+      0 0 0 3px transparent;
+  }
+}
+
+.desktop-grid > [data-just-added] {
+  animation: tile-added 2000ms linear forwards;
+  animation-delay: var(--added-delay);
+}
+
+/* Edit mode: the jiggle shorthand above would replace the animation list, so both animations are listed here with one delay
+   each (animation-delay is a list aligned with animation-name). Must stay after the jiggle rules and before the reduced-motion block. */
+.desktop[data-edit="true"] .desktop-grid > [data-just-added] {
+  animation: tile-jiggle 0.28s ease-in-out infinite, tile-added 2000ms linear forwards;
+  animation-delay: 0s, var(--added-delay);
+}
+
+.desktop[data-edit="true"] .desktop-grid > [data-just-added]:nth-child(2n) {
+  animation-delay: -0.14s, var(--added-delay);
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .desktop[data-edit="true"] .desktop-grid > [data-just-added],
+  .desktop[data-edit="true"] .desktop-grid > [data-just-added]:nth-child(2n) {
+    animation: none;
+  }
+
   .desktop[data-edit="true"] .desktop-grid > [data-widget-id] {
     animation: none;
     outline: 2px dashed var(--edit-outline, currentColor);
@@ -349,6 +389,18 @@ button.weather-tile {
 .favorite-tile:disabled {
   cursor: default;
   opacity: 0.55;
+}
+
+/* Reduced motion: the ring of a new tile is static at full strength (the timer in newtab.js removes the attribute after 2 s). The
+   resting layers are listed again, and the selector is not weaker than .favorite-tile:hover:not(:disabled) and comes after it. */
+@media (prefers-reduced-motion: reduce) {
+  .desktop-grid > .favorite-tile[data-just-added] {
+    animation: none;
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 10%),
+      0 1px 4px rgba(var(--favorite-accent-rgb), 0.18),
+      0 0 0 3px var(--focus-ring);
+  }
 }
 
 .favorite-icon,
@@ -818,4 +870,14 @@ button.weather-tile {
 /* After a failed heal the desk container takes focus programmatically (docs/stale-tab-recovery-followups.md decision 5): it is not a control, the persistent alert carries the message. */
 .desktop[tabindex="-1"]:focus {
   outline: none;
+}
+
+/* Forced colors drop box-shadow: the new tile's ring is a solid outline (also in edit mode over the dashed one, and with reduced
+   motion). Placed after the reduced-motion blocks; the edit-mode selector is not weaker than their dashed-outline rules. */
+@media (forced-colors: active) {
+  .desktop-grid > .favorite-tile[data-just-added],
+  .desktop[data-edit="true"] .desktop-grid > .favorite-tile[data-just-added] {
+    outline: 3px solid Highlight;
+    outline-offset: 0;
+  }
 }

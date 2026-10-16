@@ -15,6 +15,8 @@ import {
   BACKGROUND_COLOR_SOURCES,
   HEX_COLOR_VALIDATION_PATTERN,
   ICON_MODES,
+  LINK_LABEL_MAX_LENGTH,
+  LINK_URL_MAX_LENGTH,
   trimString
 } from "./favoritesShared.js";
 
@@ -39,33 +41,52 @@ function isHostPortWithoutScheme(rest) {
   return /^\d+(?:[/?#]|$)/.test(rest);
 }
 
-function ensureUrlProtocol(input) {
-  const value = trimString(input);
+// A validation error that names the dialog field it is about (docs/link-dialog-validation.md decision 3).
+function fieldError(message, field) {
+  const error = new Error(message);
+  error.field = field;
+  return error;
+}
 
-  if (value === "") {
-    throw new Error("Enter a URL");
-  }
+const LINK_TOO_LONG = "That link is too long (up to 2000 characters)"; // = LINK_URL_MAX_LENGTH
+const ICON_LINK_TOO_LONG = "That icon link is too long (up to 2000 characters)"; // = LINK_URL_MAX_LENGTH
+const LABEL_TOO_LONG = "That name is too long (up to 100 characters)"; // = LINK_LABEL_MAX_LENGTH
+const IPV6_HOST_PATTERN = /^\[[0-9a-f:.]+\]$/i;
+const PLAIN_HOST_PATTERN = /^[a-z0-9._-]+$/i;
 
+function withUrlProtocol(value) {
   return hasUrlScheme(value) ? value : `https://${value}`;
 }
 
-function ensureNullableUrlProtocol(input) {
-  const value = trimString(input);
-  return hasUrlScheme(value) ? value : `https://${value}`;
-}
-
+// Order: empty, typed length, whitespace and parse, normalized length, protocol, host.
 export function normalizeFavoriteUrl(input) {
-  const value = ensureUrlProtocol(input);
-  let parsed;
+  const typed = trimString(input);
 
-  try {
-    parsed = new URL(value);
-  } catch {
-    throw new Error("Enter a valid URL");
+  if (typed === "") {
+    throw fieldError("Enter a URL", "url");
+  }
+  if (typed.length > LINK_URL_MAX_LENGTH) {
+    throw fieldError(LINK_TOO_LONG, "url");
+  }
+  if (/\s/.test(typed)) {
+    throw fieldError("Enter a valid URL", "url");
   }
 
+  let parsed;
+  try {
+    parsed = new URL(withUrlProtocol(typed));
+  } catch {
+    throw fieldError("Enter a valid URL", "url");
+  }
+
+  if (parsed.href.length > LINK_URL_MAX_LENGTH) {
+    throw fieldError(LINK_TOO_LONG, "url");
+  }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new Error("Only http and https URLs are supported");
+    throw fieldError("Only http and https URLs are supported", "url");
+  }
+  if (!IPV6_HOST_PATTERN.test(parsed.hostname) && !PLAIN_HOST_PATTERN.test(parsed.hostname)) {
+    throw fieldError("Enter a valid URL", "url");
   }
 
   return {
@@ -80,28 +101,48 @@ export function normalizeNullableImageUrl(input) {
   if (value === "") {
     return null;
   }
+  if (value.length > LINK_URL_MAX_LENGTH) {
+    throw fieldError(ICON_LINK_TOO_LONG, "customIconUrl");
+  }
 
   let parsed;
   try {
-    parsed = new URL(ensureNullableUrlProtocol(value));
+    parsed = new URL(withUrlProtocol(value));
   } catch {
-    throw new Error("Enter a valid image URL");
+    throw fieldError("Enter a valid image URL", "customIconUrl");
   }
 
+  if (parsed.href.length > LINK_URL_MAX_LENGTH) {
+    throw fieldError(ICON_LINK_TOO_LONG, "customIconUrl");
+  }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new Error("Only http and https image URLs are supported");
+    throw fieldError("Only http and https image URLs are supported", "customIconUrl");
   }
 
   return parsed.href;
 }
 
+// The typed name is limited; the fallback (the host) is cut instead, so the stored label always fits the Name limit.
 function normalizeLabel(label, domain) {
-  return trimString(label) || domain;
+  const typed = trimString(label);
+  if (typed.length > LINK_LABEL_MAX_LENGTH) {
+    throw fieldError(LABEL_TOO_LONG, "label");
+  }
+  return typed || domain.slice(0, LINK_LABEL_MAX_LENGTH);
+}
+
+// Lenient key for the wizard's de-duplication: an old stored link is never re-validated (no-users policy, decision 1).
+function dedupKey(url) {
+  try {
+    return new URL(url).href;
+  } catch {
+    return url;
+  }
 }
 
 function normalizeIconMode(iconMode) {
   if (!ICON_MODES.has(iconMode)) {
-    throw new Error("Choose a supported icon mode");
+    throw fieldError("Choose a supported icon mode", "iconMode");
   }
 
   return iconMode;
@@ -109,7 +150,7 @@ function normalizeIconMode(iconMode) {
 
 function normalizeBackgroundColorSource(backgroundColorSource) {
   if (!BACKGROUND_COLOR_SOURCES.has(backgroundColorSource)) {
-    throw new Error("Choose a supported background color source");
+    throw fieldError("Choose a supported background color source", "backgroundColorSource");
   }
 
   return backgroundColorSource;
@@ -128,7 +169,7 @@ function normalizeBackgroundColor(backgroundColor, domain, defaultBackgroundColo
     trimString(backgroundColor) || trimString(defaultBackgroundColor(domain));
 
   if (!HEX_COLOR_VALIDATION_PATTERN.test(color)) {
-    throw new Error("Use a hex color like #24292f");
+    throw fieldError("Use a hex color like #24292f", "backgroundColor");
   }
 
   return color.toLowerCase();
@@ -252,7 +293,7 @@ export function createWidgetsService({
         const existingUrls = new Set(
           base.items
             .filter((item) => item.type === "favorite")
-            .map((item) => normalizeFavoriteUrl(item.url).url)
+            .map((item) => dedupKey(item.url))
         );
         const pending = [];
         for (const raw of list) {
@@ -280,8 +321,8 @@ export function createWidgetsService({
             url: normalizedUrl.url,
             label: normalizeLabel(payload.label, normalizedUrl.domain),
             domain: normalizedUrl.domain,
-            iconMode: normalizeIconMode(payload.iconMode ?? "favicon"),
             customIconUrl: normalizeNullableImageUrl(payload.customIconUrl),
+            iconMode: normalizeIconMode(payload.iconMode ?? "favicon"),
             backgroundColor: normalizeBackgroundColor(
               payload.backgroundColor,
               normalizedUrl.domain,
@@ -323,8 +364,8 @@ export function createWidgetsService({
           url: normalizedUrl.url,
           label: normalizeLabel(payload.label, normalizedUrl.domain),
           domain: normalizedUrl.domain,
-          iconMode: normalizeIconMode(payload.iconMode ?? "favicon"),
           customIconUrl: normalizeNullableImageUrl(payload.customIconUrl),
+          iconMode: normalizeIconMode(payload.iconMode ?? "favicon"),
           backgroundColor: normalizeBackgroundColor(
             payload.backgroundColor,
             normalizedUrl.domain,
@@ -358,11 +399,11 @@ export function createWidgetsService({
         if (Object.hasOwn(payload, "label")) {
           nextItem.label = normalizeLabel(payload.label, nextItem.domain);
         }
-        if (Object.hasOwn(payload, "iconMode")) {
-          nextItem.iconMode = normalizeIconMode(payload.iconMode);
-        }
         if (Object.hasOwn(payload, "customIconUrl")) {
           nextItem.customIconUrl = normalizeNullableImageUrl(payload.customIconUrl);
+        }
+        if (Object.hasOwn(payload, "iconMode")) {
+          nextItem.iconMode = normalizeIconMode(payload.iconMode);
         }
         if (Object.hasOwn(payload, "backgroundColor")) {
           nextItem.backgroundColor = normalizeBackgroundColor(

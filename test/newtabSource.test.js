@@ -1134,7 +1134,7 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
   it("Task 11: add and edit (Auto color) sample the favicon accent after a successful write", async () => {
     const code = await source();
     const build = fn(code, "buildDialogContent");
-    assert.match(build, /const added = widgetsState\?\.items\.find\(\(entry\) => entry\.type === "favorite" && !previousIds\.has\(entry\.id\)\);\s*if \(added\) void refreshAutoAccent\(added\.id\);/);
+    assert.match(build, /const added = widgetsState\?\.items\.findLast\(\(entry\) => entry\.type === "favorite" && !previousIds\.has\(entry\.id\)\);\s*if \(added\) \{\s*void refreshAutoAccent\(added\.id\);/);
     assert.match(build, /if \(payload\.backgroundColorSource === "auto"\) void refreshAutoAccent\(item\.id\);/);
   });
 
