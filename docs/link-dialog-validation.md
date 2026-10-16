@@ -2,7 +2,7 @@
 
 ## Status
 
-`draft` — revision 2 (2026-10-16: spec review 1 applied: last-of-difference id, label fallback and 8 KB budget, ring phase across re-renders, AS fixes). Run №43 (`link-dialog-validation`), cluster "Диалог ссылки: проверка и ошибки" of the roadmap (R43). Backlog 31, 32, 33 and 34 were reproduced on `origin/main` (`75f1b11`) and are all fixed here.
+`draft` — revision 3 (2026-10-16: spec review 1 and 2 and spec-gate round 1 applied: last-of-difference id, label fallback and 8 KB budget, ring as an outer box-shadow layer with its phase kept across re-renders, hidden icon row, AS fixes). Run №43 (`link-dialog-validation`), cluster "Диалог ссылки: проверка и ошибки" of the roadmap (R43). Backlog 31, 32, 33 and 34 were reproduced on `origin/main` (`75f1b11`) and are all fixed here.
 
 **Data compatibility: not required** (no-users policy, `agent-config/CLAUDE.md`). Links already stored with a space, a long URL or a long name are not re-checked on read.
 
@@ -33,19 +33,21 @@ All four reproduce.
    - the parsed `hostname` matches neither `/^\[[0-9a-f:.]+\]$/i` (an IPv6 literal, which `new URL` keeps in brackets) nor `/^[a-z0-9._-]+$/i` (an international host name is already punycode after parsing, so `пример.рф` passes).
 
    Everything the service accepted before and that is a real address keeps working: `example.com`, `localhost`, `localhost:3000/a`, `intranet/wiki` (no dot), `192.168.0.1`, `[::1]:8080`, `http://my_host.local`, `example.com/a%20b`, `example.com/path?q=a+b`. A space inside the path or the query (`example.com/a b`) is rejected too (the owner chose "reject", not "encode"): the person writes `%20`. Order of checks in `addFavorite`: the 200-links limit (as today), empty ("Enter a URL"), length (decision 2), whitespace and parse ("Enter a valid URL"), protocol ("Only http and https URLs are supported"), host. `addFavorites` (wizard starters) re-normalizes every stored link only to build its de-duplication key (`widgetsService.js:255`): that key uses a lenient `new URL(item.url).href` without the new checks, so an old stored link can never make a wizard write fail.
-2. **Length limits with a plain message (backlog 32).** New constants in `favoritesShared.js`: `LINK_URL_MAX_LENGTH = 2000` and `LINK_LABEL_MAX_LENGTH = 100`; length is `String.length` of the trimmed value (UTF-16 units). The service rejects, before any parsing work:
+2. **Length limits with a plain message (backlog 32).** New constants in `favoritesShared.js`: `LINK_URL_MAX_LENGTH = 2000` and `LINK_LABEL_MAX_LENGTH = 100`; length is `String.length` of the trimmed value (UTF-16 units). The service rejects (the typed text first, which needs no parsing; the normalized `href` right after the parse):
    - a link whose trimmed text is longer than 2000, or whose normalized `href` is longer than 2000 (a path of non-ASCII letters is percent-encoded and grows): "That link is too long (up to 2000 characters)", field `url`;
    - a name longer than 100: "That name is too long (up to 100 characters)", field `label`;
    - a custom icon link longer than 2000 (text or normalized `href`): "That icon link is too long (up to 2000 characters)", field `customIconUrl`. It is the same class of input as the link, in the same dialog, and without a limit it hits the same 8 KB quota.
 
-   No `maxlength` attribute is set on the inputs: `maxlength` cuts a pasted text silently, so a wrong, shortened address could be saved; the error keeps the text and the person sees what to shorten. The stored item also holds `domain` (the host, at most 2000 characters because it is part of the checked link) and, when the Name is empty, a `label` equal to that domain: the fallback label is cut to 100 characters (`domain.slice(0, 100)`), and the 100-character limit applies to a name the person typed, so the Edit dialog (which shows the stored `label` in the Name field) never raises "name too long" for an untouched form. Budget of one stored link: 2000 (url) + 2000 (domain) + 2000 (custom icon) + 100 × up to 6 bytes (label, worst case with escapes) + about 500 bytes of fixed fields = about 7100 bytes, under the 8192-byte per-key quota; the existing Sync text remains for real quota, offline and write failures. Limits are checked on Add and on Edit; existing longer values are not touched by reading.
+   Order of the other field checks: Link (all of decision 1 and the link length), then Name length, then Custom icon length, then the existing colour and icon-mode checks; the first failing one is shown. The Custom icon row is hidden unless the icon mode is Custom (`controls.css:54`) but its value is always submitted and stored, so the length check always runs; when it fails and the row is hidden, `showDialogError` checks the Custom radio (which shows the row) and then focuses the field.
+
+   No `maxlength` attribute is set on the inputs: `maxlength` cuts a pasted text silently, so a wrong, shortened address could be saved; the error keeps the text and the person sees what to shorten. The stored item also holds `domain` (the host, at most 2000 characters because it is part of the checked link) and, when the Name is empty, a `label` equal to that domain: the fallback label is cut to 100 characters (`domain.slice(0, 100)`, in Add and in Edit with an empty Name, `widgetsService.js:98` and `:359`), and the 100-character limit applies to a name the person typed, so the Edit dialog (which shows the stored `label` in the Name field) never raises "name too long" for an untouched form. Budget of one stored link: 2000 (url) + 2000 (domain) + 2000 (custom icon) + 100 × up to 6 bytes (label, worst case with escapes) + about 500 bytes of fixed fields = about 7100 bytes, under the 8192-byte per-key quota; the existing Sync text remains for real quota, offline and write failures. Limits are checked on Add and on Edit; existing longer values are not touched by reading.
 3. **The field error is tied to the field (backlog 34).** Validation errors thrown by the service carry a `field` property (`url`, `label`, `customIconUrl`, `backgroundColor`; set in `normalizeFavoriteUrl`, `normalizeNullableImageUrl`, the label check and the colour normalizer). `runDesktopMutation` passes `error.field` to `showDialogError(root, message, field)`, which focuses that input (the message regexes of `invalidFieldFor` stay as a fallback for errors without `field`; everything else focuses the submit button as today). While an error about a field is shown that input has `aria-invalid="true"` and `aria-describedby` pointing at the error slot, which gets a stable `id` (one per dialog). Both are removed in `runDesktopMutation` next to the clearing of the slot when the next submit starts, and with the dialog. An error that is not about a field (Sync write failure, the 200-links limit, a stale tab) sets neither attribute. The `role="alert"` of the slot, the visible text, the layout and colours do not change (owner: nothing visible). The Add tile gets `aria-controls="add-menu"` (the menu's existing id) while the menu is open and loses it when the menu closes; set both where `aria-expanded` is set: `createChromeTile` (the tile is rebuilt on every render) and `syncAddTileExpanded`.
 4. **A new tile that is off screen is brought into view (backlog 31, owner).** After a successful Add link (the dialog's own submit, not edit, not the wizard, not the restore of a weather tile), once `closeDesktopDialog()` has run and the desk is rendered, if the new link's tile is not safely inside the window (its `getBoundingClientRect()` has `top < 6` or `bottom > clientHeight - 6`; 6 px is the `scroll-margin` of the tiles, so a tile 1–5 px from an edge counts as off screen and its ring would be cut; the jiggle transform of edit mode is part of the rect, accepted):
    - the page scrolls so the tile is centred as far as the page allows (`scrollIntoView({ block: "center", behavior: "smooth" })`; a tile in the last row stops at the page bottom, whose padding is `--grid-pad`, 8–16 px); with `prefers-reduced-motion: reduce` the behaviour is `auto` (instant). The scroll is requested after `closeDesktopDialog()` because that call focuses the Add tile (without `preventScroll`) and would otherwise pull a scrolled page back;
-   - the tile gets `data-just-added="true"` for `ADDED_HIGHLIGHT_MS = 2000` ms: a ring drawn by a `::after` pseudo-element of the tile (never `outline`, which the tiles already use for `:focus-visible` and the reduced-motion edit-mode dashes), 3 px, colour `--focus-ring`, offset 2 px outside the tile box, radius from `--radius-tile` plus the offset, `pointer-events: none`; opacity 1 until 60 % of the time, then fading to 0 (keyframes `tile-added`); under reduced motion the ring is static at opacity 1 for the same 2 s and then removed (no animation); under `forced-colors` its colour is `Highlight`. The ring does not change the tile's size or position and does not replace the edit-mode jiggle or dashed outline;
+   - the tile gets `data-just-added="true"` for `ADDED_HIGHLIGHT_MS = 2000` ms: a 3 px ring just outside the tile box, colour `--focus-ring`, drawn as one extra `box-shadow` layer (`0 0 0 3px var(--focus-ring)`) appended to the tile's resting shadow (`.favorite-tile` already has `overflow: hidden`, `newtab.css:265`, which clips any pseudo-element or child that sticks out, so a pseudo-element ring is not used; `outline` is not used either, the tiles already use it for `:focus-visible` and the reduced-motion edit-mode dashes). The rule `.desktop-grid > [data-just-added]` runs `tile-added` (2000 ms, linear, `forwards`) whose keyframes keep the ring at full strength until 60 % and fade its colour to `transparent` at 100 %, each keyframe listing the resting shadow layers first and the ring layer last so the lists interpolate; the delay is a custom property `--added-delay` (negative milliseconds) set inline on the tile and applied to this animation only (`animation-delay` is a comma list aligned with `animation-name`, so in edit mode, where `tile-jiggle` runs on the same tile with its own `animation-delay`, both keep their timing). Under reduced motion `animation: none` and the ring layer is static at full strength for the same 2 s, then removed; under `forced-colors` its colour is `Highlight`. The ring does not change the tile's size or position and does not replace the edit-mode jiggle or dashed outline;
    - if the tile is safely inside the window nothing happens (no scroll, no ring); the live region "Link added" is unchanged.
 
-   The new link is the **last** favorite of the set difference between the stored result and the state before (a new item is always appended; if another tab added a link in between, the earlier one is not ours). The highlight lives in module state `{ id, startedAt }`: every render that creates that tile sets the attribute and an `animation-delay` of `-(now - startedAt)` ms so a re-render (the auto-accent refresh re-renders the desk, `refreshAutoAccent`) continues the fade instead of restarting it; the attribute is removed on `animationend` with a timer at `ADDED_HIGHLIGHT_MS` as the fallback (reduced motion: the timer only). The scroll is requested once. If the id is missing from the final state nothing is scrolled. Focus returns to the Add tile (unchanged); the scroll does not move focus.
+   The new link is the **last** favorite of the set difference between the stored result and the state before (a new item is always appended; if another tab added a link in between, the earlier one is not ours). The highlight lives in module state `{ id, startedAt }`: every render that creates that tile sets the attribute and `--added-delay` of `-(now - startedAt)` ms so a re-render (the auto-accent refresh re-renders the desk, `refreshAutoAccent`) continues the fade instead of restarting it; the attribute is removed on `animationend` (only when `event.animationName === "tile-added"`, not the jiggle) with a timer at `ADDED_HIGHLIGHT_MS` as the fallback (reduced motion: the timer only). The state is cleared by the same timer and a render applies the attribute only while `now - startedAt < ADDED_HIGHLIGHT_MS`, so a late render never brings a static ring back. The scroll is requested once. If the id is missing from the final state nothing is scrolled. Focus returns to the Add tile (unchanged); the scroll does not move focus.
 
 ## Scope
 
@@ -72,7 +74,7 @@ Common setup: the E2E harness with the first-run wizard off; default tiles; "190
 ### AS-LDV-03 The same rules in Edit
 - Given: an existing link, its Edit dialog (edit mode, tap the tile).
 - When: the Link field is changed to `not a url !!`, then Save; then to `example.org/ok`, then Save.
-- Then: the first Save shows "Enter a valid URL", focus on Link, nothing written; the second saves and closes.
+- Then: the first Save shows "Enter a valid URL", focus on Link, nothing written; the second saves and closes. The length rules apply in Edit too: a 2001-character link and a 101-character Name show their messages and write nothing; 2000 and 100 save.
 - Verified by: E2E `dg-83`; unit tests.
 
 ### AS-LDV-04 A too long link
@@ -85,7 +87,7 @@ Common setup: the E2E harness with the first-run wizard off; default tiles; "190
 ### AS-LDV-05 A too long name and a too long icon link
 - Given: the Add link dialog with a valid link.
 - When: the Name has 101 characters; separately 100; the Custom icon link (icon mode Custom) is 2001 characters; separately 2000.
-- Then: 101 → "That name is too long (up to 100 characters)" with the focus on Name; 100 saves; icon 2001 → "That icon link is too long (up to 2000 characters)" with the focus on Custom icon; 2000 saves (a link with url, name and icon all at their maxima saves in one write). The Edit dialog of a link whose stored `label` is a 300-character host (empty Name at Add) opens with the Name cut to 100 and Save without edits succeeds.
+- Then (the icon check also with the icon mode left on "From site" and a long value typed earlier in the hidden field: the error shows, the Custom radio gets checked, the field is visible and focused): 101 → "That name is too long (up to 100 characters)" with the focus on Name; 100 saves; icon 2001 → "That icon link is too long (up to 2000 characters)" with the focus on Custom icon; 2000 saves (a link with url, name and icon all at their maxima saves in one write). A link added with an empty Name and a 300-character host has a stored `label` of exactly 100 characters (the host cut), its Edit dialog opens with that 100-character Name and Save without edits succeeds; clearing the Name in Edit and saving stores the cut host again.
 - Verified by: E2E `dg-83`; unit tests.
 
 ### AS-LDV-06 Real storage failures keep the Sync text
@@ -109,7 +111,7 @@ Common setup: the E2E harness with the first-run wizard off; default tiles; "190
 ### AS-LDV-09 A new tile below the first screen is shown
 - Given: 190 links filling the first screen; scrollY 0.
 - When: Add `https://newlink.example.org/`.
-- Then: the dialog closes; within 1500 ms the new tile is fully inside the window (`top ≥ 0`, `bottom ≤ clientHeight`), `scrollY > 0`, the tile has `data-just-added="true"` and a visible ring; after 2000 ms ± 300 the attribute and the ring are gone; "Link added" is in the live region; focus is on the Add tile; the page does not scroll again after the highlight ends.
+- Then: the dialog closes; within 1500 ms the new tile is fully inside the window (`top ≥ 0`, `bottom ≤ clientHeight`), `scrollY > 0`, the tile has `data-just-added="true"` and a visible ring; measured from the moment the dialog leaves the DOM, after 2000 ms ± 300 the attribute and the ring are gone; "Link added" is in the live region; focus is on the Add tile; the page does not scroll again after the highlight ends.
 - Red on old code (premise): `scrollY` 0, tile at `top` 1136.
 - Verified by: E2E `dg-83`; design review (the movement).
 
@@ -128,18 +130,18 @@ Common setup: the E2E harness with the first-run wizard off; default tiles; "190
 ### AS-LDV-12 Narrow and low windows
 - Given: the AS-LDV-09 seed (and the validation errors) at 500×800, 320×600 and 1280×300.
 - When: Add an invalid link; then a valid one.
-- Then: the error and the focused Link field are inside the visible part of the dialog (the dialog scrolls inside if needed); the valid link's tile ends fully inside the window (the page scrolls as close to centred as it can; in the last row it stops at the page bottom) with at least 5 px between the ring and the window edges, so the ring is not clipped.
+- Then: the error and the focused Link field are inside the visible part of the dialog (the dialog scrolls inside if needed); the valid link's tile ends fully inside the window (the page scrolls as close to centred as it can; in the last row it stops at the page bottom) at least 6 px from the window's top and bottom (the threshold of decision 4), so the 3 px ring is not clipped; at the page bottom the padding (`--grid-pad`, 8 px at 320 px) leaves at least 3 px beyond the ring.
 - Verified by: E2E `dg-83`; design review.
 
 ### AS-LDV-13 No scroll or ring on other paths
-- Given: (a) 190 links filling the first screen; (b) a fresh desk with the first-run wizard (the wizard needs a fresh desk, so it cannot share the 190-link seed).
+- Given: (a) 190 links filling the first screen and one weather tile hidden; (b) a fresh desk with the first-run wizard (the wizard needs a fresh desk, so it cannot share the 190-link seed).
 - When: (a) a link is edited and saved; a weather tile is restored from the Add menu; a tile is dragged; (b) the wizard adds starter links with Finish.
-- Then: none of them scrolls the page (`scrollY` unchanged) or sets `data-just-added`.
+- Then: none of them scrolls the page (`scrollY` unchanged) or sets `data-just-added`; in (b) all starter links are added (the new validation accepts every starter address).
 - Verified by: E2E `dg-83`.
 
 ### AS-LDV-14 The ring is readable
 - Given: the AS-LDV-09 moment at t = 0 of the ring (animation paused at 0 through `getAnimations()`, or the reduced-motion static ring), light, dark and `forced-colors: active`.
-- Then: the ring colour (opacity 1) has contrast ≥ 3:1 against the page background in light and dark; in forced colours it is `Highlight`; the ring does not change the tile's `getBoundingClientRect()`.
+- Then: the ring layer's colour (full strength) has contrast ≥ 3:1 against the page background (the ring lies outside the tile, on the page) in light and dark; in forced colours it is `Highlight`; the ring does not change the tile's `getBoundingClientRect()`.
 - Verified by: E2E `dg-83` (`lib/contrast.mjs`); design review.
 
 ### AS-LDV-15 Add after the storage was cleared in another tab
@@ -154,18 +156,21 @@ Common setup: the E2E harness with the first-run wizard off; default tiles; "190
 - Then: Enter submits (the error shows, focus on Link, `aria-invalid` set); Escape closes the dialog with nothing written and the focus returns to the Add tile.
 - Verified by: E2E `dg-83`.
 
-### AS-LDV-18 Two tabs add at once
+### AS-LDV-17 Two tabs add at once
 - Given: two tabs on the same profile, both with the Add link dialog open; tab B's dialog was opened before tab A saved.
 - When: tab A adds `https://a.example.org/`, then tab B adds `https://b.example.org/`.
 - Then: in tab B the ring and the scroll (when needed) go to B's own link (`b.example.org`), not to A's.
 - Verified by: E2E `dg-83`.
 
-### AS-LDV-17 Texts
-- Strings (all new, plain, no trailing period, the same register as "Enter a valid URL"): "That link is too long (up to 2000 characters)", "That name is too long (up to 100 characters)", "That icon link is too long (up to 2000 characters)". Shown in the dialog's alert slot in Add and Edit. Existing strings unchanged. Nothing new is spoken for the ring or the scroll.
+### AS-LDV-18 Texts
+- Given: any dialog error.
+- When: the person submits an invalid or too long input.
+- Then: the strings (all new, plain, no trailing period, the same register as "Enter a valid URL"): "That link is too long (up to 2000 characters)", "That name is too long (up to 100 characters)", "That icon link is too long (up to 2000 characters)". Shown in the dialog's alert slot in Add and Edit. Existing strings unchanged. Nothing new is spoken for the ring or the scroll.
+- Verified by: E2E `dg-83`; unit tests.
 
 ## Review focus
 
-1. Scenarios: the exact boundary (2000 / 2001, 100 / 101), non-ASCII paths that grow on normalization, the order of checks (a long spaced string: which message), the Edit path, a stale-tab Add, the wizard starters still passing the new validation, the last-of-difference id when two tabs add at once (AS-LDV-18), the label fallback and the 8 KB budget (decision 2).
+1. Scenarios: the exact boundary (2000 / 2001, 100 / 101), non-ASCII paths that grow on normalization, the order of checks (a long spaced string: which message), the Edit path, a stale-tab Add, the wizard starters still passing the new validation, the last-of-difference id when two tabs add at once (AS-LDV-17), the label fallback and the 8 KB budget (decision 2).
 2. Visual: the ring around a tile in both themes and at the window edge, its fade, no layout shift or clipping, the interplay with edit-mode jiggle; the dialog with an error looks exactly as before.
 3. Accessibility: `aria-invalid` / `aria-describedby` vs the existing `aria-labelledby` and the `role="alert"` slot (double reading), `aria-controls` only while the menu exists, reduced motion, forced colours, the focus staying on Add while the page scrolls away.
 
