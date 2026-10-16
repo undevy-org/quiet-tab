@@ -2,7 +2,7 @@
 
 ## Status
 
-`draft` — revision 4 (2026-10-16: spec review 1–3 and spec-gate rounds 1–2 applied: forced-colors outline, edit-mode rule, ring specificity, Add in edit mode; last-of-difference id, label fallback and 8 KB budget, ring as an outer box-shadow layer with its phase kept across re-renders, hidden icon row, AS fixes). Run №43 (`link-dialog-validation`), cluster "Диалог ссылки: проверка и ошибки" of the roadmap (R43). Backlog 31, 32, 33 and 34 were reproduced on `origin/main` (`75f1b11`) and are all fixed here.
+`implemented` — revision 5 (2026-10-16: implementation finding: AS-LDV-12 at 1280×300, see § Accepted exceptions); revision 4 (2026-10-16: spec review 1–3 and spec-gate rounds 1–2 applied: forced-colors outline, edit-mode rule, ring specificity, Add in edit mode; last-of-difference id, label fallback and 8 KB budget, ring as an outer box-shadow layer with its phase kept across re-renders, hidden icon row, AS fixes). Run №43 (`link-dialog-validation`), cluster "Диалог ссылки: проверка и ошибки" of the roadmap (R43). Backlog 31, 32, 33 and 34 were reproduced on `origin/main` (`75f1b11`) and are all fixed here.
 
 **Data compatibility: not required** (no-users policy, `agent-config/CLAUDE.md`). Links already stored with a space, a long URL or a long name are not re-checked on read.
 
@@ -191,6 +191,8 @@ Common setup: the E2E harness with the first-run wizard off; default tiles; "190
 
 - The new tile's ring uses the same colour token as the keyboard focus ring (focus stays on the Add tile after the add, so the two are never on one tile); a distinct highlight colour is a possible later design choice.
 - While the 2 s `tile-added` animation runs, its shadow replaces the hover shadow of that tile.
+
+- **Implementation finding (run 43):** in a 1280×300 window the focused Link field and the error slot are ~318 px apart and cannot both be inside the 268 px visible part of the dialog; AS-LDV-12 holds there as "the focused field is visible and the slot is reachable by scrolling the dialog" (low windows: backlog 20, R46). Widths 500 and 320 meet the original wording.
 
 ## Non-goals
 

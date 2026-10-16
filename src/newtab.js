@@ -2110,7 +2110,7 @@ function buildDialogContent(root, dialog) {
             const added = widgetsState?.items.findLast((entry) => entry.type === "favorite" && !previousIds.has(entry.id));
             if (added) {
               void refreshAutoAccent(added.id);
-              revealAddedTile(added.id);
+              if (widgetsState?.items.some((entry) => entry.id === SETTINGS_TILE_ID)) revealAddedTile(added.id); // not after a failed heal
             }
           }
         });
@@ -2511,7 +2511,7 @@ function showDialogError(root, message, field) {
   if (!slot) return;
   slot.textContent = message;
   slot.hidden = false;
-  const named = typeof field === "string" && field !== "" ? root.querySelector(`input[name="${CSS.escape(field)}"]:checked, input[name="${CSS.escape(field)}"]`) : null;
+  const named = typeof field === "string" && field !== "" ? (root.querySelector(`input[name="${CSS.escape(field)}"]:checked`) ?? root.querySelector(`input[name="${CSS.escape(field)}"]`)) : null;
   if (named instanceof HTMLInputElement && field === "customIconUrl") {
     // the Custom icon row is hidden unless the Custom icon mode is chosen: choose it so the field is visible and focusable
     const custom = root.querySelector('input[name="iconMode"][value="custom"]');
