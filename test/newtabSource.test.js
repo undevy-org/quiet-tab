@@ -1134,7 +1134,7 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
   it("Task 11: add and edit (Auto color) sample the favicon accent after a successful write", async () => {
     const code = await source();
     const build = fn(code, "buildDialogContent");
-    assert.match(build, /const added = widgetsState\?\.items\.find\(\(entry\) => entry\.type === "favorite" && !previousIds\.has\(entry\.id\)\);\s*if \(added\) void refreshAutoAccent\(added\.id\);/);
+    assert.match(build, /const added = widgetsState\?\.items\.findLast\(\(entry\) => entry\.type === "favorite" && !previousIds\.has\(entry\.id\)\);\s*if \(added\) \{\s*void refreshAutoAccent\(added\.id\);/);
     assert.match(build, /if \(payload\.backgroundColorSource === "auto"\) void refreshAutoAccent\(item\.id\);/);
   });
 
@@ -2152,5 +2152,187 @@ describe("onboarding wizard polish source pins (run 42, docs/onboarding-wizard-p
     assert.match(build, /progress\.setAttribute\("aria-label", "Step 1 of 2"\);/);
     assert.doesNotMatch(build, /progress\.setAttribute\("aria-hidden"/);
     assert.match(functionText(code, "syncOnboardingWizardUi"), /\.onboarding-wizard__progress"\)\?\.setAttribute\("aria-label", `Step \$\{progressPillCount\(onboardingStep\)\} of 2`\)/);
+  });
+});
+
+describe("link dialog validation source pins (run 43, docs/link-dialog-validation.md)", () => {
+  function functionText(code, name) {
+    const start = code.search(new RegExp(`^(?:async )?function ${name}\\(`, "m"));
+    assert.notEqual(start, -1, `function ${name} exists`);
+    const rest = code.slice(start + 1);
+    const next = rest.search(/^(?:async )?function |^const |^let |^\/\/ /m);
+    return next === -1 ? code.slice(start) : code.slice(start, start + 1 + next);
+  }
+  const stripCss = (text) => text.replace(/\/\*[\s\S]*?\*\//g, "");
+  const norm = (text) => text.replace(/\s+/g, " ").trim();
+  const cssRules = (css) => [...stripCss(css).matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({ selector: norm(m[1]), body: norm(m[2]), index: m.index }));
+  // Text of an at-rule block (`header { ... }`) starting at the first `header` found at or after `from`.
+  function atBlock(css, header, from = 0) {
+    const start = css.indexOf(header, from);
+    assert.notEqual(start, -1, `${header} exists`);
+    let depth = 0;
+    for (let i = css.indexOf("{", start); i < css.length; i += 1) {
+      if (css[i] === "{") depth += 1;
+      else if (css[i] === "}") {
+        depth -= 1;
+        if (depth === 0) return { start, end: i, text: css.slice(start, i + 1) };
+      }
+    }
+    assert.fail(`${header} is not closed`);
+  }
+  const newtabCss = async () => stripCss(await readFile(new URL("../src/newtab.css", import.meta.url), "utf8"));
+  const RING = "0 0 0 3px var(--focus-ring)";
+  const RESTING_INSET = "inset 0 1px 0 rgb(255 255 255 / 10%)";
+  const RESTING_DROP = "0 1px 4px rgba(var(--favorite-accent-rgb), 0.18)";
+
+  it("the limits are constants in favoritesShared.js, imported and used by the service (decision 2)", async () => {
+    const shared = await readFile(new URL("../src/favoritesShared.js", import.meta.url), "utf8");
+    const service = await readFile(new URL("../src/widgetsService.js", import.meta.url), "utf8");
+    assert.match(shared, /export const LINK_URL_MAX_LENGTH = 2000;/);
+    assert.match(shared, /export const LINK_LABEL_MAX_LENGTH = 100;/);
+    assert.match(service, /import \{[^}]*\bLINK_URL_MAX_LENGTH\b[^}]*\} from "\.\/favoritesShared\.js";/);
+    assert.match(service, /import \{[^}]*\bLINK_LABEL_MAX_LENGTH\b[^}]*\} from "\.\/favoritesShared\.js";/);
+    assert.match(service, /\.slice\(0, LINK_LABEL_MAX_LENGTH\)/, "the label fallback (the host) is cut to the name limit");
+    assert.equal((service.match(/LINK_URL_MAX_LENGTH/g) ?? []).length >= 3, true, "used for the link, the normalized href and the icon link");
+    for (const message of [
+      "That link is too long (up to 2000 characters)",
+      "That name is too long (up to 100 characters)",
+      "That icon link is too long (up to 2000 characters)"
+    ]) {
+      assert.equal(service.includes(message), true, message);
+    }
+  });
+
+  it("the error slot has a stable id, showDialogError takes the field and ties it with aria-invalid / aria-describedby (decision 3)", async () => {
+    const code = await source();
+    assert.match(functionText(code, "createDialogErrorSlot"), /error\.id = /);
+    const show = functionText(code, "showDialogError");
+    assert.match(show, /^function showDialogError\(root, message, field\b/);
+    assert.match(show, /setAttribute\("aria-invalid", "true"\)/);
+    assert.match(show, /setAttribute\("aria-describedby", /);
+    assert.match(functionText(code, "invalidFieldFor"), /\/image url\/i/, "the message regexes stay as the fallback for errors without a field");
+  });
+
+  it("runDesktopMutation passes error.field and removes both attributes next to clearing the slot", async () => {
+    const run = functionText(await source(), "runDesktopMutation");
+    assert.match(run, /showDialogError\(dialogRoot, message, error\??\.field\)/);
+    assert.match(run, /removeAttribute\("aria-invalid"\)/);
+    assert.match(run, /removeAttribute\("aria-describedby"\)/);
+    const clearAt = run.indexOf("slot.hidden = true");
+    const removeAt = run.indexOf('removeAttribute("aria-invalid")');
+    assert.equal(clearAt !== -1 && removeAt !== -1 && Math.abs(removeAt - clearAt) < 400, true, "cleared together with the slot when the next submit starts");
+  });
+
+  it("the Add tile carries aria-controls = the menu id while the menu is open and drops it when it closes", async () => {
+    const code = await source();
+    assert.match(code, /menu\.id = "add-menu";/);
+    assert.match(functionText(code, "createChromeTile"), /setAttribute\("aria-controls", "add-menu"\)/);
+    const sync = functionText(code, "syncAddTileExpanded");
+    assert.match(sync, /setAttribute\("aria-controls", "add-menu"\)/);
+    assert.match(sync, /removeAttribute\("aria-controls"\)/);
+  });
+
+  it("decision 4: ADDED_HIGHLIGHT_MS, the attribute, --added-delay, animationend filter, smooth scroll that falls back to auto", async () => {
+    const code = await source();
+    assert.match(code, /const ADDED_HIGHLIGHT_MS = 2000;/);
+    assert.match(code, /dataset\.justAdded = "true"|setAttribute\("data-just-added", "true"\)/);
+    assert.match(code, /style\.setProperty\("--added-delay", /);
+    assert.match(code, /animationName === "tile-added"/, "the jiggle's animationend must not end the highlight");
+    assert.match(code, /scrollIntoView\(\{ block: "center", behavior: prefersReducedMotion\(\) \? "auto" : "smooth" \}\)/);
+    assert.match(code, /ADDED_HIGHLIGHT_MS/);
+    assert.equal((code.match(/scrollIntoView\(/g) ?? []).length >= 1, true);
+  });
+
+  it("the new link is the LAST favorite of the set difference, not the first (two tabs adding at once)", async () => {
+    const addCase = (await source()).match(/case "add-link": \{([\s\S]*?)case "edit-link":/);
+    assert.ok(addCase, "the add-link case");
+    assert.doesNotMatch(addCase[1], /\.find\(\(entry\) => entry\.type === "favorite" && !previousIds\.has\(entry\.id\)\)/);
+    assert.match(addCase[1], /findLast\([^;]*!previousIds\.has|\.filter\([^;]*!previousIds\.has[^;]*\)\s*\.(?:at\(-1\)|pop\(\))/);
+  });
+
+  it("CSS: tile-added keyframes keep the ring until 60% and fade it to transparent, resting shadow layers first", async () => {
+    const css = await newtabCss();
+    const kf = atBlock(css, "@keyframes tile-added").text;
+    assert.match(norm(kf), /60%/);
+    assert.match(norm(kf), /100% \{[^}]*transparent/);
+    assert.equal(norm(kf).includes(RING), true, "the ring layer");
+    assert.equal(norm(kf).includes(RESTING_INSET), true, "the resting layers are listed first so the lists interpolate");
+    assert.equal(norm(kf).includes(RESTING_DROP), true);
+    assert.equal(norm(kf).indexOf(RESTING_INSET) < norm(kf).indexOf("0 0 0 3px"), true, "the ring layer comes last");
+  });
+
+  it("CSS: the ring (an extra box-shadow layer) exists only behind [data-just-added]", async () => {
+    const css = await newtabCss();
+    const rules = cssRules(css).filter((rule) => rule.body.includes("0 0 0 3px var(--focus-ring)"));
+    const keyframeStep = /^(?:(?:\d+%|from|to)(?:, )?)+$/;
+    const outside = rules.filter((rule) => !keyframeStep.test(rule.selector) && !rule.selector.includes("data-just-added"));
+    assert.deepEqual(outside.map((rule) => rule.selector), [], "no other rule draws this ring");
+    assert.equal(rules.some((rule) => rule.selector.includes("data-just-added")), true, "at least one rule draws it for [data-just-added]");
+    const run = cssRules(css).find((rule) => rule.selector === ".desktop-grid > [data-just-added]");
+    assert.ok(run, "the rule .desktop-grid > [data-just-added]");
+    assert.match(run.body, /animation: tile-added 2000ms linear forwards;/);
+    assert.match(run.body, /animation-delay: var\(--added-delay\);/);
+  });
+
+  it("CSS: edit mode runs BOTH animations with a per-animation delay list, placed after the jiggle rules and before the reduced-motion block (N-1)", async () => {
+    const css = await newtabCss();
+    const rules = cssRules(css);
+    const EDIT = '.desktop[data-edit="true"] .desktop-grid > [data-just-added]';
+    const jiggle = rules.find((rule) => rule.selector === '.desktop[data-edit="true"] .desktop-grid > [data-widget-id]:nth-child(2n)');
+    const reduced = css.indexOf("@media (prefers-reduced-motion: reduce)", css.indexOf("@keyframes tile-jiggle"));
+    const edit = rules.find((rule) => rule.selector === EDIT);
+    const editOdd = rules.find((rule) => rule.selector === `${EDIT}:nth-child(2n)`);
+    assert.ok(edit, EDIT);
+    assert.ok(editOdd, `${EDIT}:nth-child(2n)`);
+    assert.match(edit.body, /animation: tile-jiggle 0\.28s ease-in-out infinite, tile-added 2000ms linear forwards;/);
+    assert.match(edit.body, /animation-delay: 0s, var\(--added-delay\);/);
+    assert.match(editOdd.body, /animation-delay: -0\.14s, var\(--added-delay\);/);
+    assert.equal(jiggle.index < edit.index && edit.index < editOdd.index && editOdd.index < reduced, true, "order: jiggle rules, edit just-added rules, reduced-motion block");
+  });
+
+  it("CSS: the reduced-motion edit-mode block keeps animation: none for [data-just-added] (the dashed outline stays, N-1)", async () => {
+    const css = await newtabCss();
+    const block = atBlock(css, "@media (prefers-reduced-motion: reduce)", css.indexOf("@keyframes tile-jiggle")).text;
+    const rule = cssRules(block.slice(block.indexOf("{") + 1)).find((r) => r.selector.includes('.desktop[data-edit="true"] .desktop-grid > [data-just-added]') && /animation: none;/.test(r.body));
+    assert.ok(rule, "a rule with animation: none whose selector list covers the edit-mode [data-just-added]");
+  });
+
+  it("CSS: reduced motion shows a static ring on the tile with its resting layers, specificity not below :hover (N-2)", async () => {
+    const css = await newtabCss();
+    const hoverAt = css.indexOf(".favorite-tile:hover:not(:disabled)");
+    assert.notEqual(hoverAt, -1);
+    const reducedBlocks = [];
+    for (let from = 0; ; ) {
+      const at = css.indexOf("@media (prefers-reduced-motion: reduce)", from);
+      if (at === -1) break;
+      const block = atBlock(css, "@media (prefers-reduced-motion: reduce)", at);
+      reducedBlocks.push(block);
+      from = block.end;
+    }
+    const hit = reducedBlocks
+      .map((block) => ({ block, rule: cssRules(block.text.slice(block.text.indexOf("{") + 1)).find((r) => r.selector === ".desktop-grid > .favorite-tile[data-just-added]") }))
+      .find((entry) => entry.rule);
+    assert.ok(hit, ".desktop-grid > .favorite-tile[data-just-added] inside a reduced-motion block");
+    assert.match(hit.rule.body, /animation: none;/);
+    assert.equal(hit.rule.body.includes(RING), true);
+    assert.equal(hit.rule.body.includes(RESTING_INSET) && hit.rule.body.includes(RESTING_DROP), true, "the resting layers are re-listed");
+    assert.equal(hit.block.start > hoverAt, true, "placed after the hover / focus-visible shadow rule");
+  });
+
+  it("CSS: forced colors replace the box-shadow ring with a solid 3px Highlight outline (not weaker than the dashed edit outline)", async () => {
+    const css = await newtabCss();
+    const forced = atBlock(css, "@media (forced-colors: active)").text;
+    const rules = cssRules(forced.slice(forced.indexOf("{") + 1)).filter((r) => r.selector.includes("data-just-added"));
+    assert.equal(rules.length > 0, true, "a forced-colors rule for [data-just-added]");
+    assert.equal(rules.some((r) => /outline: 3px solid Highlight;/.test(r.body) && /outline-offset: 0;/.test(r.body)), true);
+  });
+
+  it("CSS: the forced-colors outline comes after the reduced-motion edit-mode block so it wins in edit mode (L0-06)", async () => {
+    const css = await newtabCss();
+    const forcedAt = css.indexOf("@media (forced-colors: active)");
+    const reducedAt = css.indexOf("@media (prefers-reduced-motion: reduce)", css.indexOf("@keyframes tile-jiggle"));
+    const outlineAt = css.indexOf("outline: 3px solid Highlight");
+    assert.notEqual(outlineAt, -1);
+    assert.equal(outlineAt > reducedAt && forcedAt !== -1, true);
   });
 });

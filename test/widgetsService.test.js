@@ -841,3 +841,322 @@ describe("addFavorites island (docs/post-onboarding-grid.md)", () => {
     await assert.rejects(service.addFavorites([], { columns: 12, island: { rows: 9 } }));
   });
 });
+
+// Run 43 (docs/link-dialog-validation.md decisions 1-3): a link must look like a web address, length limits with plain
+// messages, and every validation error carries the field it is about. Built-in `new URL` accepts several of these inputs
+// (`example.com/a b`, `http://bad!host.com`, a tab inside the path), so these are red until the service checks them itself.
+describe("widgetsService link dialog validation (run 43)", async () => {
+  const shared = await import("../src/favoritesShared.js"); // namespace import: a missing constant fails its test, not the whole file
+  const URL_MAX = 2000;
+  const LABEL_MAX = 100;
+  const BASE = "https://example.com/";
+  const urlOfLength = (total) => BASE + "a".repeat(total - BASE.length);
+  const hostOfLength = (len) => {
+    const host = ("a".repeat(49) + ".").repeat(Math.ceil(len / 50) + 1).slice(0, len);
+    return host.endsWith(".") ? `${host.slice(0, -1)}a` : host;
+  };
+  const failsWith = (message, field) => (error) => {
+    assert.equal(error.message, message);
+    assert.equal(error.field, field, `error.field for "${message}"`);
+    return true;
+  };
+
+  it("exports the limits as constants (2000 for links, 100 for names)", () => {
+    assert.equal(shared.LINK_URL_MAX_LENGTH, URL_MAX);
+    assert.equal(shared.LINK_LABEL_MAX_LENGTH, LABEL_MAX);
+  });
+
+  describe("decision 1: accepted addresses (stay saved)", () => {
+    const accepted = [
+      ["example.com", "https://example.com/", "example.com"],
+      ["localhost", "https://localhost/", "localhost"],
+      ["localhost:3000/a", "https://localhost:3000/a", "localhost"],
+      ["intranet/wiki", "https://intranet/wiki", "intranet"],
+      ["192.168.0.1", "https://192.168.0.1/", "192.168.0.1"],
+      ["[::1]:8080", "https://[::1]:8080/", "[::1]"],
+      ["http://my_host.local", "http://my_host.local/", "my_host.local"],
+      ["example.com/a%20b", "https://example.com/a%20b", "example.com"],
+      ["example.com/path?q=a+b", "https://example.com/path?q=a+b", "example.com"],
+      ["пример.рф", "https://xn--e1afmkfd.xn--p1ai/", "xn--e1afmkfd.xn--p1ai"],
+      ["  example.org/ok  ", "https://example.org/ok", "example.org"]
+    ];
+    for (const [input, url, domain] of accepted) {
+      it(`accepts "${input}"`, () => {
+        assert.deepEqual(normalizeFavoriteUrl(input), { url, domain });
+      });
+    }
+  });
+
+  describe("decision 1: rejected addresses", () => {
+    // Node's URL parser already throws for the first group; the second group (and the whitespace the parser strips or encodes) is
+    // accepted by `new URL` and rejected only by the new rules.
+    const rejected = [
+      "not a url !!",
+      "a b.com",
+      "https://exa mple.com",
+      "example.com/a b",
+      "example.com/path?q=a b",
+      "example.com/a\tb",
+      "example.com/a\nb",
+      "example.com/a b",
+      "example.com/a b",
+      "http://bad!host.com",
+      "http://bad,host.com",
+      "http://bad$host.com",
+      "http://bad(host).com",
+      "http://bad'host.com",
+      "http://bad*host.com",
+      "https://",
+      "http://"
+    ];
+    for (const input of rejected) {
+      it(`rejects ${JSON.stringify(input)} with "Enter a valid URL" for the url field`, () => {
+        assert.throws(() => normalizeFavoriteUrl(input), failsWith("Enter a valid URL", "url"));
+      });
+    }
+  });
+
+  describe("order of the checks in normalizeFavoriteUrl", () => {
+    it("empty wins: 'Enter a URL' (field url)", () => {
+      assert.throws(() => normalizeFavoriteUrl("   "), failsWith("Enter a URL", "url"));
+    });
+
+    it("length wins over whitespace and parsing: a 2001-character spaced string is 'too long'", () => {
+      const spaced = "x ".repeat(1000) + "xy"; // 2002 characters, 2002 after trim
+      assert.equal(spaced.trim().length > URL_MAX, true);
+      assert.throws(() => normalizeFavoriteUrl(spaced), failsWith("That link is too long (up to 2000 characters)", "url"));
+    });
+
+    it("whitespace and parse win over the protocol: 'ftp://bad host' is 'Enter a valid URL'", () => {
+      assert.throws(() => normalizeFavoriteUrl("ftp://bad host"), failsWith("Enter a valid URL", "url"));
+    });
+
+    it("the protocol wins over the host: 'ftp://bad!host.com' is the protocol message", () => {
+      assert.throws(() => normalizeFavoriteUrl("ftp://bad!host.com"), failsWith("Only http and https URLs are supported", "url"));
+      assert.throws(() => normalizeFavoriteUrl("javascript:alert(1)"), failsWith("Only http and https URLs are supported", "url"));
+    });
+  });
+
+  describe("decision 2: link length (typed text and normalized href)", () => {
+    it("2000 characters pass, 2001 fail (boundary)", () => {
+      assert.equal(normalizeFavoriteUrl(urlOfLength(URL_MAX)).url.length, URL_MAX);
+      assert.throws(() => normalizeFavoriteUrl(urlOfLength(URL_MAX + 1)), failsWith("That link is too long (up to 2000 characters)", "url"));
+      assert.throws(() => normalizeFavoriteUrl(urlOfLength(9000)), failsWith("That link is too long (up to 2000 characters)", "url"));
+    });
+
+    it("surrounding spaces do not count (the trimmed text is measured)", () => {
+      assert.equal(normalizeFavoriteUrl(`  ${urlOfLength(URL_MAX)}  `).url.length, URL_MAX);
+    });
+
+    it("a typed text of 2000 characters whose https-prefixed href is longer is rejected on the href", () => {
+      const typed = "example.com/" + "a".repeat(URL_MAX - "example.com/".length);
+      assert.equal(typed.length, URL_MAX);
+      assert.throws(() => normalizeFavoriteUrl(typed), failsWith("That link is too long (up to 2000 characters)", "url"));
+    });
+
+    it("a short non-ASCII path that grows past 2000 once percent-encoded is rejected", () => {
+      const typed = BASE + "я".repeat(700);
+      assert.equal(typed.length, 720);
+      assert.equal(new URL(typed).href.length > URL_MAX, true, "premise: the normalized href grows");
+      assert.throws(() => normalizeFavoriteUrl(typed), failsWith("That link is too long (up to 2000 characters)", "url"));
+      assert.throws(() => normalizeFavoriteUrl(BASE + "😀".repeat(500)), failsWith("That link is too long (up to 2000 characters)", "url"));
+    });
+
+    it("a non-ASCII path whose encoded href stays within 2000 characters passes", () => {
+      const result = normalizeFavoriteUrl(BASE + "я".repeat(300));
+      assert.equal(result.url.length <= URL_MAX, true);
+    });
+  });
+
+  describe("normalizeNullableImageUrl: icon link", () => {
+    it("2000 pass, 2001 fail with the icon message for the customIconUrl field", () => {
+      const icon = (total) => "https://example.com/i" + "b".repeat(total - "https://example.com/i".length);
+      assert.equal(normalizeNullableImageUrl(icon(URL_MAX)).length, URL_MAX);
+      assert.throws(() => normalizeNullableImageUrl(icon(URL_MAX + 1)), failsWith("That icon link is too long (up to 2000 characters)", "customIconUrl"));
+    });
+
+    it("the normalized href counts too (typed 2000 without a scheme, href longer)", () => {
+      const typed = "example.com/i" + "b".repeat(URL_MAX - "example.com/i".length);
+      assert.throws(() => normalizeNullableImageUrl(typed), failsWith("That icon link is too long (up to 2000 characters)", "customIconUrl"));
+    });
+
+    it("the existing icon messages carry the customIconUrl field", () => {
+      assert.throws(() => normalizeNullableImageUrl("ftp://x/i.png"), failsWith("Only http and https image URLs are supported", "customIconUrl"));
+      assert.throws(() => normalizeNullableImageUrl("http://"), failsWith("Enter a valid image URL", "customIconUrl"));
+    });
+
+    it("an icon link is not checked for spaces or junk (only its length)", () => {
+      assert.equal(normalizeNullableImageUrl("example.com/a b.png"), "https://example.com/a%20b.png");
+    });
+  });
+
+  describe("addFavorite", () => {
+    const rejectsWithoutWriting = async (payload, message, field) => {
+      const { service, store } = await createHarness();
+      await assert.rejects(service.addFavorite(payload, COLS), failsWith(message, field));
+      assert.deepEqual((await store.getState()).items, [], "nothing is written");
+    };
+
+    it("rejects a spaced address and writes nothing", async () => {
+      await rejectsWithoutWriting({ url: "example.com/a b" }, "Enter a valid URL", "url");
+      await rejectsWithoutWriting({ url: "http://bad!host.com" }, "Enter a valid URL", "url");
+    });
+
+    it("name: 100 characters pass, 101 fail with the name message for the label field (nothing written)", async () => {
+      const { service } = await createHarness();
+      const state = await service.addFavorite({ url: "example.com", label: "n".repeat(LABEL_MAX) }, COLS);
+      assert.equal(state.items[0].label.length, LABEL_MAX);
+      await rejectsWithoutWriting({ url: "example.com", label: "n".repeat(LABEL_MAX + 1) }, "That name is too long (up to 100 characters)", "label");
+    });
+
+    it("name: surrounding spaces do not count", async () => {
+      const { service } = await createHarness();
+      const state = await service.addFavorite({ url: "example.com", label: `  ${"n".repeat(LABEL_MAX)}  ` }, COLS);
+      assert.equal(state.items[0].label, "n".repeat(LABEL_MAX));
+    });
+
+    it("icon link: 2000 pass, 2001 fail (field customIconUrl), even with the icon mode left on 'favicon'", async () => {
+      const icon = (total) => "https://example.com/i" + "b".repeat(total - "https://example.com/i".length);
+      const { service } = await createHarness();
+      const state = await service.addFavorite({ url: "example.com", iconMode: "favicon", customIconUrl: icon(URL_MAX) }, COLS);
+      assert.equal(state.items[0].customIconUrl.length, URL_MAX);
+      await rejectsWithoutWriting({ url: "example.com", iconMode: "favicon", customIconUrl: icon(URL_MAX + 1) }, "That icon link is too long (up to 2000 characters)", "customIconUrl");
+    });
+
+    it("order of the field checks: Link, then Name, then Custom icon, then colour and icon mode", async () => {
+      const longIcon = "https://example.com/i" + "b".repeat(URL_MAX);
+      const longName = "n".repeat(LABEL_MAX + 1);
+      const longUrl = urlOfLength(URL_MAX + 1);
+      await rejectsWithoutWriting({ url: longUrl, label: longName, customIconUrl: longIcon, backgroundColor: "red" }, "That link is too long (up to 2000 characters)", "url");
+      await rejectsWithoutWriting({ url: "example.com", label: longName, customIconUrl: longIcon, backgroundColor: "red" }, "That name is too long (up to 100 characters)", "label");
+      await rejectsWithoutWriting({ url: "example.com", customIconUrl: longIcon, backgroundColor: "red", iconMode: "bogus" }, "That icon link is too long (up to 2000 characters)", "customIconUrl");
+      await rejectsWithoutWriting({ url: "example.com", backgroundColor: "red" }, "Use a hex color like #24292f", "backgroundColor");
+    });
+
+    it("the 200-links limit is checked first (before an invalid address)", async () => {
+      const { service, store } = await createHarness();
+      await seed(store, Array.from({ length: 200 }, (_, i) => favorite({ id: `f${i}`, url: `https://site${i}.example.com/`, domain: `site${i}.example.com`, label: `Site ${i}`, grid: g(i % 12, Math.floor(i / 12)) })));
+      await assert.rejects(service.addFavorite({ url: "not a url !!" }, COLS), (error) => error.message === "You can save up to 200 favorites" && error.field === undefined);
+    });
+
+    it("an empty Name with a 300-character host stores a label of exactly 100 characters (the host cut)", async () => {
+      const host = hostOfLength(300);
+      const { service } = await createHarness();
+      const state = await service.addFavorite({ url: `https://${host}/` }, COLS);
+      assert.equal(state.items[0].domain, host);
+      assert.equal(state.items[0].label, host.slice(0, LABEL_MAX));
+    });
+
+    it("a host of 1990 characters with an empty Name and a 2000-character icon link saves and stays under the 8 KB item budget", async () => {
+      const host = hostOfLength(1990);
+      const icon = "https://example.com/i" + "b".repeat(URL_MAX - "https://example.com/i".length);
+      const { service } = await createHarness();
+      const state = await service.addFavorite({ url: `https://${host}/`, iconMode: "custom", customIconUrl: icon }, COLS);
+      const item = state.items[0];
+      assert.equal(item.label.length, LABEL_MAX);
+      assert.equal(item.customIconUrl.length, URL_MAX);
+      assert.equal(JSON.stringify(item).length < 8000, true, `item is ${JSON.stringify(item).length} characters`);
+    });
+
+    it("url, name and icon at their maxima save in one write", async () => {
+      const icon = "https://example.com/i" + "b".repeat(URL_MAX - "https://example.com/i".length);
+      const { service } = await createHarness();
+      const state = await service.addFavorite({ url: urlOfLength(URL_MAX), label: "m".repeat(LABEL_MAX), iconMode: "custom", customIconUrl: icon }, COLS);
+      assert.equal(state.items[0].url.length, URL_MAX);
+      assert.equal(state.items[0].label.length, LABEL_MAX);
+    });
+  });
+
+  describe("updateFavorite (Edit uses the same rules)", () => {
+    const withLink = async (extra = {}) => {
+      const { service, store } = await createHarness();
+      await service.addFavorite({ url: "example.com", label: "Example", ...extra }, COLS);
+      return { service, store };
+    };
+    const rejects = async (payload, message, field) => {
+      const { service, store } = await withLink();
+      const before = JSON.stringify((await store.getState()).items);
+      await assert.rejects(service.updateFavorite("fav-1", payload, COLS), failsWith(message, field));
+      assert.equal(JSON.stringify((await store.getState()).items), before, "nothing is written");
+    };
+
+    it("rejects spaced or junk addresses", async () => {
+      await rejects({ url: "not a url !!" }, "Enter a valid URL", "url");
+      await rejects({ url: "example.com/a b" }, "Enter a valid URL", "url");
+      await rejects({ url: "http://bad!host.com" }, "Enter a valid URL", "url");
+    });
+
+    it("link: 2000 pass, 2001 fail", async () => {
+      await rejects({ url: urlOfLength(URL_MAX + 1) }, "That link is too long (up to 2000 characters)", "url");
+      const { service } = await withLink();
+      const state = await service.updateFavorite("fav-1", { url: urlOfLength(URL_MAX) }, COLS);
+      assert.equal(state.items[0].url.length, URL_MAX);
+    });
+
+    it("name: 100 pass, 101 fail", async () => {
+      await rejects({ label: "n".repeat(LABEL_MAX + 1) }, "That name is too long (up to 100 characters)", "label");
+      const { service } = await withLink();
+      const state = await service.updateFavorite("fav-1", { label: "n".repeat(LABEL_MAX) }, COLS);
+      assert.equal(state.items[0].label.length, LABEL_MAX);
+    });
+
+    it("icon link: 2001 fails with the customIconUrl field, 2000 pass", async () => {
+      const icon = (total) => "https://example.com/i" + "b".repeat(total - "https://example.com/i".length);
+      await rejects({ customIconUrl: icon(URL_MAX + 1) }, "That icon link is too long (up to 2000 characters)", "customIconUrl");
+      const { service } = await withLink();
+      const state = await service.updateFavorite("fav-1", { iconMode: "custom", customIconUrl: icon(URL_MAX) }, COLS);
+      assert.equal(state.items[0].customIconUrl.length, URL_MAX);
+    });
+
+    it("an empty Name stores the host cut to 100 characters; an untouched Edit form (the stored 100-character label) saves", async () => {
+      const host = hostOfLength(300);
+      const { service } = await createHarness();
+      const added = await service.addFavorite({ url: `https://${host}/` }, COLS);
+      const item = added.items[0];
+      assert.equal(item.label.length, LABEL_MAX);
+      const untouched = await service.updateFavorite(item.id, { url: item.url, label: item.label, iconMode: item.iconMode, customIconUrl: item.customIconUrl ?? "" }, COLS);
+      assert.equal(untouched.items[0].label, item.label);
+      const cleared = await service.updateFavorite(item.id, { label: "" }, COLS);
+      assert.equal(cleared.items[0].label, host.slice(0, LABEL_MAX));
+    });
+
+    it("existing longer values are not touched by reading, and an update that does not carry them still works", async () => {
+      const { service, store } = await createHarness();
+      await seed(store, [favorite({ id: "fav-1", url: "https://example.com/" + "a".repeat(2500), label: "L".repeat(150), grid: g(0, 0) })]);
+      const read = await service.getState();
+      assert.equal(read.items[0].label.length, 150);
+      const resized = await service.updateFavorite("fav-1", { w: 2 }, COLS);
+      assert.equal(resized.items[0].label.length, 150);
+    });
+  });
+
+  describe("addFavorites (wizard starters) never fails on an old stored link", () => {
+    it("an old link with a space, a 2500-character URL and a 150-character name does not break a wizard write and still de-duplicates", async () => {
+      const { service, store } = await createHarness();
+      await seed(store, [
+        favorite({ id: "old-1", url: "https://example.com/a b", domain: "example.com", label: "Old", grid: g(0, 0) }),
+        favorite({ id: "old-2", url: "https://long.example.com/" + "a".repeat(2500), domain: "long.example.com", label: "L".repeat(150), grid: g(1, 0) })
+      ]);
+      const ids = await service.addFavorites(
+        [{ url: "https://github.com/", label: "GitHub" }, { url: "https://example.com/a%20b", label: "Duplicate of the old spaced link" }],
+        COLS
+      );
+      assert.equal(ids.length, 1, "only the new starter is added; the old spaced link is recognised by its lenient href");
+      const urls = (await store.getState()).items.map((item) => item.url);
+      assert.equal(urls.includes("https://github.com/"), true);
+      assert.equal(urls.filter((u) => u.startsWith("https://example.com/a")).length, 1);
+    });
+
+    it("a new starter is still validated by the new rules (a spaced starter address is refused)", async () => {
+      const { service } = await createHarness();
+      await assert.rejects(service.addFavorites([{ url: "example.com/a b" }], COLS), failsWith("Enter a valid URL", "url"));
+    });
+  });
+
+  describe("error.field on the other validators", () => {
+    it("the colour error names backgroundColor", async () => {
+      const { service } = await createHarness();
+      await assert.rejects(service.addFavorite({ url: "example.com", backgroundColor: "red" }, COLS), failsWith("Use a hex color like #24292f", "backgroundColor"));
+    });
+  });
+});

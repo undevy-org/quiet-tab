@@ -559,8 +559,10 @@ function createFavoriteForm(item) {
 }
 
 // The dialog's write/validation message slot (spec § Write failures: inside the open modal, above its buttons).
+let dialogErrorSlotSeq = 0;
 function createDialogErrorSlot() {
   const error = createNode("div", "desktop-dialog__error", "");
+  error.id = `desktop-dialog-error-${dialogErrorSlotSeq++}`; // stable per dialog: a field's aria-describedby points here
   error.setAttribute("role", "alert");
   error.dataset.dialogError = "";
   error.hidden = true;
@@ -1998,6 +2000,7 @@ function createChromeTile(item, cell) {
   else if (desktopUi.editMode && hiddenMetrics().length > 0) {
     button.setAttribute("aria-haspopup", "menu"); // spec § Add menu: it opens the Add menu instead of the dialog
     button.setAttribute("aria-expanded", String(addMenuRoot !== null));
+    if (addMenuRoot !== null) button.setAttribute("aria-controls", "add-menu");
   }
   button.appendChild(createIconNode(settings ? "settings" : "plus", { size: 20 }));
   return button;
@@ -2012,6 +2015,50 @@ function createRemoveBadge(item) {
   badge.setAttribute("aria-label", hidden ? `Hide ${label}` : `Remove ${label}`);
   badge.appendChild(createIconNode("minus", { size: 12 }));
   return badge;
+}
+
+// ---- A new link's tile that is off screen is scrolled to and ringed for 2 s (docs/link-dialog-validation.md decision 4) ----
+const ADDED_HIGHLIGHT_MS = 2000;
+const ADDED_EDGE_MARGIN_PX = 6; // the tiles' scroll-margin: a tile closer to an edge than this has its ring cut
+let justAdded = null; // { id, startedAt }: lives across re-renders so the fade continues instead of restarting
+let justAddedTimer = 0;
+
+function clearJustAdded() {
+  clearTimeout(justAddedTimer);
+  justAddedTimer = 0;
+  justAdded = null;
+  for (const tile of favoritesRoot?.querySelectorAll("[data-just-added]") ?? []) {
+    tile.removeAttribute("data-just-added");
+    tile.style.removeProperty("--added-delay");
+  }
+}
+
+// Called by every render for each favorite tile: only the highlighted id, and only while its 2 s have not passed.
+function applyJustAdded(tile, id) {
+  if (!justAdded || justAdded.id !== id) return;
+  const elapsed = performance.now() - justAdded.startedAt;
+  if (elapsed >= ADDED_HIGHLIGHT_MS) {
+    clearJustAdded();
+    return;
+  }
+  tile.dataset.justAdded = "true";
+  tile.style.setProperty("--added-delay", `${-Math.round(elapsed)}ms`);
+  tile.addEventListener("animationend", (event) => {
+    if (event.target === tile && event.animationName === "tile-added") clearJustAdded();
+  });
+}
+
+// After the dialog is closed and the desk rendered: nothing when the tile is safely inside the window.
+function revealAddedTile(id) {
+  const tile = favoritesRoot?.querySelector(`.desktop-grid > [data-widget-id="${CSS.escape(id)}"]`);
+  if (!(tile instanceof HTMLElement)) return;
+  const rect = tile.getBoundingClientRect();
+  if (rect.top >= ADDED_EDGE_MARGIN_PX && rect.bottom <= document.documentElement.clientHeight - ADDED_EDGE_MARGIN_PX) return;
+  clearJustAdded();
+  justAdded = { id, startedAt: performance.now() };
+  justAddedTimer = setTimeout(clearJustAdded, ADDED_HIGHLIGHT_MS);
+  applyJustAdded(tile, id);
+  tile.scrollIntoView({ block: "center", behavior: prefersReducedMotion() ? "auto" : "smooth" });
 }
 
 const ADD_TILE_SELECTOR = '[data-widget-id="chrome:add"]';
@@ -2058,9 +2105,13 @@ function buildDialogContent(root, dialog) {
           if (ok) {
             if (widgetsState?.items.some((entry) => entry.id === SETTINGS_TILE_ID)) announce("Link added"); // not after a failed heal: the alert speaks
             closeDesktopDialog();
-            // The new link is the id the stored result has and the state before did not (set difference).
-            const added = widgetsState?.items.find((entry) => entry.type === "favorite" && !previousIds.has(entry.id));
-            if (added) void refreshAutoAccent(added.id);
+            // The new link is the LAST favorite the stored result has and the state before did not (set difference; a new item is
+            // always appended, so a link another tab added in between is an earlier one).
+            const added = widgetsState?.items.findLast((entry) => entry.type === "favorite" && !previousIds.has(entry.id));
+            if (added) {
+              void refreshAutoAccent(added.id);
+              if (widgetsState?.items.some((entry) => entry.id === SETTINGS_TILE_ID)) revealAddedTile(added.id); // not after a failed heal
+            }
           }
         });
       });
@@ -2392,7 +2443,10 @@ function placeAddMenu() {
 // The Add tile announces its menu only while it can open one (edit mode with >= 1 hidden metric).
 function syncAddTileExpanded() {
   const tile = favoritesRoot?.querySelector(ADD_TILE_SELECTOR);
-  if (tile?.hasAttribute("aria-haspopup")) tile.setAttribute("aria-expanded", String(addMenuRoot !== null));
+  if (!tile?.hasAttribute("aria-haspopup")) return;
+  tile.setAttribute("aria-expanded", String(addMenuRoot !== null));
+  if (addMenuRoot !== null) tile.setAttribute("aria-controls", "add-menu");
+  else tile.removeAttribute("aria-controls");
 }
 
 function closeAddMenu({ focusAdd = false } = {}) {
@@ -2450,13 +2504,25 @@ function invalidFieldFor(message) {
   return 'button[type="submit"]';
 }
 
-function showDialogError(root, message) {
+// `field` is the service error's `field` (docs/link-dialog-validation.md decision 3): that input gets aria-invalid and
+// aria-describedby = the alert slot. An error without a field (a Sync failure, the links limit) only focuses the submit button.
+function showDialogError(root, message, field) {
   const slot = root.querySelector("[data-dialog-error]");
   if (!slot) return;
   slot.textContent = message;
   slot.hidden = false;
-  const field = root.querySelector(invalidFieldFor(message)) ?? root.querySelector('button[type="submit"]');
-  if (field instanceof HTMLElement && !field.matches(":disabled")) field.focus();
+  const named = typeof field === "string" && field !== "" ? (root.querySelector(`input[name="${CSS.escape(field)}"]:checked`) ?? root.querySelector(`input[name="${CSS.escape(field)}"]`)) : null;
+  if (named instanceof HTMLInputElement && field === "customIconUrl") {
+    // the Custom icon row is hidden unless the Custom icon mode is chosen: choose it so the field is visible and focusable
+    const custom = root.querySelector('input[name="iconMode"][value="custom"]');
+    if (custom instanceof HTMLInputElement) custom.checked = true;
+  }
+  if (named) {
+    named.setAttribute("aria-invalid", "true");
+    named.setAttribute("aria-describedby", slot.id);
+  }
+  const target = named ?? root.querySelector(invalidFieldFor(message)) ?? root.querySelector('button[type="submit"]');
+  if (target instanceof HTMLElement && !target.matches(":disabled")) target.focus();
 }
 
 const LAYOUT_RESET_MESSAGE = "Your layout was reset in another tab.";
@@ -2581,6 +2647,10 @@ async function runDesktopMutation(action, { dialogRoot = null, renderPending = t
   if (slot) {
     slot.textContent = "";
     slot.hidden = true;
+    for (const input of dialogRoot.querySelectorAll('[aria-invalid="true"]')) {
+      input.removeAttribute("aria-invalid");
+      input.removeAttribute("aria-describedby");
+    }
   }
   const generation = startFavoritesAction({ render: renderPending });
   try {
@@ -2606,7 +2676,7 @@ async function runDesktopMutation(action, { dialogRoot = null, renderPending = t
       return false;
     }
     finishFavoritesAction(generation, () => {});
-    if (dialogRoot?.isConnected) showDialogError(dialogRoot, message);
+    if (dialogRoot?.isConnected) showDialogError(dialogRoot, message, error?.field);
     else showDesktopStatus(message);
     return false;
   }
@@ -2703,7 +2773,10 @@ function renderDesktop() {
     const cell = layout.get(item.id);
     if (!cell) continue; // hidden metric: no cell, no tile
     let tile = null;
-    if (item.type === "favorite") tile = createFavoriteTile(item, cell);
+    if (item.type === "favorite") {
+      tile = createFavoriteTile(item, cell);
+      applyJustAdded(tile, item.id);
+    }
     else if (item.type === "chrome") tile = createChromeTile(item, cell);
     else if (weatherService && view?.status === "no-location") {
       if (!hintPlaced) {
