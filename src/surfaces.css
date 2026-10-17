@@ -108,8 +108,20 @@
   cursor: default;
 }
 
+/* Padding with an equal negative margin: the ring sits clear of the text and the text does not move. */
 .city-location-link:focus-visible {
+  padding: 0 4px;
+  margin: 0 -4px;
+  border-radius: var(--radius-control);
   background: var(--soft-fill-strong);
+  box-shadow: 0 0 0 2px var(--focus-overlay-ring);
+}
+
+/* The title takes the focus while a city request runs (tabindex -1): the ring of the dialog, not the system blue. */
+.city-modal__title:focus-visible {
+  outline: 2px solid transparent; /* forced colors turn this into a visible indicator */
+  outline-offset: 2px;
+  border-radius: var(--radius-control);
   box-shadow: 0 0 0 2px var(--focus-overlay-ring);
 }
 
@@ -598,6 +610,10 @@ img.onboarding-wizard__starter-icon[data-icon-check="pending"] {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.city-field > [data-weather-dialog-city][data-empty] {
+  color: var(--muted);
 }
 
 .city-field__hint {

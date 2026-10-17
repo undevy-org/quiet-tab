@@ -756,10 +756,18 @@ function createCityLocationDescription(variant) {
   status.dataset.cityLocationStatus = "";
   status.setAttribute("role", "status");
   locationStatusNode = status;
+  // The words around the link are nodes of their own: while the position is looked up they are hidden (they leave the
+  // accessibility tree) and the link alone is the line (syncLocationLink).
   if (onboarding) {
-    paragraph.append("Enter a city, ", link, ", or skip for now.", status);
+    const beforeText = createNode("span", null, "Enter a city, ");
+    const afterText = createNode("span", null, ", or skip for now.");
+    beforeText.dataset.cityLocationWords = afterText.dataset.cityLocationWords = "";
+    paragraph.append(beforeText, link, afterText, status);
   } else {
-    paragraph.append("Search for a city or ", link, ".", status);
+    const beforeText = createNode("span", null, "Search for a city or ");
+    const afterText = createNode("span", null, ".");
+    beforeText.dataset.cityLocationWords = afterText.dataset.cityLocationWords = "";
+    paragraph.append(beforeText, link, afterText, status);
   }
   return paragraph;
 }
@@ -1126,6 +1134,8 @@ function teardownLocationLookup() {
   locating = false;
   weatherBusy = false;
   clearLocationStatus();
+  const host = cityFormHostRoot();
+  if (host) syncLocationLink(host); // releases the pinned height and brings the words back
 }
 
 function focusLocationLink() {
@@ -1136,13 +1146,19 @@ function focusLocationLink() {
 function syncLocationLink(host) {
   const link = host.querySelector('[data-weather-action="use-location"]');
   if (!(link instanceof HTMLButtonElement)) return;
+  // While locating, the whole description line is the status: only the link (inactive, keeps focus) is shown. The line keeps
+  // the height it had just before the switch so the field below does not jump; the height is released on every exit.
+  const paragraph = link.parentElement;
   if (locating) {
+    if (paragraph && paragraph.style.minHeight === "") paragraph.style.minHeight = `${paragraph.offsetHeight}px`;
     link.textContent = LOCATION_BUSY_LABEL;
     link.setAttribute("aria-disabled", "true");
   } else {
     link.textContent = LOCATION_LINK_LABEL;
     link.removeAttribute("aria-disabled");
+    if (paragraph) paragraph.style.minHeight = "";
   }
+  for (const words of paragraph?.querySelectorAll("[data-city-location-words]") ?? []) words.hidden = locating;
 }
 
 function syncCityModalUi() {
@@ -1290,6 +1306,15 @@ function syncCityModal() {
   activeCityForm?.place();
 }
 
+// While a city request runs a press on the backdrop or on empty dialog space would move the focus to body (the controls are
+// disabled): its default is cancelled, so the focus stays where the busy rescue put it (the title).
+function keepFocusWhileBusy(event) {
+  if (!weatherBusy || locating) return;
+  const target = event.target instanceof Element ? event.target : null;
+  if (target?.closest("input:not(:disabled), button:not(:disabled)")) return;
+  event.preventDefault();
+}
+
 // One listener per event on the modal root (backdrop, dismiss button, suggestions, submit).
 function attachCityModalListeners(root) {
   root.addEventListener("focusin", () => {
@@ -1400,6 +1425,7 @@ function showCityModal(mode, openerSelector) {
   try {
     root = buildCityModal(mode, weatherLocationError ? null : currentLocation());
     attachCityModalListeners(root); // before any focus() so the focusin below is seen
+    root.addEventListener("mousedown", keepFocusWhileBusy);
     document.body.appendChild(root);
   } catch (error) {
     // Nothing half-open: a failed build must not leave the UI state "open" and block every later open.
@@ -2299,8 +2325,15 @@ function syncWeatherDialogCity(root = desktopDialogRoot) {
   const location = weatherLocationError ? null : currentLocation();
   const field = root.querySelector('[data-weather-action="open-city-modal"]');
   const label = location ? cityDisplayLabel(location) : "";
-  root.querySelector("[data-weather-dialog-city]").textContent = label || "No city set";
-  field.querySelector(".city-field__hint").textContent = location ? "Change" : "Set a city";
+  root.querySelector("[data-weather-dialog-city]").textContent = label || "Set a city"; // no city: one muted line, no separate hint
+  const value = root.querySelector("[data-weather-dialog-city]");
+  const hint = field.querySelector(".city-field__hint");
+  value.toggleAttribute("data-empty", !label);
+  hint.textContent = "Change";
+  hint.hidden = !label;
+  // The name is the row label plus the visible parts (single spaces, no commas); a hidden hint is left out.
+  const rowLabelId = (field.getAttribute("aria-labelledby") ?? "").split(" ")[0];
+  field.setAttribute("aria-labelledby", [rowLabelId, value.id, label ? hint.id : null].filter(Boolean).join(" "));
   if (label) field.title = label; // the full label whenever a city is stored; the accessible name comes from aria-labelledby
   else field.removeAttribute("title");
   field.disabled = !weatherService;

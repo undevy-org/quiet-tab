@@ -2571,6 +2571,23 @@ describe("city modal focus and copy source (run 44, docs/city-modal-focus-copy.m
     assert.match(code, /const LOCATION_BUSY_LABEL = "Finding your location\\u2026";/, "the status text is unchanged");
   });
 
+  // ---- checkpoint minors L1-01 / L2-01 (run 44): busy-phase focus
+  it("L2-01: the city modal title takes the dialog's focus ring (a token), not the system outline, while a request runs", async () => {
+    const rule = ruleFor(await surfaces(), ".city-modal__title:focus-visible");
+    assert.ok(rule, "a :focus-visible rule for the title");
+    assert.match(rule.body, /box-shadow: 0 0 0 2px var\(--focus-[a-z-]*ring\)/);
+    assert.match(rule.body, /outline: 2px solid transparent/);
+  });
+
+  it("L1-01: a press on a non-interactive spot of a busy city modal cannot move the focus to body", async () => {
+    const code = await strippedSource();
+    const handler = topLevelFunction(code, "keepFocusWhileBusy");
+    assert.match(handler, /if \(!weatherBusy \|\| locating\) return;/);
+    assert.match(handler, /input:not\(:disabled\), button:not\(:disabled\)/);
+    assert.match(handler, /event\.preventDefault\(\)/);
+    assert.match(code, /root\.addEventListener\("mousedown", keepFocusWhileBusy\)/);
+  });
+
   // ---- Decision 7 / AS-CMF-17: focus ring of the location link ----
   it("AS-CMF-17: .city-location-link:focus-visible has horizontal padding, an equal negative margin and the control radius", async () => {
     const rule = ruleFor(await surfaces(), ".city-location-link:focus-visible");
