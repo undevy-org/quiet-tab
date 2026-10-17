@@ -141,7 +141,7 @@ Common setup: the E2E harness with the first-run wizard off unless stated; defau
 ### AS-CMF-10 A repeated announcement is read again
 - Given: a `MutationObserver` on `#desktop-live` (childList / characterData).
 - When: a link is deleted, then another is deleted ("Link deleted" twice in a row); a tile hidden and restored and hidden again (same `<Metric> hidden`); two city changes to different cities (two `City set to …`); two Retry presses ("Weather updated" twice).
-- Then: each of the repeated strings produces at least one mutation of the region between the two occurrences (the region is cleared and set again, the final text equals the string); the region always contains only the last string; a rapid second `announce` before the frame replaces the pending text.
+- Then: between the two occurrences the region is observed empty (cleared, then set again) and the final text equals the string (live triage: an equal `textContent` assignment already replaces the node today, so a bare mutation is not a failing signal); the region always contains only the last string; a rapid second `announce` before the frame replaces the pending text.
 - Verified by: E2E `dg-84`; unit test of `announce`.
 
 ### AS-CMF-11 No city in the weather dialog's City field
