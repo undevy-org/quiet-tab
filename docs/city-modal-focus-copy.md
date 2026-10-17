@@ -23,7 +23,7 @@ Related: `docs/modal-overlay-design.md` (the city modal), `docs/use-my-location.
 
 Out of scope, other sessions: backlog 41 L2-02 and 60 V2-04 (stacking of modals, R46), the suggestion list ARIA and overlay (R45), everything else in the queue.
 
-## Triage (pre-measurement by reading `main` at `1e0eeab`; the executor confirms each item live, step 1 of the kickoff)
+## Triage (pre-measurement by reading `main` at `1e0eeab`; live measurement below)
 
 - **26.** `changeCity` (`newtab.js:3559-3599`) on success calls `hideCityModal` (`:1397-1420`), which sets `pendingFocus = [cityModalOpener, SETTINGS_TILE_SELECTOR]`. From the hint tile the opener `[data-widget-id="weather:hint"]` no longer exists after the first city, so focus lands on Settings (not on `body` as the old note said; on `body` only while the request runs). While `weatherBusy`, `syncCityModal` (`:1230-1236`) disables every `input, button` of the modal; in change mode the focus then drops to `body`, in the wizard step 1 it is rescued by `:1241-1252` (title with `tabindex=-1`). No `announce` is made for a city change.
 - **39.** `persistAndFetch` (`weatherService.js`, `:46-55`) writes the location through `locationStore.setLocation` first and then catches a forecast failure and returns `{ status: "error", location }`. `changeCity` treats that as success: the modal closes and `weatherResult` becomes the error for every tile. The unchanged Save does not re-geocode: `chosenCity` is the stored city (`newtab.js:925`), so the submit handler (`:1308-1329`) takes `activeCityForm.chosen()` and calls `selectLocation` with the stored coordinates, which still re-fetches and, when the network is down, replaces healthy (or stale) tiles with errors and rewrites the same location. A typed different name goes through `setCity` (geocode, then the same persist-then-fetch).
@@ -33,6 +33,22 @@ Out of scope, other sessions: backlog 41 L2-02 and 60 V2-04 (stacking of modals,
 - **60 V2-02.** `surfaces.css:90-114`: `.city-location-link { padding: 0; … }`, `:focus-visible { background: var(--soft-fill-strong); box-shadow: 0 0 0 2px var(--focus-overlay-ring); }`, no radius.
 - **98.** `buildOnboardingStep2` (`:1573-1593`) creates `ul.onboarding-wizard__starters` without `tabindex` or a name; `overflow-y: auto` (`surfaces.css:213-222`); locking in `syncOnboardingWizardUi` (`:1496-1510`) sets `data-starters-locked` and disables the checkboxes, which leave the tab order.
 - **99.** `armPostCloseClickGuard` (`:289-302`): 300 ms, a capture `click` listener that swallows only `detail > 0`; the `mousedown` of the second press still moves focus (Back → Skip under it, Continue → `body`, Finish → the tile or `body`).
+
+### Live measurement on `origin/main` `1e0eeab` (run 44 step 1, probe `scratch/run-44-triage/probe.mjs` in notes, throw-away profiles, 2026-10-17)
+
+| Item | Result | Measured |
+|------|--------|----------|
+| 26 | reproduces (the old note's "body" is wrong: Settings) | From the hint tile after Save: `activeElement` = `chrome:settings`, `#desktop-live` = "" (empty), city stored. From the weather dialog's city field: focus returns to the field button, but `#desktop-live` still holds the older "Editing layout. Activate Settings to finish." (no city announcement). Busy phase (forecast held): `activeElement` = `BODY`, Save disabled. |
+| 39 unchanged Save | reproduces | Stored Tbilisi, field value `Tbilisi, Georgia`, forecast failing: Save sends 0 geocoding and 2 forecast/air-quality requests, the modal closes, all four tiles turn to "Weather unavailable: Can't re…" (were healthy 21 / 10% / 40 / 3). |
+| 39 changed city | reproduces | Typed `Berlin`, forecast failing: 1 geocoding + 2 forecast requests, the modal closes, no error shown, stored city becomes `Berlin`, all four tiles error. |
+| 40 | partly: see note | Two consecutive deletes: "Link deleted" then "Link deleted": one `MutationObserver` batch between them (assigning `textContent` replaces the text node even for an equal string), so a DOM mutation does occur today. Whether assistive technology re-reads it cannot be measured here. Decision: keep decision 4 as a robustness fix (clear, then set on the next frame, which also makes the empty state observable); AS-CMF-10 asserts the observable empty state between two identical strings and the final text, not just "a mutation". |
+| 41 L2-03 | reproduces | No city: the field text `No city setSet a city`, `aria-labelledby` = row label + value + hint, computed name `City No city set Set a city`. |
+| 53 / 54 / 60 V2-01 | reproduces | Change modal while locating: paragraph text `Search for a city or Finding your location….` plus the sr-only status `Finding your location…`; link `aria-disabled="true"`, focus stays on it. Wizard step 1: `Enter a city, Finding your location…, or skip for now.` plus the status. |
+| 60 V2-02 | reproduces | Link focused with the keyboard (`:focus-visible` true): `padding 0px`, `margin 0px`, `border-radius 0px`, `box-shadow 0 0 0 2px rgba(17,19,24,.55)`. |
+| 98 | reproduces | Locked list (starters written, flag write failing) at 500×600: `data-starters-locked="true"`, no `tabindex`, no `aria-label`, `scrollHeight > clientHeight`, all boxes disabled; Tab cycles only Back, Finish. |
+| 99 | reproduces | Double click (second press 40 ms after the first) at +50 / +400 ms: Skip: `activeElement` is the starter checkbox of row 2 (the press under the pointer), not the first row; Back: `BODY` (target: step 1 title); Finish: `BODY` (target: Settings). |
+
+All items stay in scope. Nothing is closed without code.
 
 ## Decisions
 
