@@ -18,7 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- City suggestion list (modal and wizard step 1): the field is an ARIA 1.2 combobox (`role="combobox"`, `aria-expanded`, `aria-controls`) and the list a listbox of `role="option"` buttons; Tab skips the suggestion options and goes clear, Cancel (or Skip), Save (arrow keys are the way into the list); the focus ring of "use your location" reaches 3 px beyond the link text (padding 1 px) and no longer covers a neighbouring character (docs/city-suggestion-list.md).
+- City suggestion list (modal and wizard step 1) is an ARIA 1.2 combobox with a listbox of options. Tab skips the
+  suggestions (clear, Cancel or Skip, Save); arrow keys enter the list. The focus ring of "use your location" now
+  reaches 3 px beyond the link text and no longer covers a neighbouring character (`docs/city-suggestion-list.md`).
 
 ### Added
 
