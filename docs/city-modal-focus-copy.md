@@ -2,7 +2,7 @@
 
 ## Status
 
-`draft` — revision 1 (2026-10-17, stage 0). Run №44 (`city-modal-focus-copy`), cluster "Модал города: фокус, объявления, тексты" of the roadmap (R44). Backlog 26, 39, 40, 41 (L2-03 only), 53, 54, 60 (V2-01 and V2-02 only), 98 and 99. The code facts under § Triage are a pre-measurement by reading `main` at `1e0eeab`; the executor's first step is to reproduce every item live on `origin/main` and record the result there (an item that does not reproduce is closed with a backlog line and its AS and tasks are dropped by a spec fix).
+`implemented` — revision 1 (2026-10-17, stage 0). Run №44 (`city-modal-focus-copy`), cluster "Модал города: фокус, объявления, тексты" of the roadmap (R44). Backlog 26, 39, 40, 41 (L2-03 only), 53, 54, 60 (V2-01 and V2-02 only), 98 and 99. The code facts under § Triage are a pre-measurement by reading `main` at `1e0eeab`; the executor's first step is to reproduce every item live on `origin/main` and record the result there (an item that does not reproduce is closed with a backlog line and its AS and tasks are dropped by a spec fix).
 
 **Data compatibility: not required** (no-users policy, `agent-config/CLAUDE.md`). The storage shape does not change; the stored location keeps `{ version, name, country, latitude, longitude }`.
 

@@ -4,6 +4,8 @@
 
 `implemented`
 
+Updated by run 44 (`docs/city-modal-focus-copy.md`, decision 6): while the position is looked up, the whole description line is the status `Finding your location…` (the words around the link are hidden, the sentence never reads "…or Finding your location…."); the sentence in the Behaviour text below describes the resting state.
+
 Decision: **do it**. Owner request 2026-10-08 (pipeline stage 0, run #20 / `dg-62`): a way to fill the city field from the device location, so the user does not have to type a city on first run or when changing the city.
 
 Owner decisions (2026-10-08, brainstorming):
