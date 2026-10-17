@@ -364,7 +364,8 @@ describe("newtab weather retry source (AS-WR-13)", () => {
     assert.match(retry, /generation !== weatherGeneration/);
     assert.doesNotMatch(retry, /error\.message|String\(error\)|innerHTML/);
     assert.match(retry, /weatherLocationError = "";/);
-    assert.match(retry, /desktopLive\.textContent = "";/);
+    // Run 44 (decision 4): the "clear first" special case folded into `announce`; retryWeather only calls it.
+    assert.doesNotMatch(retry, /desktopLive\.textContent = "";/);
     assert.match(retry, /announce\("Weather updated"\)/);
   });
 
