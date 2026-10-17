@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import { describe, it } from "node:test";
+import vm from "node:vm";
 
 const NEWTAB_SOURCE = new URL("../src/newtab.js", import.meta.url);
 
@@ -16,6 +17,46 @@ async function appStyles() {
     readFile(new URL("newtab.css", base), "utf8")
   ]);
   return surfaces + controls + app;
+}
+
+// Source without comments (strings are skipped, so `//` inside a URL string survives); pins on code, not on prose.
+function stripComments(text) {
+  let out = "";
+  let i = 0;
+  while (i < text.length) {
+    const c = text[i];
+    const next = text[i + 1];
+    if (c === "/" && next === "/") {
+      while (i < text.length && text[i] !== "\n") i += 1;
+    } else if (c === "/" && next === "*") {
+      const end = text.indexOf("*/", i + 2);
+      i = end === -1 ? text.length : end + 2;
+    } else if (c === '"' || c === "'" || c === "`") {
+      let j = i + 1;
+      while (j < text.length && text[j] !== c) j += text[j] === "\\" ? 2 : 1;
+      out += text.slice(i, j + 1);
+      i = j + 1;
+    } else {
+      out += c;
+      i += 1;
+    }
+  }
+  return out;
+}
+
+// Text of a top-level function: from `function name(` to the closing brace in column 0.
+function topLevelFunction(code, name) {
+  const start = code.search(new RegExp(`^(?:async )?function ${name}\\(`, "m"));
+  assert.notEqual(start, -1, `function ${name} exists`);
+  const end = code.indexOf("\n}\n", start);
+  assert.notEqual(end, -1, `function ${name} is closed`);
+  return code.slice(start, end + 2);
+}
+
+async function allSrc() {
+  const dir = new URL("../src/", import.meta.url);
+  const names = (await readdir(dir)).filter((n) => /\.(js|css|html)$/.test(n));
+  return Promise.all(names.map(async (name) => ({ name, text: await readFile(new URL(name, dir), "utf8") })));
 }
 
 describe("newtab favorites source", () => {
@@ -539,7 +580,7 @@ describe("newtab city modal source", () => {
     const change = code.slice(start, code.indexOf("\n}\n", start));
     assert.match(change, /activeCityForm\?\.cancelPending\(\);/);
     assert.match(change, /activeCityForm\?\.renderSuggestions\(\);/);
-    assert.match(change, /await withTimeout\(run\(\)\)/);
+    assert.match(change, /await withTimeout\(run\(isStale\)\)/); // run 44: the attempt hands its stale flag to the service
     assert.match(change, /weatherLocationError = "";/);
     assert.match(change, /cityModalError = "";\s*if \(onboardingWizardRoot\) syncOnboardingWizardUi\(\);\s*else syncCityModal\(\);\s*renderFavorites\(\);/);
     assert.match(code, /const CITY_REQUEST_TIMEOUT_MS = 15000;/);
@@ -1006,9 +1047,8 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     assert.match(build, /showCityModal\("change", WEATHER_DIALOG_CITY_SELECTOR\)/);
     assert.match(code, /const WEATHER_DIALOG_CITY_SELECTOR = '\[data-dialog="edit-weather"\] \[data-weather-action="open-city-modal"\]';/);
     // AS-MO-10 (updated by run 44, AS-CMF-11/22): the city-field is one button; with a city the hint is `Change`; with no city the value line
-    // is `Set a city` (no "No city set") and the separate hint is hidden and out of the accessible name; the old text-button copy is gone.
+    // is `Set a city` (the "No city set" ban is one global pin in the run-44 block) and the separate hint is hidden and out of the accessible name; the old text-button copy is gone.
     const sync = fn(code, "syncWeatherDialogCity");
-    assert.doesNotMatch(sync, /"No city set"/);
     assert.match(sync, /"Change"/);
     assert.match(sync, /"Set a city"/);
     assert.doesNotMatch(sync, /"Change city"/);
@@ -1072,15 +1112,24 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
 
   it("Task 10: onboarding step 1 copy mentions skipping the city for now", async () => {
     const code = await source();
-    // Run 44 (AS-CMF-13/14): the resting sentences are unchanged, but the words around the link must be separate nodes so that the busy
-    // state can remove them (a bare text node cannot be hidden); the same strings stay, the structure pin is in the run-44 block below.
-    const description = code.slice(code.indexOf("function createCityLocationDescription("), code.indexOf("function createCityForm("));
-    assert.ok(description.length > 50, "createCityLocationDescription found");
+    // Run 44 (AS-CMF-13/14): the same resting sentences, but the words around the link are separate nodes (so the busy state can hide
+    // them): append(<before node>, link, <after node>, status). Order of the arguments is pinned.
+    const description = topLevelFunction(stripComments(code), "createCityLocationDescription");
+    const wizard = description.match(/paragraph\.append\(\s*(\w+),\s*link,\s*(\w+),\s*status\s*\);/);
+    assert.ok(wizard, "append(<node>, link, <node>, status) exists for the wizard step");
+    const modal = [...description.matchAll(/paragraph\.append\(\s*(\w+),\s*link,\s*(\w+),\s*status\s*\);/g)];
+    assert.equal(modal.length, 2, "one append per variant");
     for (const text of ["Enter a city, ", ", or skip for now.", "Search for a city or ", "."]) {
-      assert.ok(description.includes(JSON.stringify(text)), `resting sentence part ${JSON.stringify(text)} is still built`);
+      assert.ok(description.includes(JSON.stringify(text)), `${JSON.stringify(text)} is still built`);
+      assert.doesNotMatch(
+        description,
+        new RegExp(`append\\([^;]*${JSON.stringify(text).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`),
+        `${JSON.stringify(text)} is a node of its own, not a bare string argument`
+      );
     }
-    assert.match(description, /link/);
-    assert.match(description, /status/);
+    const indexOfText = (text) => description.indexOf(JSON.stringify(text));
+    assert.ok(indexOfText("Enter a city, ") < indexOfText(", or skip for now."), "wizard: before-node precedes after-node");
+    assert.ok(indexOfText("Search for a city or ") < description.lastIndexOf(JSON.stringify(".")), "modal: before-node precedes after-node");
     assert.match(code, /dataset\.weatherAction = "use-location"/);
     assert.match(code, /dataset\.cityLocationStatus/);
     assert.match(code, /function createCityLocationDescription/);
@@ -2348,119 +2397,197 @@ describe("link dialog validation source pins (run 43, docs/link-dialog-validatio
 
 // Run 44 (docs/city-modal-focus-copy.md): source pins written red-first (TDD); the behaviour itself is measured by E2E dg-84.
 describe("city modal focus and copy source (run 44, docs/city-modal-focus-copy.md)", () => {
-  const stripCss = (text) => text.replace(/\/\*[\s\S]*?\*\//g, "");
   const norm = (text) => text.replace(/\s+/g, " ").trim();
-  const cssRules = (css) => [...stripCss(css).matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({ selector: norm(m[1]), body: norm(m[2]) }));
+  const stripCss = (text) => text.replace(/\/\*[\s\S]*?\*\//g, "");
+  const cssRules = (css) => [...stripCss(css).matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({ selectors: m[1].split(",").map(norm), body: norm(m[2]) }));
+  const ruleFor = (css, selector) => cssRules(css).find((r) => r.selectors.includes(selector));
+  const strippedSource = async () => stripComments(await source());
+  const surfaces = () => readFile(new URL("../src/surfaces.css", import.meta.url), "utf8");
 
-  // Text of a top-level function: from `function name(` to the closing brace in column 0.
-  function topLevelFunction(code, name) {
-    const start = code.search(new RegExp(`^(?:async )?function ${name}\\(`, "m"));
-    assert.notEqual(start, -1, `function ${name} exists`);
-    const end = code.indexOf("\n}\n", start);
-    assert.notEqual(end, -1, `function ${name} is closed`);
-    return code.slice(start, end + 2);
+  // Expands a 1-4 value px shorthand (or the -inline pair) to [top, right, bottom, left]; null when absent.
+  function boxValues(body, property) {
+    const shorthand = body.match(new RegExp(`(?:^|;| )${property}: ([^;]+)`));
+    const inline = body.match(new RegExp(`${property}-inline: ([^;]+)`));
+    const px = (v) => Number.parseFloat(v);
+    if (shorthand) {
+      const v = shorthand[1].trim().split(/\s+/).map(px);
+      if (v.length === 1) return [v[0], v[0], v[0], v[0]];
+      if (v.length === 2) return [v[0], v[1], v[0], v[1]];
+      if (v.length === 3) return [v[0], v[1], v[2], v[1]];
+      return v;
+    }
+    if (inline) {
+      const v = inline[1].trim().split(/\s+/).map(px);
+      return [0, v[0], 0, v[v.length - 1]];
+    }
+    return null;
   }
 
-  async function allSrc() {
-    const dir = new URL("../src/", import.meta.url);
-    const names = (await readdir(dir)).filter((n) => /\.(js|css|html)$/.test(n));
-    return Promise.all(names.map(async (name) => ({ name, text: await readFile(new URL(name, dir), "utf8") })));
+  // The announce function evaluated against stubbed rAF / timers / live region (behavioural pins, not text pins).
+  async function createAnnounceHarness() {
+    const code = await strippedSource();
+    const body = topLevelFunction(code, "announce");
+    const helpers = [...code.matchAll(/^(?:let|const|var) [^\n]*announce[^\n]*$/gim)].map((m) => m[0]).join("\n");
+    const history = [];
+    const region = {
+      value: "previous",
+      get textContent() {
+        return this.value;
+      },
+      set textContent(next) {
+        this.value = next;
+        history.push(next);
+      }
+    };
+    const frames = new Map();
+    const timers = new Map();
+    let ids = 0;
+    const sandbox = {
+      desktopLive: region,
+      requestAnimationFrame: (cb) => (frames.set(++ids, cb), ids),
+      cancelAnimationFrame: (id) => frames.delete(id),
+      setTimeout: (cb, ms) => (timers.set(++ids, { cb, ms }), ids),
+      clearTimeout: (id) => timers.delete(id)
+    };
+    vm.createContext(sandbox);
+    const announce = vm.runInContext(`${helpers}\n${body}\n;announce`, sandbox);
+    return {
+      announce,
+      region,
+      history,
+      timers,
+      runFrames() {
+        const pending = [...frames.entries()];
+        frames.clear();
+        pending.forEach(([, cb]) => cb(0));
+      },
+      runTimers() {
+        const pending = [...timers.entries()];
+        timers.clear();
+        pending.forEach(([, { cb }]) => cb());
+      }
+    };
   }
 
   // ---- Decision 4 / AS-CMF-10: announce re-reads a repeated string ----
-  it("AS-CMF-10: announce clears the region, sets the text on the next frame, with a ~50 ms timer fallback", async () => {
-    const code = await source();
+  it("AS-CMF-10: announce clears the region at once and sets the text on the next frame (an equal string mutates twice)", async () => {
+    const h = await createAnnounceHarness();
+    h.region.value = "Link deleted";
+    h.announce("Link deleted");
+    assert.equal(h.region.textContent, "", "cleared synchronously");
+    assert.deepEqual(h.history, [""], "the only write before the frame is the clear");
+    h.runFrames();
+    assert.equal(h.region.textContent, "Link deleted", "the text arrives on the frame");
+  });
+
+  it("AS-CMF-10: if requestAnimationFrame never fires (hidden tab) a ~50 ms timer sets the text", async () => {
+    const h = await createAnnounceHarness();
+    h.announce("Weather updated");
+    assert.equal(h.region.textContent, "");
+    assert.ok(h.timers.size >= 1, "a fallback timer is scheduled");
+    for (const { ms } of h.timers.values()) assert.ok(ms >= 30 && ms <= 100, `fallback delay is about 50 ms, got ${ms}`);
+    h.runTimers();
+    assert.equal(h.region.textContent, "Weather updated");
+  });
+
+  it("AS-CMF-10: a second announce before the frame replaces the first; the first text is never set", async () => {
+    const h = await createAnnounceHarness();
+    h.announce("first");
+    h.announce("second");
+    h.runFrames();
+    h.runTimers();
+    assert.equal(h.region.textContent, "second");
+    assert.ok(!h.history.includes("first"), "the replaced text never reaches the region");
+  });
+
+  it('AS-CMF-10: announce("") clears at once and cancels a pending text', async () => {
+    const h = await createAnnounceHarness();
+    h.announce("pending");
+    h.announce("");
+    assert.equal(h.region.textContent, "");
+    h.runFrames();
+    h.runTimers();
+    assert.equal(h.region.textContent, "");
+    assert.ok(!h.history.includes("pending"));
+  });
+
+  it("AS-CMF-10: desktopLive is written only inside announce; the call site keeps announce(\"Weather updated\")", async () => {
+    const code = await strippedSource();
     const body = topLevelFunction(code, "announce");
-    assert.match(body, /desktopLive\.textContent = ""/, "the region is cleared first");
-    assert.match(body, /requestAnimationFrame\(/, "the text is set on the next animation frame");
-    assert.match(body, /setTimeout\(/, "a timer fallback covers a hidden tab");
-    const literal = body.match(/setTimeout\([\s\S]*?,\s*(\d+)\s*\)/);
-    const named = code.match(/const ANNOUNCE\w*MS = (\d+);/);
-    const ms = Number(literal?.[1] ?? named?.[1]);
-    assert.ok(ms >= 30 && ms <= 100, `fallback delay is about 50 ms, got ${ms}`);
-    // The text is assigned after the clear: the clear comes first in the source.
-    assert.ok(body.indexOf('desktopLive.textContent = ""') < body.search(/requestAnimationFrame\(/), "clear before the frame is scheduled");
+    assert.doesNotMatch(code.replace(body, ""), /desktopLive\.textContent\s*=(?!=)/, "no other assignment to the live region");
+    assert.match(code, /announce\("Weather updated"\)/);
   });
 
-  it("AS-CMF-10: a pending announcement is replaced by a later one, and announce(\"\") clears at once", async () => {
-    const body = topLevelFunction(await source(), "announce");
-    assert.match(body, /cancelAnimationFrame|clearTimeout/, "the pending frame or timer is cancelled by the next call");
-    assert.match(body, /text === ""|!text\b|text\.length === 0/, "an empty text is a separate immediate path");
-  });
-
-  it("AS-CMF-10: desktopLive is written only inside announce; no 'Weather updated' special case remains", async () => {
-    const code = await source();
-    const body = topLevelFunction(code, "announce");
-    const outside = code.replace(body, "");
-    assert.doesNotMatch(outside, /desktopLive\.textContent\s*=/, "no other assignment to the live region");
-    assert.doesNotMatch(code, /cleared first so a repeated "Weather updated"/);
-    assert.match(code, /announce\("Weather updated"\)/, "the call site stays");
-  });
-
-  // ---- Decision 1 / 3: announcement phrase and the service option in change mode ----
+  // ---- Decision 1 / 3: announcement phrase, the service option in change mode only ----
   it("AS-CMF-01/22: the success of a city change announces `City set to <Name, Country>` via announce", async () => {
-    const code = await source();
-    assert.match(code, /City set to /);
+    const code = await strippedSource();
     assert.match(code, /announce\(\s*[`"']City set to /);
     assert.match(code, /City set to \$\{[^}]*cityDisplayLabel\(/, "the label is cityDisplayLabel of the stored location");
   });
 
-  it("AS-CMF-05/08: change mode asks the service for persist: after-forecast with a stale flag", async () => {
-    const code = await source();
-    assert.match(code, /persist: "after-forecast"/);
-    assert.match(code, /isStale/);
+  it("AS-CMF-05/08/09: persist: after-forecast is passed exactly twice in change mode and never in the wizard", async () => {
+    const code = await strippedSource();
+    const modal = code.slice(code.indexOf("function attachCityModalListeners("), code.indexOf("function showCityModal("));
+    assert.ok(modal.length > 100, "change-mode listeners found");
+    assert.equal(modal.split('persist: "after-forecast"').length - 1, 2, "setCity and selectLocation");
+    assert.equal(modal.split("isStale").length - 1 >= 4, true, "both calls hand their isStale (parameter and option)");
+    const wizard = code.slice(code.indexOf("function attachOnboardingWizardListeners("), code.indexOf("function hideOnboardingWizard("));
+    assert.ok(wizard.length > 100, "wizard listeners found");
+    assert.doesNotMatch(wizard, /persist:|isStale/);
+    assert.match(wizard, /changeCity\(\s*\(\) =>\s*weatherService\.selectLocation\(\{[^}]*\}\),\s*\{ onSuccess: goToOnboardingStep2 \}\s*\)/);
+    assert.match(wizard, /changeCity\(\(\) => weatherService\.setCity\(cityName\), \{ onSuccess: goToOnboardingStep2 \}\)/);
+  });
+
+  it("AS-CMF-08: changeCity owns a stale flag: it hands isStale to the run and marks it stale on timeout and on a new attempt", async () => {
+    const change = topLevelFunction(await strippedSource(), "changeCity");
+    assert.match(change, /isStale/);
+    assert.match(change, /await withTimeout\(run\(isStale\)\)/);
+    assert.match(change, /[sS]tale\w*\s*=\s*true/, "a stale flag is set");
   });
 
   // ---- Decision 5 / AS-CMF-11, AS-CMF-22: the City field with no city ----
-  it("AS-CMF-22: the string `No city set` appears nowhere in src/", async () => {
+  it("AS-CMF-22: `No city set` is not a string literal anywhere in src/ (code, markup)", async () => {
     for (const { name, text } of await allSrc()) {
-      assert.doesNotMatch(text, /No city set/, `${name} must not contain "No city set"`);
+      const code = name.endsWith(".js") ? stripComments(text) : name.endsWith(".css") ? stripCss(text) : text;
+      assert.doesNotMatch(code, /["'`][^"'`\n]*No city set[^"'`\n]*["'`]/, `${name} must not contain a "No city set" literal`);
+      if (name.endsWith(".html")) assert.doesNotMatch(code, /No city set/, `${name} must not show the text`);
     }
   });
 
-  it("AS-CMF-11: with no city the City field is one `Set a city` line, the hint is hidden and out of aria-labelledby", async () => {
-    const code = await source();
-    const sync = topLevelFunction(code, "syncWeatherDialogCity");
-    assert.match(sync, /"Set a city"/, "the value line");
-    assert.match(sync, /hidden/, "the separate hint is hidden without a city");
-    assert.match(sync, /aria-labelledby/, "the accessible name is rebuilt: a hidden hint still counts through aria-labelledby unless left out");
+  it("AS-CMF-11: with no city the value line is `Set a city`, the hint is hidden by the city, the name is set with setAttribute", async () => {
+    const sync = topLevelFunction(await strippedSource(), "syncWeatherDialogCity");
+    assert.match(sync, /\[data-weather-dialog-city\][^;]*\.textContent\s*=[^;]*"Set a city"/, "the value line shows Set a city");
+    assert.match(sync, /\.hidden\s*=[^;]*(?:label|location)|toggleAttribute\("hidden",[^)]*(?:label|location)/, "the hint's hidden depends on the stored city");
+    assert.match(sync, /setAttribute\("aria-labelledby",/, "the accessible name is rebuilt on every sync");
     assert.match(sync, /"Change"/, "with a city the hint is Change");
   });
 
   // ---- Decision 6 / AS-CMF-13..15: the description becomes the status while locating ----
-  it("AS-CMF-13/14: the words around the location link are separate nodes, hidden (not just visually) while locating", async () => {
-    const code = await source();
-    const description = topLevelFunction(code, "createCityLocationDescription");
-    assert.doesNotMatch(description, /append\(\s*"Enter a city, ", link/, "no bare text node before the link on the wizard step");
-    assert.doesNotMatch(description, /append\(\s*"Search for a city or ", link/, "no bare text node before the link in the modal");
+  it("AS-CMF-13/14: while locating the words around the link are hidden (they leave the accessibility tree), the link shows the busy label", async () => {
+    const code = await strippedSource();
     const sync = topLevelFunction(code, "syncLocationLink");
-    assert.match(sync, /hidden/, "the surrounding words use the hidden attribute (they leave the accessibility tree)");
-    assert.match(sync, /LOCATION_BUSY_LABEL/);
+    assert.match(sync, /\.hidden\s*=\s*locating|toggleAttribute\("hidden",\s*locating\)|setAttribute\("hidden"/);
+    assert.match(sync, /\.textContent\s*=\s*LOCATION_BUSY_LABEL/);
     assert.match(code, /const LOCATION_BUSY_LABEL = "Finding your location\\u2026";/, "the status text is unchanged");
-  });
-
-  it("AS-CMF-13: the busy label never sits inside the sentence", async () => {
-    const code = await source();
-    assert.doesNotMatch(code, /Finding your location…\./, "no `Finding your location….` in the source");
-    assert.doesNotMatch(code, /Finding your location…, or skip/, "no `Finding your location…, or skip for now.`");
   });
 
   // ---- Decision 7 / AS-CMF-17: focus ring of the location link ----
   it("AS-CMF-17: .city-location-link:focus-visible has horizontal padding, an equal negative margin and the control radius", async () => {
-    const css = await readFile(new URL("../src/surfaces.css", import.meta.url), "utf8");
-    const rule = cssRules(css).find((r) => r.selector === ".city-location-link:focus-visible");
+    const rule = ruleFor(await surfaces(), ".city-location-link:focus-visible");
     assert.ok(rule, "the focus-visible rule exists");
-    const padding = rule.body.match(/padding(?:-inline|-left)?: (?:0 )?(\d+(?:\.\d+)?)px/);
-    assert.ok(padding, `a horizontal padding in ${rule.body}`);
-    const pad = padding[1];
-    assert.match(rule.body, new RegExp(`margin(?:-inline|-left)?: (?:0 )?-${pad.replace(".", "\\.")}px`), "the margin is the negative of the padding, so the text does not move");
+    const padding = boxValues(rule.body, "padding");
+    const margin = boxValues(rule.body, "margin");
+    assert.ok(padding && margin, `padding and margin in ${rule.body}`);
+    assert.ok(padding[1] > 0 && padding[3] > 0, `horizontal padding > 0, got ${padding}`);
+    assert.equal(margin[1], -padding[1], "right margin cancels the right padding");
+    assert.equal(margin[3], -padding[3], "left margin cancels the left padding (the text does not move)");
     assert.match(rule.body, /border-radius: var\(--radius-control\)/);
-    assert.match(rule.body, /box-shadow: 0 0 0 2px var\(--focus-overlay-ring\)/, "the ring is kept");
+    assert.match(rule.body, /box-shadow: 0 0 0 2px var\(--focus-[a-z-]*ring\)/, "the ring is kept");
   });
 
   // ---- Decision 8 / AS-CMF-18: a locked starter list is a keyboard scroll stop ----
   it("AS-CMF-18: tabindex and aria-label \"Starter links\" are set only while the list is locked", async () => {
-    const code = await source();
+    const code = await strippedSource();
     const sync = topLevelFunction(code, "syncOnboardingWizardUi");
     const from = sync.indexOf('const list = onboardingWizardRoot.querySelector(".onboarding-wizard__starters");');
     assert.notEqual(from, -1, "the list block exists");
@@ -2471,24 +2598,36 @@ describe("city modal focus and copy source (run 44, docs/city-modal-focus-copy.m
     assert.match(locked, /"Starter links"/);
     assert.match(unlocked, /removeAttribute\("tabindex"\)/);
     assert.match(unlocked, /removeAttribute\("aria-label"\)/);
-    const build = topLevelFunction(code, "buildOnboardingStep2");
-    assert.doesNotMatch(build, /tabindex|tabIndex|Starter links/, "the unlocked list has no static tab stop or name");
+    assert.doesNotMatch(topLevelFunction(code, "buildOnboardingStep2"), /tabindex|tabIndex|Starter links/, "the unlocked list has no static tab stop or name");
   });
 
-  it("AS-CMF-18: the locked list has a visible, unclipped focus ring (inset ring or negative-offset outline)", async () => {
-    const css = await readFile(new URL("../src/surfaces.css", import.meta.url), "utf8");
-    const rule = cssRules(css).find((r) => /\.onboarding-wizard__starters\[data-starters-locked="true"\]:focus-visible/.test(r.selector));
+  it("AS-CMF-18: the locked list has a visible, unclipped focus ring (inset ring or negative-offset outline) in a focus token", async () => {
+    const rule = ruleFor(await surfaces(), '.onboarding-wizard__starters[data-starters-locked="true"]:focus-visible');
     assert.ok(rule, "a :focus-visible rule for the locked list");
     assert.match(rule.body, /inset|outline-offset: -/);
+    assert.match(rule.body, /var\(--(?:focus|soft)-[a-z-]*ring\)/);
   });
 
   // ---- Decision 9 / AS-CMF-19: the second press does not move focus ----
-  it("AS-CMF-19: a capture mousedown listener prevents default inside the post-close guard window", async () => {
-    const code = await source();
-    const listener = code.match(/document\.addEventListener\(\s*"mousedown",\s*\(event\) => \{([\s\S]*?)\},\s*true\s*\);/);
-    assert.ok(listener, "a capture-phase mousedown listener on document");
-    assert.match(listener[1], /performance\.now\(\) < postCloseGuardUntil/);
-    assert.match(listener[1], /event\.preventDefault\(\);/);
-    assert.doesNotMatch(listener[1], /event\.detail/, "mousedown is guarded by time alone (the first press has detail 1 too)");
+  it("AS-CMF-19: a capture mousedown listener checks the guard window before preventing default", async () => {
+    const code = await strippedSource();
+    const call = code.search(/document\.addEventListener\(\s*"mousedown"/);
+    assert.notEqual(call, -1, "a document mousedown listener");
+    let depth = 0;
+    let end = call;
+    for (let i = code.indexOf("(", call); i < code.length; i += 1) {
+      if (code[i] === "(") depth += 1;
+      if (code[i] === ")" && --depth === 0) {
+        end = i;
+        break;
+      }
+    }
+    const listener = code.slice(call, end + 1);
+    assert.match(listener, /(?:,\s*true\s*\)$|capture:\s*true)/, "capture phase");
+    const windowCheck = listener.search(/performance\.now\(\)\s*<\s*postCloseGuardUntil/);
+    const prevent = listener.search(/\b\w+\.preventDefault\(\)/);
+    assert.ok(windowCheck !== -1 && prevent !== -1, "both the window check and preventDefault exist");
+    assert.ok(windowCheck < prevent, "the time check comes before preventDefault");
+    assert.doesNotMatch(listener, /\.detail/, "mousedown is guarded by time alone (the first press has detail 1 too)");
   });
 });

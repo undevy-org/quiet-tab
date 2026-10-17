@@ -410,6 +410,7 @@ describe("createWeatherService", () => {
       assert.equal(result.location.name, TBILISI.name);
     });
   });
+
   describe("persist: after-forecast (run 44, spec docs/city-modal-focus-copy.md decision 3)", () => {
     const BERLIN = { name: "Berlin", country: "Germany", latitude: 52.52, longitude: 13.41 };
 
@@ -514,11 +515,14 @@ describe("createWeatherService", () => {
         });
 
         const pending = call(harness.service, { persist: "after-forecast", isStale: () => false });
-        await new Promise((resolve) => setTimeout(resolve, 20));
-        assert.deepEqual(harness.log, [], "no write while the forecast is pending");
-        assert.equal(await harness.realLocationStore.getLocation(), null);
-
-        releaseWeather();
+        try {
+          await new Promise(setImmediate);
+          await new Promise(setImmediate);
+          assert.deepEqual(harness.log, [], "no write while the forecast is pending");
+          assert.equal(await harness.realLocationStore.getLocation(), null);
+        } finally {
+          releaseWeather();
+        }
         await pending;
         assert.deepEqual(harness.log, ["setLocation", "setCache"]);
       });
@@ -532,26 +536,60 @@ describe("createWeatherService", () => {
           }
         });
 
-        await assert.rejects(() => call(harness.service, { persist: "after-forecast", isStale: () => stale }));
+        await assert.rejects(
+          () => call(harness.service, { persist: "after-forecast", isStale: () => stale }),
+          (error) => error instanceof Error && typeof error.message === "string" && error.message !== "",
+          "a stale attempt rejects with a real Error that carries a message"
+        );
         assert.deepEqual(harness.log, []);
         assert.equal(await harness.realLocationStore.getLocation(), null);
         assert.equal(await harness.realCacheStore.getCache(), null);
       });
 
-      it(`${name}: isStale() is not consulted as true before the fetch finishes (a fresh attempt is not dropped)`, async () => {
-        const harness = createRecordingHarness();
-        let calls = 0;
+      it(`${name}: isStale() is first consulted after the forecast and the air quality have resolved`, async () => {
+        const order = [];
+        const harness = createRecordingHarness({
+          fetchWeather: async () => {
+            order.push("weather");
+            return WEATHER_READING;
+          },
+          fetchAirQuality: async () => {
+            order.push("air");
+            return AIR_READING;
+          }
+        });
 
         const result = await call(harness.service, {
           persist: "after-forecast",
           isStale: () => {
-            calls += 1;
+            order.push("isStale");
             return false;
           }
         });
 
-        assert.ok(calls >= 1, "isStale is checked at least once, after the fetch");
         assert.equal(result.status, "ready");
+        assert.ok(order.includes("isStale"), "isStale is consulted");
+        assert.ok(order.indexOf("isStale") > Math.max(order.indexOf("weather"), order.indexOf("air")), `order was ${order.join(",")}`);
+        assert.deepEqual(harness.log, ["setLocation", "setCache"]);
+      });
+
+      it(`${name}: persist: after-forecast without isStale does not throw and behaves as never stale`, async () => {
+        const harness = createRecordingHarness();
+
+        const result = await call(harness.service, { persist: "after-forecast" });
+
+        assert.equal(result.status, "ready");
+        assert.deepEqual(harness.log, ["setLocation", "setCache"]);
+      });
+
+      it(`${name}: isStale without the persist option is ignored: the default path persists first even for a stale attempt`, async () => {
+        const harness = createRecordingHarness();
+
+        const result = await call(harness.service, { isStale: () => true });
+
+        assert.equal(result.status, "ready");
+        assert.deepEqual(harness.log, ["setLocation", "setCache"]);
+        assert.equal((await harness.realLocationStore.getLocation()).name, "Berlin");
       });
 
       it(`${name}: a setCache failure after a good forecast keeps the location and still returns the result`, async () => {
