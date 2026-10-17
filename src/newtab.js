@@ -329,6 +329,15 @@ document.addEventListener(
   },
   true
 );
+// The press of a double click moves the focus before its click is swallowed (backlog 99): inside the window the default of
+// mousedown is cancelled, so the focus stays where the code put it. A keyboard activation has no mousedown.
+document.addEventListener(
+  "mousedown",
+  (event) => {
+    if (performance.now() < postCloseGuardUntil) event.preventDefault();
+  },
+  true
+);
 const CITY_REQUEST_TIMEOUT_MS = 15000;
 
 function effectiveWeatherResult() {
@@ -474,6 +483,7 @@ function createFormRow(labelText, control) {
 
   if (control.tagName === "BUTTON") {
     // A button's visible text belongs to its name (WCAG 2.5.3): the row label plus every part of the control that carries an id.
+    control.dataset.rowLabelId = labelSpan.id;
     const parts = [labelSpan.id, ...[...control.querySelectorAll("[id]")].map((part) => part.id)];
     control.setAttribute("aria-labelledby", parts.join(" "));
     return row;
@@ -758,17 +768,10 @@ function createCityLocationDescription(variant) {
   locationStatusNode = status;
   // The words around the link are nodes of their own: while the position is looked up they are hidden (they leave the
   // accessibility tree) and the link alone is the line (syncLocationLink).
-  if (onboarding) {
-    const beforeText = createNode("span", null, "Enter a city, ");
-    const afterText = createNode("span", null, ", or skip for now.");
-    beforeText.dataset.cityLocationWords = afterText.dataset.cityLocationWords = "";
-    paragraph.append(beforeText, link, afterText, status);
-  } else {
-    const beforeText = createNode("span", null, "Search for a city or ");
-    const afterText = createNode("span", null, ".");
-    beforeText.dataset.cityLocationWords = afterText.dataset.cityLocationWords = "";
-    paragraph.append(beforeText, link, afterText, status);
-  }
+  const beforeText = createNode("span", null, onboarding ? "Enter a city, " : "Search for a city or ");
+  const afterText = createNode("span", null, onboarding ? ", or skip for now." : ".");
+  beforeText.dataset.cityLocationWords = afterText.dataset.cityLocationWords = "";
+  paragraph.append(beforeText, link, afterText, status);
   return paragraph;
 }
 
@@ -1134,13 +1137,21 @@ function teardownLocationLookup() {
   locating = false;
   weatherBusy = false;
   clearLocationStatus();
+  releaseDescriptionHeight();
   const host = cityFormHostRoot();
-  if (host) syncLocationLink(host); // releases the pinned height and brings the words back
+  if (host) syncLocationLink(host); // brings the words back
 }
 
 function focusLocationLink() {
   const link = cityFormHostRoot()?.querySelector('[data-weather-action="use-location"]');
   if (link instanceof HTMLElement) link.focus();
+}
+
+// The paragraph whose height is pinned while locating; released through the node itself, wherever the form went.
+let pinnedDescription = null;
+function releaseDescriptionHeight() {
+  if (pinnedDescription) pinnedDescription.style.minHeight = "";
+  pinnedDescription = null;
 }
 
 function syncLocationLink(host) {
@@ -1150,13 +1161,16 @@ function syncLocationLink(host) {
   // the height it had just before the switch so the field below does not jump; the height is released on every exit.
   const paragraph = link.parentElement;
   if (locating) {
-    if (paragraph && paragraph.style.minHeight === "") paragraph.style.minHeight = `${paragraph.offsetHeight}px`;
+    if (paragraph && !pinnedDescription && paragraph.offsetHeight > 0) {
+      pinnedDescription = paragraph;
+      paragraph.style.minHeight = `${paragraph.offsetHeight}px`;
+    }
     link.textContent = LOCATION_BUSY_LABEL;
     link.setAttribute("aria-disabled", "true");
   } else {
     link.textContent = LOCATION_LINK_LABEL;
     link.removeAttribute("aria-disabled");
-    if (paragraph) paragraph.style.minHeight = "";
+    releaseDescriptionHeight();
   }
   for (const words of paragraph?.querySelectorAll("[data-city-location-words]") ?? []) words.hidden = locating;
 }
@@ -1309,7 +1323,9 @@ function syncCityModal() {
 // While a city request runs a press on the backdrop or on empty dialog space would move the focus to body (the controls are
 // disabled): its default is cancelled, so the focus stays where the busy rescue put it (the title).
 function keepFocusWhileBusy(event) {
-  if (!weatherBusy || locating) return;
+  // A press on the background while the position is looked up is cancelled too: the link (aria-disabled, never `disabled`)
+  // keeps the focus and is itself excluded below, so pressing it still works as a plain focus.
+  if (!weatherBusy) return;
   const target = event.target instanceof Element ? event.target : null;
   if (target?.closest("input:not(:disabled), button:not(:disabled)")) return;
   event.preventDefault();
@@ -1317,6 +1333,7 @@ function keepFocusWhileBusy(event) {
 
 // One listener per event on the modal root (backdrop, dismiss button, suggestions, submit).
 function attachCityModalListeners(root) {
+  root.addEventListener("mousedown", keepFocusWhileBusy);
   root.addEventListener("focusin", () => {
     cityModalHadFocus = true;
   });
@@ -1425,7 +1442,6 @@ function showCityModal(mode, openerSelector) {
   try {
     root = buildCityModal(mode, weatherLocationError ? null : currentLocation());
     attachCityModalListeners(root); // before any focus() so the focusin below is seen
-    root.addEventListener("mousedown", keepFocusWhileBusy);
     document.body.appendChild(root);
   } catch (error) {
     // Nothing half-open: a failed build must not leave the UI state "open" and block every later open.
@@ -1604,8 +1620,16 @@ function syncOnboardingWizardUi() {
   });
   const list = onboardingWizardRoot.querySelector(".onboarding-wizard__starters");
   if (list instanceof HTMLElement) {
-    if (onboardingStartersCommitted) list.dataset.startersLocked = "true";
-    else delete list.dataset.startersLocked;
+    if (onboardingStartersCommitted) {
+      // Locked rows leave the tab order: the list itself becomes the keyboard stop that scrolls them (named, or axe flags it).
+      list.dataset.startersLocked = "true";
+      list.setAttribute("tabindex", "0");
+      list.setAttribute("aria-label", "Starter links");
+    } else {
+      delete list.dataset.startersLocked;
+      list.removeAttribute("tabindex");
+      list.removeAttribute("aria-label");
+    }
   }
   onboardingWizardRoot.querySelector(".onboarding-wizard__progress")?.setAttribute("aria-label", `Step ${progressPillCount(onboardingStep)} of 2`);
   if (dialog) dialog.setAttribute("aria-busy", String((weatherBusy && !locating) || finishBusy));
@@ -1731,6 +1755,7 @@ function buildOnboardingWizard() {
 }
 
 function attachOnboardingWizardListeners(root) {
+  root.addEventListener("mousedown", keepFocusWhileBusy);
   root.addEventListener("focusin", () => {
     onboardingWizardHadFocus = true;
   });
@@ -2279,7 +2304,7 @@ function buildDialogContent(root, dialog) {
       const cityValue = createNode("span", null);
       cityValue.dataset.weatherDialogCity = "";
       cityValue.id = `city-field-value-${formRowIdSeq}`;
-      const cityHint = createNode("span", "city-field__hint");
+      const cityHint = createNode("span", "city-field__hint", "Change");
       cityHint.id = `city-field-hint-${formRowIdSeq}`;
       cityField.append(cityValue, cityHint);
       cityField.addEventListener("click", () => {
@@ -2325,15 +2350,13 @@ function syncWeatherDialogCity(root = desktopDialogRoot) {
   const location = weatherLocationError ? null : currentLocation();
   const field = root.querySelector('[data-weather-action="open-city-modal"]');
   const label = location ? cityDisplayLabel(location) : "";
-  root.querySelector("[data-weather-dialog-city]").textContent = label || "Set a city"; // no city: one muted line, no separate hint
   const value = root.querySelector("[data-weather-dialog-city]");
   const hint = field.querySelector(".city-field__hint");
+  value.textContent = label || "Set a city"; // no city: one muted line, no separate hint
   value.toggleAttribute("data-empty", !label);
-  hint.textContent = "Change";
   hint.hidden = !label;
   // The name is the row label plus the visible parts (single spaces, no commas); a hidden hint is left out.
-  const rowLabelId = (field.getAttribute("aria-labelledby") ?? "").split(" ")[0];
-  field.setAttribute("aria-labelledby", [rowLabelId, value.id, label ? hint.id : null].filter(Boolean).join(" "));
+  field.setAttribute("aria-labelledby", [field.dataset.rowLabelId, value.id, label ? hint.id : null].filter(Boolean).join(" "));
   if (label) field.title = label; // the full label whenever a city is stored; the accessible name comes from aria-labelledby
   else field.removeAttribute("title");
   field.disabled = !weatherService;
