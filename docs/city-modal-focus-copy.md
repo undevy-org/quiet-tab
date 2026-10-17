@@ -182,7 +182,7 @@ Common setup: the E2E harness with the first-run wizard off unless stated; defau
 
 ### AS-CMF-15 Closing during a lookup leaves no stale line
 - Given: the AS-CMF-13 state.
-- When: while the lookup runs Escape, Cancel and the backdrop do nothing (`weatherBusy`, `docs/use-my-location.md`); the held position is answered (success, then separately an error); the modal is closed; it is opened again. Separately the form is torn down by code while locating (wizard Skip is disabled while busy, so the path is: the lookup ends and the wizard is left; the executor uses the reachable teardown found in `teardownLocationLookup` callers).
+- When: while the lookup runs Escape, Cancel and the backdrop do nothing (`weatherBusy`, `docs/use-my-location.md`); the held position is answered (success, then separately an error); the modal is closed; it is opened again.
 - Then: the new modal shows the full sentence, no busy line, no stale status text, no leftover `aria-disabled`.
 - Verified by: E2E `dg-84`.
 
@@ -240,7 +240,7 @@ The executor greps `.private/e2e/scenarios/` and updates (never weakens) before 
 
 ## Review focus
 
-1. Scenarios: unchanged Save versus a picked suggestion with the same coordinates; persist-after-forecast ordering and the stale-attempt flag (timeout, a second attempt, the modal closed meanwhile); that the wizard path really keeps persist-then-fetch; focus target when the hint cell becomes a weather tile; the stacked-modal cases; announce timing (frame) with a rapid second call; the double-click window edges (299 / 301 ms).
+1. Scenarios: unchanged Save versus a picked suggestion with the same coordinates; persist-after-forecast ordering and the stale-attempt flag (timeout, a second attempt); that the wizard path really keeps persist-then-fetch; focus target when the hint cell becomes a weather tile; the stacked-modal cases; announce timing (frame) with a rapid second call; the double-click window edges (299 / 301 ms).
 2. Visual: the `Set a city` muted line in the City row (contrast, both themes, 320 px); the one-line status in place of the sentence (no jump of the field); the link focus ring with padding and radius against the muted text; the locked list's focus ring not clipped.
 3. Accessibility/texts: the accessible name `City Set a city` (no double reading); the status line read once; `aria-disabled` link keeps focus; `Starter links` name; `City set to …` politeness and no double announcement with the focus move; reduced motion (nothing animated here).
 
