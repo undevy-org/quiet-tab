@@ -2186,8 +2186,10 @@ describe("onboarding wizard polish source pins (run 42, docs/onboarding-wizard-p
     const code = await source();
     const sync = functionText(code, "syncOnboardingWizardUi");
     assert.match(sync, /box\.disabled = finishBusy \|\| onboardingStartersCommitted;/);
-    assert.match(sync, /list\.dataset\.startersLocked = "true"/);
-    assert.match(sync, /delete list\.dataset\.startersLocked/);
+    // run 44: the attribute handling moved into setStartersLocked (with the tabindex and the name)
+    const setter = functionText(code, "setStartersLocked");
+    assert.match(setter, /list\.dataset\.startersLocked = "true"/);
+    assert.match(setter, /delete list\.dataset\.startersLocked/);
     const css = await appStyles();
     assert.match(
       css,
@@ -2585,7 +2587,8 @@ describe("city modal focus and copy source (run 44, docs/city-modal-focus-copy.m
   it("L1-01: a press on a non-interactive spot of a busy city modal or wizard cannot move the focus to body", async () => {
     const code = await strippedSource();
     const handler = topLevelFunction(code, "keepFocusWhileBusy");
-    assert.match(handler, /if \(!weatherBusy\) return;/);
+    assert.match(handler, /weatherBusy/);
+    assert.match(handler, /favoritesBusy && onboardingStep === 2/, "the wizard's Finish busy (aria-busy too) counts");
     assert.match(handler, /input:not\(:disabled\), button:not\(:disabled\)/);
     assert.match(handler, /\bevent\.preventDefault\(\)/);
     for (const attach of ["attachCityModalListeners", "attachOnboardingWizardListeners"]) {
@@ -2617,20 +2620,23 @@ describe("city modal focus and copy source (run 44, docs/city-modal-focus-copy.m
     const from = sync.indexOf('const list = onboardingWizardRoot.querySelector(".onboarding-wizard__starters");');
     assert.notEqual(from, -1, "the list block exists");
     const block = sync.slice(from, sync.indexOf(".onboarding-wizard__progress"));
-    const [locked, unlocked = ""] = block.split(/\belse\b/);
-    assert.match(locked, /startersLocked = "true"/);
-    assert.match(locked, /setAttribute\("tabindex", "0"\)|\.tabIndex = 0/);
-    assert.match(locked, /"Starter links"/);
-    assert.match(unlocked, /removeAttribute\("tabindex"\)/);
-    assert.match(unlocked, /removeAttribute\("aria-label"\)/);
+    assert.match(block, /setStartersLocked\(list, onboardingStartersCommitted\)/, "locked only by the committed write");
+    const setter = topLevelFunction(code, "setStartersLocked");
+    const [lockedSet, unlockedSet = ""] = setter.split(/\belse\b/);
+    assert.match(lockedSet, /startersLocked = "true"/);
+    assert.match(lockedSet, /setAttribute\("tabindex", "0"\)|\.tabIndex = 0/);
+    assert.match(lockedSet, /"Starter links"/);
+    assert.match(unlockedSet, /removeAttribute\("tabindex"\)/);
+    assert.match(unlockedSet, /removeAttribute\("aria-label"\)/);
     assert.doesNotMatch(topLevelFunction(code, "buildOnboardingStep2"), /tabindex|tabIndex|Starter links/, "the unlocked list has no static tab stop or name");
   });
 
   it("AS-CMF-18: the locked list has a visible, unclipped focus ring (inset ring or negative-offset outline) in a focus token", async () => {
     const rule = ruleFor(await surfaces(), '.onboarding-wizard__starters[data-starters-locked="true"]:focus-visible');
     assert.ok(rule, "a :focus-visible rule for the locked list");
-    assert.match(rule.body, /inset|outline-offset: -/);
-    assert.match(rule.body, /var\(--(?:focus|soft)-[a-z-]*ring\)/);
+    assert.match(rule.body, /outline: 2px solid var\(--focus-[a-z-]*ring\)/, "an outline is painted over the opaque rows (an inset shadow is hidden by them)");
+    assert.match(rule.body, /outline-offset: -/);
+    assert.doesNotMatch(rule.body, /inset/);
   });
 
   // ---- Decision 9 / AS-CMF-19: the second press does not move focus ----
@@ -2649,7 +2655,7 @@ describe("city modal focus and copy source (run 44, docs/city-modal-focus-copy.m
     }
     const listener = code.slice(call, end + 1);
     assert.match(listener, /(?:,\s*true\s*\)$|capture:\s*true)/, "capture phase");
-    const windowCheck = listener.search(/performance\.now\(\)\s*<\s*postCloseGuardUntil/);
+    const windowCheck = listener.search(/performance\.now\(\)\s*<\s*postCloseGuardUntil|postCloseGuardUntil\s*>\s*performance\.now\(\)/);
     const prevent = listener.search(/\b\w+\.preventDefault\(\)/);
     assert.ok(windowCheck !== -1 && prevent !== -1, "both the window check and preventDefault exist");
     assert.ok(windowCheck < prevent, "the time check comes before preventDefault");

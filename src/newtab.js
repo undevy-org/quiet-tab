@@ -330,7 +330,9 @@ document.addEventListener(
   true
 );
 // The press of a double click moves the focus before its click is swallowed (backlog 99): inside the window the default of
-// mousedown is cancelled, so the focus stays where the code put it. A keyboard activation has no mousedown.
+// mousedown is cancelled, so the focus stays where the code put it. A keyboard activation has no mousedown. The cancel applies to
+// a press on ANY target in the window, also a deliberate press on another control: accepted (docs/city-modal-focus-copy.md,
+// Accepted exceptions), the click of such a press is swallowed anyway.
 document.addEventListener(
   "mousedown",
   (event) => {
@@ -1137,9 +1139,9 @@ function teardownLocationLookup() {
   locating = false;
   weatherBusy = false;
   clearLocationStatus();
-  releaseDescriptionHeight();
+  releaseDescriptionHeight(); // by the node itself: the form may already be gone, then syncLocationLink below has no host
   const host = cityFormHostRoot();
-  if (host) syncLocationLink(host); // brings the words back
+  if (host) syncLocationLink(host); // brings the words back (its own release is then a no-op)
 }
 
 function focusLocationLink() {
@@ -1325,7 +1327,8 @@ function syncCityModal() {
 function keepFocusWhileBusy(event) {
   // A press on the background while the position is looked up is cancelled too: the link (aria-disabled, never `disabled`)
   // keeps the focus and is itself excluded below, so pressing it still works as a plain focus.
-  if (!weatherBusy) return;
+  // The same busy states that set aria-busy on the dialog (and so the pointer-events rule in surfaces.css).
+  if (!weatherBusy && !(favoritesBusy && onboardingStep === 2 && onboardingWizardRoot)) return;
   const target = event.target instanceof Element ? event.target : null;
   if (target?.closest("input:not(:disabled), button:not(:disabled)")) return;
   event.preventDefault();
@@ -1584,6 +1587,19 @@ function maybeShowOnboardingWizard({ flagRead, dismissed, completeRead, complete
   if (show) showOnboardingWizard();
 }
 
+// Locked rows leave the tab order: the list itself becomes the keyboard stop that scrolls them (named, or axe flags it).
+function setStartersLocked(list, locked) {
+  if (locked) {
+    list.dataset.startersLocked = "true";
+    list.setAttribute("tabindex", "0");
+    list.setAttribute("aria-label", "Starter links");
+  } else {
+    delete list.dataset.startersLocked;
+    list.removeAttribute("tabindex");
+    list.removeAttribute("aria-label");
+  }
+}
+
 function syncOnboardingWizardUi() {
   if (!onboardingWizardRoot) return;
   const dialog = onboardingWizardRoot.querySelector('[role="dialog"]');
@@ -1620,16 +1636,9 @@ function syncOnboardingWizardUi() {
   });
   const list = onboardingWizardRoot.querySelector(".onboarding-wizard__starters");
   if (list instanceof HTMLElement) {
-    if (onboardingStartersCommitted) {
-      // Locked rows leave the tab order: the list itself becomes the keyboard stop that scrolls them (named, or axe flags it).
-      list.dataset.startersLocked = "true";
-      list.setAttribute("tabindex", "0");
-      list.setAttribute("aria-label", "Starter links");
-    } else {
-      delete list.dataset.startersLocked;
-      list.removeAttribute("tabindex");
-      list.removeAttribute("aria-label");
-    }
+    // Only a committed write locks the list. While Finish is busy but nothing is committed yet, the rows are merely disabled for
+    // the moment and the list keeps no tab stop (decided: a stop that would vanish after the write is worse than none).
+    setStartersLocked(list, onboardingStartersCommitted);
   }
   onboardingWizardRoot.querySelector(".onboarding-wizard__progress")?.setAttribute("aria-label", `Step ${progressPillCount(onboardingStep)} of 2`);
   if (dialog) dialog.setAttribute("aria-busy", String((weatherBusy && !locating) || finishBusy));
