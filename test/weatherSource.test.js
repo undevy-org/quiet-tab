@@ -47,7 +47,9 @@ describe("newtab weather source", () => {
   it("submits the modal's city form through setCity and keeps the modal open with the error on failure", async () => {
     const code = await source();
     assert.match(code, /form\.dataset\.weatherForm !== "city"/);
-    assert.match(code, /changeCity\(\(\) => weatherService\.setCity\(cityName\)\)/);
+    // run 44: change mode persists after the forecast (the wizard call below keeps the default path)
+    assert.match(code, /changeCity\(\(isStale\) => weatherService\.setCity\(cityName, \{ persist: "after-forecast", isStale \}\)\)/);
+    assert.match(code, /changeCity\(\(\) => weatherService\.setCity\(cityName\), \{ onSuccess: goToOnboardingStep2 \}\)/);
     assert.match(code, /cityModalError = weatherErrorMessage\(error\);/);
     assert.doesNotMatch(code, /weatherFormError/);
   });
@@ -244,7 +246,8 @@ describe("newtab weather source", () => {
     assert.match(choose, /input\.focus\(\)/);
     assert.match(form, /function closeList\(\) \{\s*cancelPendingSuggestionRequest\(\);/);
     // Save uses the remembered choice without a second geocoding request; edited text drops it.
-    assert.match(listeners, /const picked = activeCityForm\?\.chosen\(\);\s*if \(picked\) \{\s*changeCity\(\(\) => weatherService\.selectLocation\(/);
+    assert.match(listeners, /const picked = activeCityForm\?\.chosen\(\);\s*if \(picked\) \{\s*changeCity\(\(isStale\) => weatherService\.selectLocation\(/);
+    assert.match(listeners, /selectLocation\(\{[^}]*\}, \{ persist: "after-forecast", isStale \}\)/);
     assert.match(form, /chosen: \(\) => \(chosenCity && chosenCity\.label === input\.value \? chosenCity : null\)/);
   });
 
@@ -317,7 +320,7 @@ describe("newtab weather source", () => {
     assert.doesNotMatch(code, /formHost/);
     assert.match(code, /weatherResult = result;\s*renderFavorites\(\);/);
     assert.match(code, /if \(generation !== weatherGeneration\) \{\s*return;\s*\}/);
-    assert.match(code, /const result = await withTimeout\(run\(\)\);[\s\S]*?weatherGeneration \+= 1;\s*weatherResult = result;/);
+    assert.match(code, /const result = await withTimeout\(run\(isStale\)\);[\s\S]*?weatherGeneration \+= 1;\s*weatherResult = result;/);
     assert.doesNotMatch(code, /function changeCity\(run\) \{\s*weatherGeneration \+= 1;/);
     assert.match(code, /if \(weatherChanging && currentLocation\(\)\) return null;/);
   });
@@ -364,7 +367,8 @@ describe("newtab weather retry source (AS-WR-13)", () => {
     assert.match(retry, /generation !== weatherGeneration/);
     assert.doesNotMatch(retry, /error\.message|String\(error\)|innerHTML/);
     assert.match(retry, /weatherLocationError = "";/);
-    assert.match(retry, /desktopLive\.textContent = "";/);
+    // Run 44 (decision 4): the "clear first" special case folded into `announce`; retryWeather only calls it.
+    assert.doesNotMatch(retry, /desktopLive\.textContent = "";/);
     assert.match(retry, /announce\("Weather updated"\)/);
   });
 

@@ -410,4 +410,219 @@ describe("createWeatherService", () => {
       assert.equal(result.location.name, TBILISI.name);
     });
   });
+
+  describe("persist: after-forecast (run 44, spec docs/city-modal-focus-copy.md decision 3)", () => {
+    const BERLIN = { name: "Berlin", country: "Germany", latitude: 52.52, longitude: 13.41 };
+
+    // Wraps both stores so every write is logged in call order and can be made to fail.
+    function createRecordingHarness({
+      fetchWeather = async () => WEATHER_READING,
+      fetchAirQuality = async () => AIR_READING,
+      failSetCache = false
+    } = {}) {
+      const log = [];
+      const realLocationStore = createWeatherLocationStore(createMemoryStorageArea());
+      const realCacheStore = createWeatherCacheStore(createMemoryStorageArea());
+      const locationStore = {
+        getLocation: () => realLocationStore.getLocation(),
+        setLocation: async (value) => {
+          log.push("setLocation");
+          return realLocationStore.setLocation(value);
+        }
+      };
+      const cacheStore = {
+        getCache: () => realCacheStore.getCache(),
+        setCache: async (value) => {
+          log.push("setCache");
+          if (failSetCache) throw new Error("quota exceeded");
+          return realCacheStore.setCache(value);
+        }
+      };
+      const service = createWeatherService({
+        locationStore,
+        cacheStore,
+        fetchWeather,
+        fetchAirQuality,
+        geocodeCity: async () => BERLIN,
+        now: () => 1_000_000
+      });
+      return { log, service, realLocationStore, realCacheStore };
+    }
+
+    const entries = [
+      ["setCity", (service, options) => service.setCity("Berlin", options)],
+      ["selectLocation", (service, options) => service.selectLocation(BERLIN, options)]
+    ];
+
+    for (const [name, call] of entries) {
+      it(`${name}: a forecast failure writes neither the location nor the cache and rejects with the original error`, async () => {
+        const original = new WeatherApiError("Weather request could not reach the network", { kind: "network" });
+        const harness = createRecordingHarness({
+          fetchWeather: async () => {
+            throw original;
+          }
+        });
+
+        await assert.rejects(
+          () => call(harness.service, { persist: "after-forecast", isStale: () => false }),
+          (error) => error === original
+        );
+        assert.deepEqual(harness.log, []);
+        assert.equal(await harness.realLocationStore.getLocation(), null);
+        assert.equal(await harness.realCacheStore.getCache(), null);
+      });
+
+      it(`${name}: an air-quality failure also leaves both stores untouched and rejects`, async () => {
+        const original = new WeatherApiError("Air quality request failed", { kind: "network" });
+        const harness = createRecordingHarness({
+          fetchAirQuality: async () => {
+            throw original;
+          }
+        });
+
+        await assert.rejects(
+          () => call(harness.service, { persist: "after-forecast", isStale: () => false }),
+          (error) => error === original
+        );
+        assert.deepEqual(harness.log, []);
+      });
+
+      it(`${name}: success writes the location first, then the cache, one write each, and returns ready`, async () => {
+        const harness = createRecordingHarness();
+
+        const result = await call(harness.service, { persist: "after-forecast", isStale: () => false });
+
+        assert.deepEqual(harness.log, ["setLocation", "setCache"]);
+        assert.equal(result.status, "ready");
+        assert.equal(result.error, null);
+        assert.equal(result.location.name, "Berlin");
+        assert.equal(result.data.temperature, 24);
+        assert.equal(result.data.usAqi, 34);
+        assert.deepEqual(await harness.realLocationStore.getLocation(), result.location);
+        assert.equal((await harness.realCacheStore.getCache()).locationName, "Berlin");
+      });
+
+      it(`${name}: the location is not written before the forecast has resolved`, async () => {
+        let releaseWeather;
+        const gate = new Promise((resolve) => {
+          releaseWeather = resolve;
+        });
+        const harness = createRecordingHarness({
+          fetchWeather: async () => {
+            await gate;
+            return WEATHER_READING;
+          }
+        });
+
+        const pending = call(harness.service, { persist: "after-forecast", isStale: () => false });
+        try {
+          await new Promise(setImmediate);
+          await new Promise(setImmediate);
+          assert.deepEqual(harness.log, [], "no write while the forecast is pending");
+          assert.equal(await harness.realLocationStore.getLocation(), null);
+        } finally {
+          releaseWeather();
+        }
+        await pending;
+        assert.deepEqual(harness.log, ["setLocation", "setCache"]);
+      });
+
+      it(`${name}: isStale() true after the fetch and before the write drops the result and writes nothing`, async () => {
+        let stale = false;
+        const harness = createRecordingHarness({
+          fetchWeather: async () => {
+            stale = true; // the attempt becomes stale while the forecast is in flight
+            return WEATHER_READING;
+          }
+        });
+
+        await assert.rejects(
+          () => call(harness.service, { persist: "after-forecast", isStale: () => stale }),
+          (error) => error instanceof Error && typeof error.message === "string" && error.message !== "",
+          "a stale attempt rejects with a real Error that carries a message"
+        );
+        assert.deepEqual(harness.log, []);
+        assert.equal(await harness.realLocationStore.getLocation(), null);
+        assert.equal(await harness.realCacheStore.getCache(), null);
+      });
+
+      it(`${name}: isStale() is first consulted after the forecast and the air quality have resolved`, async () => {
+        const order = [];
+        const harness = createRecordingHarness({
+          fetchWeather: async () => {
+            order.push("weather");
+            return WEATHER_READING;
+          },
+          fetchAirQuality: async () => {
+            order.push("air");
+            return AIR_READING;
+          }
+        });
+
+        const result = await call(harness.service, {
+          persist: "after-forecast",
+          isStale: () => {
+            order.push("isStale");
+            return false;
+          }
+        });
+
+        assert.equal(result.status, "ready");
+        assert.ok(order.includes("isStale"), "isStale is consulted");
+        assert.ok(order.indexOf("isStale") > Math.max(order.indexOf("weather"), order.indexOf("air")), `order was ${order.join(",")}`);
+        assert.deepEqual(harness.log, ["setLocation", "setCache"]);
+      });
+
+      it(`${name}: persist: after-forecast without isStale does not throw and behaves as never stale`, async () => {
+        const harness = createRecordingHarness();
+
+        const result = await call(harness.service, { persist: "after-forecast" });
+
+        assert.equal(result.status, "ready");
+        assert.deepEqual(harness.log, ["setLocation", "setCache"]);
+      });
+
+      it(`${name}: isStale without the persist option is ignored: the default path persists first even for a stale attempt`, async () => {
+        const harness = createRecordingHarness();
+
+        const result = await call(harness.service, { isStale: () => true });
+
+        assert.equal(result.status, "ready");
+        assert.deepEqual(harness.log, ["setLocation", "setCache"]);
+        assert.equal((await harness.realLocationStore.getLocation()).name, "Berlin");
+      });
+
+      it(`${name}: a setCache failure after a good forecast keeps the location and still returns the result`, async () => {
+        const harness = createRecordingHarness({ failSetCache: true });
+
+        const result = await call(harness.service, { persist: "after-forecast", isStale: () => false });
+
+        assert.deepEqual(harness.log, ["setLocation", "setCache"]);
+        assert.equal(result.status, "ready");
+        assert.equal(result.location.name, "Berlin");
+        assert.equal(result.data.temperature, 24);
+        assert.equal((await harness.realLocationStore.getLocation()).name, "Berlin", "the location is not rolled back");
+      });
+
+      it(`${name}: without the option the old persist-then-fetch path and return values are unchanged`, async () => {
+        const failing = createRecordingHarness({
+          fetchWeather: async () => {
+            throw new Error("network down");
+          }
+        });
+
+        const failed = await call(failing.service, undefined);
+
+        assert.equal(failed.status, "error");
+        assert.equal(failed.error, "Couldn't load weather. Try again in a moment.");
+        assert.deepEqual(failing.log, ["setLocation"], "location persisted first, no cache write");
+        assert.equal((await failing.realLocationStore.getLocation()).name, "Berlin");
+
+        const ok = createRecordingHarness();
+        const ready = await call(ok.service, {});
+        assert.equal(ready.status, "ready");
+        assert.deepEqual(ok.log, ["setLocation", "setCache"]);
+      });
+    }
+  });
 });

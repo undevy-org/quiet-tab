@@ -96,8 +96,30 @@ function showDesktopStatus(text, { persist = false, tone = "error" } = {}) {
 }
 
 // Polite live region for outcomes that have no visible change at the focused element.
+// The region is cleared at once and the text is set on the next frame (timer fallback for a hidden tab), so an identical
+// string is a fresh mutation and is read again. A later call replaces the pending text; announce("") only clears.
+const ANNOUNCE_FALLBACK_MS = 50;
+let announcePending = null; // { frame, timer } of the text waiting for its frame
 function announce(text) {
-  if (desktopLive) desktopLive.textContent = text;
+  if (!desktopLive) return;
+  const cancelPending = () => {
+    if (!announcePending) return;
+    cancelAnimationFrame(announcePending.frame);
+    clearTimeout(announcePending.timer);
+    announcePending = null;
+  };
+  cancelPending();
+  desktopLive.textContent = "";
+  if (text === "") return;
+  const pending = { frame: 0, timer: 0 };
+  const setText = () => {
+    if (announcePending !== pending) return;
+    cancelPending();
+    desktopLive.textContent = text;
+  };
+  pending.frame = requestAnimationFrame(setText);
+  pending.timer = setTimeout(setText, ANNOUNCE_FALLBACK_MS);
+  announcePending = pending;
 }
 
 function createNode(tagName, className, textContent) {
@@ -268,6 +290,8 @@ let weatherFormGeneration = 0;
 // The city modal (present in the DOM only while open) and what it needs across renders.
 let cityModalRoot = null;
 let cityModalOpener = null; // selector of the control that opened it, looked up again at close time
+let cityModalHintMetricId = null; // data-metric-id of the hint tile that opened it (the hint is gone once the first city is set)
+let cityAttempt = null; // { stale } of the newest changeCity attempt
 let cityModalError = "";
 let locationStatusNode = null;
 let locating = false;
@@ -302,6 +326,17 @@ document.addEventListener(
       event.preventDefault();
       event.stopPropagation();
     }
+  },
+  true
+);
+// The press of a double click moves the focus before its click is swallowed (backlog 99): inside the window the default of
+// mousedown is cancelled, so the focus stays where the code put it. A keyboard activation has no mousedown. The cancel applies to
+// a press on ANY target in the window, also a deliberate press on another control: accepted (docs/city-modal-focus-copy.md,
+// Accepted exceptions), the click of such a press is swallowed anyway.
+document.addEventListener(
+  "mousedown",
+  (event) => {
+    if (performance.now() < postCloseGuardUntil) event.preventDefault();
   },
   true
 );
@@ -450,6 +485,7 @@ function createFormRow(labelText, control) {
 
   if (control.tagName === "BUTTON") {
     // A button's visible text belongs to its name (WCAG 2.5.3): the row label plus every part of the control that carries an id.
+    control.dataset.rowLabelId = labelSpan.id;
     const parts = [labelSpan.id, ...[...control.querySelectorAll("[id]")].map((part) => part.id)];
     control.setAttribute("aria-labelledby", parts.join(" "));
     return row;
@@ -732,11 +768,12 @@ function createCityLocationDescription(variant) {
   status.dataset.cityLocationStatus = "";
   status.setAttribute("role", "status");
   locationStatusNode = status;
-  if (onboarding) {
-    paragraph.append("Enter a city, ", link, ", or skip for now.", status);
-  } else {
-    paragraph.append("Search for a city or ", link, ".", status);
-  }
+  // The words around the link are nodes of their own: while the position is looked up they are hidden (they leave the
+  // accessibility tree) and the link alone is the line (syncLocationLink).
+  const beforeText = createNode("span", null, onboarding ? "Enter a city, " : "Search for a city or ");
+  const afterText = createNode("span", null, onboarding ? ", or skip for now." : ".");
+  beforeText.dataset.cityLocationWords = afterText.dataset.cityLocationWords = "";
+  paragraph.append(beforeText, link, afterText, status);
   return paragraph;
 }
 
@@ -1063,6 +1100,7 @@ function buildCityModal(mode, location) {
 
   const title = createNode("h2", "city-modal__title", location ? "Change city" : "Set a city");
   title.id = "city-modal-title";
+  title.tabIndex = -1; // takes the focus while a request runs (rescueFocusToTitle)
   dialog.appendChild(title);
   dialog.appendChild(createCityLocationDescription(mode));
 
@@ -1101,6 +1139,9 @@ function teardownLocationLookup() {
   locating = false;
   weatherBusy = false;
   clearLocationStatus();
+  releaseDescriptionHeight(); // by the node itself: the form may already be gone, then syncLocationLink below has no host
+  const host = cityFormHostRoot();
+  if (host) syncLocationLink(host); // brings the words back (its own release is then a no-op)
 }
 
 function focusLocationLink() {
@@ -1108,16 +1149,32 @@ function focusLocationLink() {
   if (link instanceof HTMLElement) link.focus();
 }
 
+// The paragraph whose height is pinned while locating; released through the node itself, wherever the form went.
+let pinnedDescription = null;
+function releaseDescriptionHeight() {
+  if (pinnedDescription) pinnedDescription.style.minHeight = "";
+  pinnedDescription = null;
+}
+
 function syncLocationLink(host) {
   const link = host.querySelector('[data-weather-action="use-location"]');
   if (!(link instanceof HTMLButtonElement)) return;
+  // While locating, the whole description line is the status: only the link (inactive, keeps focus) is shown. The line keeps
+  // the height it had just before the switch so the field below does not jump; the height is released on every exit.
+  const paragraph = link.parentElement;
   if (locating) {
+    if (paragraph && !pinnedDescription && paragraph.offsetHeight > 0) {
+      pinnedDescription = paragraph;
+      paragraph.style.minHeight = `${paragraph.offsetHeight}px`;
+    }
     link.textContent = LOCATION_BUSY_LABEL;
     link.setAttribute("aria-disabled", "true");
   } else {
     link.textContent = LOCATION_LINK_LABEL;
     link.removeAttribute("aria-disabled");
+    releaseDescriptionHeight();
   }
+  for (const words of paragraph?.querySelectorAll("[data-city-location-words]") ?? []) words.hidden = locating;
 }
 
 function syncCityModalUi() {
@@ -1225,6 +1282,19 @@ async function useMyLocation(variant) {
   }
 }
 
+// While a city request runs the controls are disabled: when the focus is on body, outside `root` or on a disabled control,
+// the (tabindex -1) title takes it, so the focus never drops to body.
+function rescueFocusToTitle(root, titleSelector) {
+  const title = root.querySelector(titleSelector);
+  const active = document.activeElement;
+  const focusLost =
+    !active ||
+    active === document.body ||
+    !root.contains(active) ||
+    (active instanceof HTMLElement && active.matches("input, button") && active.disabled);
+  if (title instanceof HTMLElement && focusLost) title.focus();
+}
+
 function syncCityModal() {
   const host = cityFormHostRoot();
   if (!host) return;
@@ -1239,17 +1309,10 @@ function syncCityModal() {
     host.querySelector('[role="dialog"]')?.setAttribute("aria-busy", String(weatherBusy && !locating));
   }
   if (weatherBusy && !locating && onboardingWizardRoot && onboardingStep === 1) {
-    const title = onboardingWizardRoot.querySelector("#onboarding-step1-title");
-    const active = document.activeElement;
-    const focusLeftWizard =
-      !active ||
-      active === document.body ||
-      !onboardingWizardRoot.contains(active) ||
-      (active instanceof HTMLElement && active.matches("input, button") && active.disabled);
-    if (title instanceof HTMLElement && focusLeftWizard) {
-      title.tabIndex = -1;
-      title.focus();
-    }
+    rescueFocusToTitle(onboardingWizardRoot, "#onboarding-step1-title");
+  }
+  if (weatherBusy && !locating && cityModalRoot && !onboardingWizardRoot) {
+    rescueFocusToTitle(cityModalRoot, "#city-modal-title"); // change mode: the disabled controls must not leave the focus on body
   }
   const errorNode = host.querySelector("[data-city-modal-error]");
   if (errorNode) {
@@ -1259,8 +1322,21 @@ function syncCityModal() {
   activeCityForm?.place();
 }
 
+// While a city request runs a press on the backdrop or on empty dialog space would move the focus to body (the controls are
+// disabled): its default is cancelled, so the focus stays where the busy rescue put it (the title).
+function keepFocusWhileBusy(event) {
+  // A press on the background while the position is looked up is cancelled too: the link (aria-disabled, never `disabled`)
+  // keeps the focus and is itself excluded below, so pressing it still works as a plain focus.
+  // The same busy states that set aria-busy on the dialog (and so the pointer-events rule in surfaces.css).
+  if (!weatherBusy && !(favoritesBusy && onboardingStep === 2 && onboardingWizardRoot)) return;
+  const target = event.target instanceof Element ? event.target : null;
+  if (target?.closest("input:not(:disabled), button:not(:disabled)")) return;
+  event.preventDefault();
+}
+
 // One listener per event on the modal root (backdrop, dismiss button, suggestions, submit).
 function attachCityModalListeners(root) {
+  root.addEventListener("mousedown", keepFocusWhileBusy);
   root.addEventListener("focusin", () => {
     cityModalHadFocus = true;
   });
@@ -1320,12 +1396,18 @@ function attachCityModalListeners(root) {
       form.querySelector(CITY_INPUT_SELECTOR)?.focus();
       return;
     }
-    const picked = activeCityForm?.chosen();
-    if (picked) {
-      changeCity(() => weatherService.selectLocation({ name: picked.name, country: picked.country, latitude: picked.latitude, longitude: picked.longitude }));
+    if (isUnchangedCitySave(activeCityForm?.chosen() ?? null, cityName)) {
+      hideCityModal(); // exactly Cancel: nothing is written or requested
       return;
     }
-    changeCity(() => weatherService.setCity(cityName));
+    const picked = activeCityForm?.chosen();
+    if (picked) {
+      changeCity((isStale) => weatherService.selectLocation({
+        name: picked.name, country: picked.country, latitude: picked.latitude, longitude: picked.longitude
+      }, { persist: "after-forecast", isStale }));
+      return;
+    }
+    changeCity((isStale) => weatherService.setCity(cityName, { persist: "after-forecast", isStale }));
   });
 }
 
@@ -1376,6 +1458,8 @@ function showCityModal(mode, openerSelector) {
   cityModalShownThisLoad = true;
   weatherUi = openCityModalState(weatherUi, mode);
   cityModalOpener = openerSelector;
+  cityModalHintMetricId =
+    openerSelector === HINT_TILE_SELECTOR ? (favoritesRoot?.querySelector(HINT_TILE_SELECTOR)?.dataset.metricId ?? null) : null;
   cityModalHadFocus = false;
   cityModalOpenedAt = performance.now();
   hideTooltip();
@@ -1393,6 +1477,15 @@ function showCityModal(mode, openerSelector) {
 function hideCityModal() {
   if (!cityModalRoot) return;
   const mode = cityModalMode(weatherUi);
+  const runningAttempt = cityAttempt;
+  if (runningAttempt) {
+    // A request still running when the modal is torn down (a code teardown; the UI cannot close a busy modal) must not persist,
+    // and must not leave the busy state behind: its finally block no longer owns it.
+    runningAttempt.stale = true;
+    cityAttempt = null;
+    weatherBusy = false;
+    weatherChanging = false;
+  }
   teardownLocationLookup();
   activeCityForm?.cancelPending();
   activeCityForm?.dispose?.();
@@ -1410,11 +1503,36 @@ function hideCityModal() {
     desktopDialogRoot.inert = false;
     syncWeatherDialogCity();
   } else if (favoritesRoot) favoritesRoot.inert = false;
+  if (runningAttempt) renderFavorites(); // the tiles leave their loading state
   if (mode === "change") {
     pendingFocus = [cityModalOpener, SETTINGS_TILE_SELECTOR].filter(Boolean);
     applyPendingFocus();
   }
   cityModalOpener = null;
+  cityModalHintMetricId = null;
+}
+
+// Success of a change-mode city request: the caller, not hideCityModal, picks the focus target and speaks.
+// From the hint tile the hint is gone by now: focus goes to the tile of the hint's metric (Settings when it has none).
+function finishCityChange() {
+  if (!cityModalRoot) return;
+  if (cityModalHintMetricId && cityModalOpener === HINT_TILE_SELECTOR) {
+    cityModalOpener = `[data-widget-id="${CSS.escape(cityModalHintMetricId)}"]`;
+  }
+  hideCityModal();
+  const location = currentLocation();
+  if (location) announce(`City set to ${cityDisplayLabel(location)}`);
+}
+
+// Save without a change is Cancel: a chosen city with the stored coordinates, or (no choice) the stored label as text.
+// Spec decision 2: this is not a repeat request; Retry on an error tile is the only way to re-request the forecast.
+// Coordinates are compared as they are stored (a suggestion is stored unrounded, "use your location" is rounded by
+// roundCoordinate before it becomes the choice, so both sides share one rounding).
+function isUnchangedCitySave(picked, cityName) {
+  const stored = weatherLocationError ? null : currentLocation();
+  if (!stored) return false;
+  if (picked) return picked.latitude === stored.latitude && picked.longitude === stored.longitude;
+  return cityName === cityDisplayLabel(stored);
 }
 
 // Reveal (docs/first-run-empty-desk.md, decision 4): the veil goes away, and unless motion is reduced the whole desk fades in
@@ -1469,6 +1587,19 @@ function maybeShowOnboardingWizard({ flagRead, dismissed, completeRead, complete
   if (show) showOnboardingWizard();
 }
 
+// Locked rows leave the tab order: the list itself becomes the keyboard stop that scrolls them (named, or axe flags it).
+function setStartersLocked(list, locked) {
+  if (locked) {
+    list.dataset.startersLocked = "true";
+    list.setAttribute("tabindex", "0");
+    list.setAttribute("aria-label", "Starter links");
+  } else {
+    delete list.dataset.startersLocked;
+    list.removeAttribute("tabindex");
+    list.removeAttribute("aria-label");
+  }
+}
+
 function syncOnboardingWizardUi() {
   if (!onboardingWizardRoot) return;
   const dialog = onboardingWizardRoot.querySelector('[role="dialog"]');
@@ -1505,8 +1636,9 @@ function syncOnboardingWizardUi() {
   });
   const list = onboardingWizardRoot.querySelector(".onboarding-wizard__starters");
   if (list instanceof HTMLElement) {
-    if (onboardingStartersCommitted) list.dataset.startersLocked = "true";
-    else delete list.dataset.startersLocked;
+    // Only a committed write locks the list. While Finish is busy but nothing is committed yet, the rows are merely disabled for
+    // the moment and the list keeps no tab stop (decided: a stop that would vanish after the write is worse than none).
+    setStartersLocked(list, onboardingStartersCommitted);
   }
   onboardingWizardRoot.querySelector(".onboarding-wizard__progress")?.setAttribute("aria-label", `Step ${progressPillCount(onboardingStep)} of 2`);
   if (dialog) dialog.setAttribute("aria-busy", String((weatherBusy && !locating) || finishBusy));
@@ -1632,6 +1764,7 @@ function buildOnboardingWizard() {
 }
 
 function attachOnboardingWizardListeners(root) {
+  root.addEventListener("mousedown", keepFocusWhileBusy);
   root.addEventListener("focusin", () => {
     onboardingWizardHadFocus = true;
   });
@@ -2180,7 +2313,7 @@ function buildDialogContent(root, dialog) {
       const cityValue = createNode("span", null);
       cityValue.dataset.weatherDialogCity = "";
       cityValue.id = `city-field-value-${formRowIdSeq}`;
-      const cityHint = createNode("span", "city-field__hint");
+      const cityHint = createNode("span", "city-field__hint", "Change");
       cityHint.id = `city-field-hint-${formRowIdSeq}`;
       cityField.append(cityValue, cityHint);
       cityField.addEventListener("click", () => {
@@ -2226,8 +2359,13 @@ function syncWeatherDialogCity(root = desktopDialogRoot) {
   const location = weatherLocationError ? null : currentLocation();
   const field = root.querySelector('[data-weather-action="open-city-modal"]');
   const label = location ? cityDisplayLabel(location) : "";
-  root.querySelector("[data-weather-dialog-city]").textContent = label || "No city set";
-  field.querySelector(".city-field__hint").textContent = location ? "Change" : "Set a city";
+  const value = root.querySelector("[data-weather-dialog-city]");
+  const hint = field.querySelector(".city-field__hint");
+  value.textContent = label || "Set a city"; // no city: one muted line, no separate hint
+  value.toggleAttribute("data-empty", !label);
+  hint.hidden = !label;
+  // The name is the row label plus the visible parts (single spaces, no commas); a hidden hint is left out.
+  field.setAttribute("aria-labelledby", [field.dataset.rowLabelId, value.id, label ? hint.id : null].filter(Boolean).join(" "));
   if (label) field.title = label; // the full label whenever a city is stored; the accessible name comes from aria-labelledby
   else field.removeAttribute("title");
   field.disabled = !weatherService;
@@ -3100,17 +3238,16 @@ function tabTrapFocusables(trapRoot) {
     }
     return true;
   });
-  if (
-    controls.length === 0 &&
-    trapRoot === onboardingWizardRoot &&
-    weatherBusy &&
-    onboardingStep === 1
-  ) {
-    const title = trapRoot.querySelector("#onboarding-step1-title");
-    if (title instanceof HTMLElement) {
-      title.tabIndex = -1;
-      return [title];
-    }
+  if (controls.length === 0 && weatherBusy) {
+    // Busy with every control disabled: the title (tabindex -1) is the one tab stop.
+    const titleSelector =
+      trapRoot === onboardingWizardRoot && onboardingStep === 1
+        ? "#onboarding-step1-title"
+        : trapRoot === cityModalRoot
+          ? "#city-modal-title"
+          : null;
+    const title = titleSelector ? trapRoot.querySelector(titleSelector) : null;
+    if (title instanceof HTMLElement) return [title];
   }
   return controls;
 }
@@ -3521,7 +3658,6 @@ async function retryWeather() {
     weatherRetryTimer = setTimeout(endWeatherRetryCooldown, Math.max(0, weatherUi.retry.availableAt - Date.now()) + 10);
   } else {
     if (!desktopStatusPersistent) showDesktopStatus(""); // an earlier failure text would now contradict the tiles
-    if (desktopLive) desktopLive.textContent = ""; // cleared first so a repeated "Weather updated" is announced
     announce("Weather updated");
   }
 }
@@ -3557,6 +3693,10 @@ function withTimeout(promise) {
 }
 
 function changeCity(run, { onSuccess = null } = {}) {
+  if (cityAttempt) cityAttempt.stale = true; // a new attempt supersedes the previous one
+  const attempt = { stale: false };
+  cityAttempt = attempt;
+  const isStale = () => attempt.stale;
   weatherBusy = true;
   weatherChanging = true;
   // Cancel the debounce and any in-flight suggestion request and empty the list: nothing rebuilds the form now.
@@ -3570,7 +3710,7 @@ function changeCity(run, { onSuccess = null } = {}) {
   void (async () => {
     let ok = false;
     try {
-      const result = await withTimeout(run());
+      const result = await withTimeout(run(isStale));
       // Only a successful change makes an earlier in-flight boot load stale; a failed one leaves it valid.
       weatherGeneration += 1;
       weatherResult = result;
@@ -3581,14 +3721,19 @@ function changeCity(run, { onSuccess = null } = {}) {
       clearTimeout(weatherRetryTimer);
       ok = true;
     } catch (error) {
+      attempt.stale = true; // a timeout: a result that arrives later is dropped by the service
       cityModalError = weatherErrorMessage(error);
     } finally {
+      // Only the newest attempt owns the busy state and the UI. An attempt that was superseded or whose modal was torn
+      // down (hideCityModal marks it stale and clears the busy state itself) leaves silently.
+      if (cityAttempt !== attempt) return;
+      cityAttempt = null;
       weatherBusy = false;
       weatherChanging = false;
       renderFavorites();
       if (ok) {
         if (onSuccess) onSuccess();
-        else hideCityModal();
+        else finishCityChange();
       } else {
         if (onboardingWizardRoot) syncOnboardingWizardUi();
         else syncCityModal();

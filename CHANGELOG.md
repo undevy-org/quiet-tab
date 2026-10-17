@@ -75,6 +75,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- City modal (`docs/city-modal-focus-copy.md`): changing the city is saved only after the forecast has loaded. A failed forecast or
+  geocoding keeps the modal open with the error, the focused field and the old city, cache and tiles (the first-run wizard keeps saving
+  the city first). Save without a change is Cancel: no request, no write. After a successful Save focus goes to the weather tile of the
+  hint (or the dialog's City field, else Settings) and the page announces `City set to <city>`; while the request runs focus stays on the
+  modal title, also after a press on the backdrop or a disabled control.
+- Repeated announcements ("Link deleted", "UV index hidden", "Weather updated") are read again: the live region is cleared and the text is
+  set on the next frame.
+- Weather edit dialog: with no city the City field is one muted line `Set a city` (accessible name `City Set a city`) instead of
+  `No city set` plus a hint.
+- Use your location: while the position is looked up the description line is only `Finding your location…` (no more "…or Finding your
+  location…."); the link's focus ring has padding and the control radius.
+- Onboarding step 2: the locked starter list is a keyboard stop (`tabindex="0"`, name `Starter links`, visible ring) so it can be
+  scrolled with the arrow keys; the second press of a double click right after the wizard or the city modal closes no longer moves focus.
 - Link dialog (`docs/link-dialog-validation.md`): an address with a space or an invalid host (`not a url !!`, `example.com/a b`) is rejected with
   "Enter a valid URL" in Add and Edit; a link longer than 2000 characters, a name longer than 100 and a custom icon link longer than 2000 get a
   plain message instead of the Chrome Sync text (an empty name falls back to the host cut to 100); the field with an error carries `aria-invalid`

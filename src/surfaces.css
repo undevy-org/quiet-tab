@@ -108,8 +108,33 @@
   cursor: default;
 }
 
+/* Padding with an equal negative margin: the ring sits clear of the text and the text does not move. */
 .city-location-link:focus-visible {
+  padding: 0 4px;
+  margin: 0 -4px;
+  border-radius: var(--radius-control);
   background: var(--soft-fill-strong);
+  box-shadow: 0 0 0 2px var(--focus-overlay-ring);
+}
+
+/* A press on a disabled control dispatches no mousedown to the page in some browsers: with pointer-events none the press
+   lands on the container in every browser, whose mousedown is cancelled (keepFocusWhileBusy), so the focus stays on the title.
+   The container shows the busy cursor instead (the disabled controls would have shown their own). */
+.city-modal__dialog[aria-busy="true"],
+.onboarding-wizard [aria-busy="true"] {
+  cursor: wait;
+}
+
+.city-modal__dialog[aria-busy="true"] :disabled,
+.onboarding-wizard [aria-busy="true"] :disabled {
+  pointer-events: none;
+}
+
+/* The title takes the focus while a city request runs (tabindex -1): the ring of the dialog, not the system blue. */
+.city-modal__title:focus-visible,
+.onboarding-wizard__step-title:focus-visible {
+  outline: 2px solid transparent; /* forced colors turn this into a visible indicator */
+  border-radius: var(--radius-control);
   box-shadow: 0 0 0 2px var(--focus-overlay-ring);
 }
 
@@ -208,6 +233,18 @@
   margin: 0 0 12px;
   color: var(--muted);
   overflow-wrap: anywhere;
+}
+
+/* Locked list = keyboard scroll stop. An outline, because the opaque rows would hide an inset shadow of the list; it is painted over
+   the content. A locked row does not look busy (the list stays on the default cursor). */
+.onboarding-wizard__starters[data-starters-locked="true"] {
+  cursor: default;
+}
+
+.onboarding-wizard__starters[data-starters-locked="true"]:focus-visible {
+  outline: 2px solid var(--focus-ring); /* the solid token: the translucent overlay ring measured 1.6:1 over the white rows */
+  outline-offset: -2px;
+  border-radius: var(--radius-control);
 }
 
 .onboarding-wizard__starters {
@@ -598,6 +635,10 @@ img.onboarding-wizard__starter-icon[data-icon-check="pending"] {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.city-field > [data-weather-dialog-city][data-empty] {
+  color: var(--muted);
 }
 
 .city-field__hint {
