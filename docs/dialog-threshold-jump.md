@@ -195,6 +195,8 @@ Common setup of the E2E (`dg-53`): the harness as in `dg-48`/`dg-52` (`launch(..
 
 ### AS-DJ-10 Keyboard in the partial band and across the flip
 
+> **Amended by run 45** (`docs/city-suggestion-list.md`, decision 2): Tab no longer goes through the rows; the Tab stops are the field, *Clear city*, the dismiss button and *Save* (`dg-52` AS-FR-04 as amended). Rows are reached by ArrowDown/ArrowUp. The text below is the earlier contract (kept).
+
 - Given: first-run 320 at `T - 20` and at the flip height, three suggestions; and 400 at `T - 20`.
 - When: Tab from the open modal through the field, *Clear city*, the rows, *Not now* and *Save* (the walk of `dg-52`, ring cut measured the same way), ArrowDown/ArrowUp through the rows, Escape (list first, then the modal), Enter in the field, and a one-pixel resize while the focus is on a row, on *Save* and in the field.
 - Then: the stop order is as in `dg-52` AS-FR-04; every focused control's ring is whole (cut <= 0.05 px against every scrolling ancestor) and, in the partial band, fully inside the viewport; a resize does not move focus, close the list (unless the existing rules do) or scroll the dialog; Enter still submits; Escape layers are as before (`escapeLayer`). At 400x300 (now an overlay) the list is reachable by ArrowDown and `list.bottom <= innerHeight - 16 + 1` at rest.

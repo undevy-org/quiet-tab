@@ -269,8 +269,18 @@ retry; a retry only writes the cache that `initialize()` already writes.
   the field (typing, pasting, deleting) or pressing the clear button empties and hides
   that node; nothing else clears it besides opening the modal and starting a request.
 - **Keyboard.** ArrowDown in the field moves into the list; ArrowDown/ArrowUp move
-  between suggestions and ArrowUp from the first returns to the field; Tab also
-  reaches the suggestion buttons in DOM order.
+  between suggestions and ArrowUp from the first returns to the field. Tab never
+  walks the suggestions (run 45): the options and the listbox are `tabindex="-1"`, so
+  Tab from the field goes clear, Cancel/Skip, Save/Continue whatever the number of
+  suggestions, and `tabTrapFocusables` leaves `role="option"` buttons out.
+- **Combobox semantics (run 45).** The city input is `role="combobox"`
+  (`aria-autocomplete="list"`, `aria-haspopup="listbox"`, `aria-controls=weather-city-suggestions`,
+  `aria-label="City"`) and `aria-expanded` always equals "the list has options"
+  (`renderSuggestionsList` writes it in both branches, so every close path keeps it in step).
+  The list is `div#weather-city-suggestions[role=listbox][aria-label="City suggestions"][tabindex=-1]`,
+  present (hidden by `:empty`) even with no options; each suggestion is a
+  `button[role=option][tabindex=-1]`. Real focus moves onto the options by the arrow keys
+  (no `aria-activedescendant`). Spec `docs/city-suggestion-list.md`.
 - **List focus rule.** The list closes only when focus leaves the field wrapper
   (field, clear button and list), not when the window loses focus. A pointer press
   inside the dialog (Save, Not now/Cancel) does not close it before the click is

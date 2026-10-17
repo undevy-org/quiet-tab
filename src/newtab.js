@@ -794,6 +794,11 @@ function createCityForm(mode, location) {
   input.id = "weather-city-input";
   input.placeholder = "Search for a city";
   input.setAttribute("aria-label", "City");
+  input.setAttribute("role", "combobox");
+  input.setAttribute("aria-autocomplete", "list");
+  input.setAttribute("aria-haspopup", "listbox");
+  input.setAttribute("aria-controls", "weather-city-suggestions");
+  input.setAttribute("aria-expanded", "false"); // kept equal to isSuggestionsOpen by renderSuggestionsList
   const storedCity = (mode === "change" || mode === "onboarding") && location ? location : null;
   input.value = storedCity ? cityDisplayLabel(storedCity) : "";
   input.autocomplete = "off";
@@ -807,6 +812,11 @@ function createCityForm(mode, location) {
   clear.hidden = true;
 
   const suggestionsList = createNode("div", "weather-form__suggestions");
+  suggestionsList.id = "weather-city-suggestions";
+  suggestionsList.setAttribute("role", "listbox");
+  suggestionsList.setAttribute("aria-label", "City suggestions");
+  // tabindex -1 on the listbox itself: a scrollable container whose options are all tabindex -1 is otherwise a Tab stop in Chromium.
+  suggestionsList.setAttribute("tabindex", "-1");
   field.append(input, clear, suggestionsList);
 
   const errorNode = createNode("p", "status status--error status--full", cityModalError);
@@ -873,15 +883,19 @@ function createCityForm(mode, location) {
     suggestionsList.replaceChildren();
 
     if (!isSuggestionsOpen(weatherUi)) {
+      input.setAttribute("aria-expanded", "false");
       placePopover();
       return;
     }
+    input.setAttribute("aria-expanded", "true");
 
     for (const suggestion of citySuggestions(weatherUi)) {
       const labelParts = [suggestion.name, suggestion.admin1, suggestion.country].filter((part) => part);
       const label = labelParts.join(", ");
       const button = createNode("button", "weather-form__suggestion", label);
       button.type = "button";
+      button.setAttribute("role", "option");
+      button.setAttribute("tabindex", "-1"); // arrow-only: Tab never walks the options
       button.dataset.weatherAction = "select-city";
       button.dataset.cityName = suggestion.name;
       button.dataset.cityCountry = suggestion.country;
@@ -3230,7 +3244,7 @@ function cancelDrag() {
 }
 
 function tabTrapFocusables(trapRoot) {
-  const controls = [...trapRoot.querySelectorAll("input, button")].filter((el) => {
+  const controls = [...trapRoot.querySelectorAll('input, button:not([role="option"])')].filter((el) => {
     if (el.disabled || el.hidden) return false;
     for (let node = el; node !== trapRoot; node = node.parentElement) {
       if (!node) return false;

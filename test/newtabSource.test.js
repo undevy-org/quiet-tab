@@ -2687,12 +2687,18 @@ describe("city suggestion list source pins (run 45, docs/city-suggestion-list.md
   const strippedSource = async () => stripComments(await source());
   const surfaces = () => readFile(new URL("../src/surfaces.css", import.meta.url), "utf8");
   const cityForm = async () => topLevelFunction(await strippedSource(), "createCityForm");
-  // The nested renderSuggestionsList: from its declaration to the closing brace at the form's two-space indent.
+  // The nested renderSuggestionsList: from its declaration to its matching closing brace (brace counting, not an indent guess).
   const renderList = async () => {
     const form = await cityForm();
     const start = form.indexOf("function renderSuggestionsList()");
     assert.notEqual(start, -1, "renderSuggestionsList exists in createCityForm");
-    return form.slice(start, form.indexOf("\n  }\n", start) + 4);
+    const open = form.indexOf("{", start);
+    let depth = 0;
+    for (let i = open; i < form.length; i += 1) {
+      if (form[i] === "{") depth += 1;
+      else if (form[i] === "}" && (depth -= 1) === 0) return form.slice(start, i + 1);
+    }
+    assert.fail("renderSuggestionsList is balanced");
   };
 
   it("AS-CSL-01: the city input is an ARIA 1.2 combobox with a listbox popup controlled by weather-city-suggestions", async () => {
@@ -2720,19 +2726,23 @@ describe("city suggestion list source pins (run 45, docs/city-suggestion-list.md
     assert.match(render, /button\.dataset\.weatherAction = "select-city"/);
   });
 
-  it("AS-CSL-02: renderSuggestionsList keeps aria-expanded equal to isSuggestionsOpen, also on the early return of the closed state", async () => {
+  it("AS-CSL-02: renderSuggestionsList sets aria-expanded=false in the closed branch (before its return) and true on the open path", async () => {
     const render = await renderList();
-    const expanded = render.search(/input\.setAttribute\("aria-expanded"/);
-    const earlyReturn = render.search(/\breturn;/);
-    assert.notEqual(expanded, -1, "aria-expanded is written in renderSuggestionsList");
-    assert.ok(expanded < earlyReturn, "written before the closed-state early return (or in both branches)");
-    assert.match(render, /isSuggestionsOpen\(weatherUi\)/);
+    const guard = render.search(/if \(!isSuggestionsOpen\(weatherUi\)\) \{/);
+    assert.notEqual(guard, -1, "the closed-state guard exists");
+    const ret = render.indexOf("return;", guard);
+    assert.notEqual(ret, -1, "the closed branch returns");
+    const closedBranch = render.slice(guard, ret);
+    assert.match(closedBranch, /input\.setAttribute\("aria-expanded", "false"\)/, "the closed branch writes false before returning");
+    const openPath = render.slice(ret);
+    assert.match(openPath, /input\.setAttribute\("aria-expanded", "true"\)/, "the open path writes true");
+    assert.ok(openPath.search(/aria-expanded", "true"/) < openPath.search(/for \(const suggestion of/), "true is written before the options are built");
   });
 
-  it("AS-CSL-04: tabTrapFocusables never offers an option as the first or last stop of the trap", async () => {
+  it("AS-CSL-04: tabTrapFocusables excludes role=option buttons from its candidates by selector", async () => {
     const code = await strippedSource();
     const trap = topLevelFunction(code, "tabTrapFocusables");
-    assert.match(trap, /role|tabindex|tabIndex/i, "the selector or the filter excludes the role=option / tabindex=-1 buttons");
+    assert.match(trap, /querySelectorAll\(['"]input, button:not\(\[role="option"\]\)['"]\)/, "options are not trap candidates");
   });
 
   it("AS-CSL-12: .city-location-link:focus-visible pads the text by 1px with an equal negative margin, so the ring reaches 3px", async () => {
