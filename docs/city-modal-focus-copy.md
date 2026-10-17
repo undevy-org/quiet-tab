@@ -87,7 +87,7 @@ Common setup: the E2E harness with the first-run wizard off unless stated; defau
 - Verified by: E2E `dg-84`.
 
 ### AS-CMF-04 Save without a change is Cancel
-- Given: stored city `Tbilisi, Georgia`; the change modal open from the weather dialog (a), and from Settings-less normal mode via an error tile's hint path where applicable (b: from the `Change`-less hint only exists without a city, so (b) is the dialog only); the field prefilled.
+- Given: stored city `Tbilisi, Georgia`; the change modal open from the weather edit dialog's city field (the only change-mode entry with a stored city); the field prefilled.
 - When: Save is pressed without editing; then the same with the stored city picked again from the suggestions; then with the text edited and restored to the identical label.
 - Then: each time: the modal closes, focus goes where Cancel would put it, storage unchanged, zero network requests (geocoding and forecast counters 0), nothing in `#desktop-live`, tiles and their data identical. With the network switched off in the harness the tiles stay healthy (no error tiles).
 - Verified by: E2E `dg-84`.
@@ -203,7 +203,7 @@ Common setup: the E2E harness with the first-run wizard off unless stated; defau
 ### AS-CMF-23 Storage shape and writes
 - Given: any flow above.
 - When: storage is inspected after each flow.
-- Then: the stored location has the same keys as before; a successful change writes the location once and the cache once; a unchanged Save, a failure and a stale result write nothing. Data compatibility: not required (no-users policy, `agent-config/CLAUDE.md`).
+- Then: the stored location has the same keys as before; a successful change writes the location once and the cache once; an unchanged Save, a failure and a stale result write nothing. Data compatibility: not required (no-users policy, `agent-config/CLAUDE.md`).
 - Verified by: E2E `dg-84`; unit tests.
 
 ## Affected earlier scenarios
@@ -223,7 +223,6 @@ The executor greps `.private/e2e/scenarios/` and updates (never weakens) before 
 - A very fast second `announce` replaces a pending one; the earlier text is never spoken.
 - The status line is spoken by the sr-only `role="status"` span; screen readers that also read the focused disabled-looking link may say it twice (the link keeps focus by the owner's decision).
 - The post-close guard now also blocks the focus move of a `mousedown` in its window on any element, including a deliberate press on another control within 300 ms of a modal closing (the click is already swallowed, so the press had no effect anyway).
-- After the persist-after-forecast change, a weather cache written for the new city by a failed-then-stale attempt is not possible; a late result is dropped without a cache write (decision 3).
 
 ## Non-goals
 
