@@ -170,8 +170,8 @@ Common setup: the E2E harness with the first-run wizard off unless stated; defau
 
 ### AS-CMF-13b A late geolocation success is ignored
 - Given: the change modal (and, separately, wizard step 1), the harness holds the browser position beyond the lookup deadline (fake clock `page.clock`, no hook in `src/`), then answers with a success.
-- When: `use your location` is activated; the deadline passes (the timeout error shows); then the held position is released. Variant: the held position is answered with an error instead of a success (the same outcomes except the error slot text).
-- Then: the full sentence is back, `aria-disabled` removed, focus on the link, the field is not filled, the status span is empty, `weatherBusy` false, no storage write, no `pageerror`; the Nominatim reverse lookup is not called after the deadline / close.
+- When: `use your location` is activated; the deadline passes (the timeout error shows); then the held position is released. Variant: the held position is answered with an error instead of a success (the same outcomes, except that the error slot keeps the timeout text `Finding your location took too long.` and the late error neither replaces it nor flickers).
+- Then: the full sentence is back, `aria-disabled` removed, focus on the link, the field is not filled, the status span is empty, `weatherBusy` false, no storage write, no `pageerror`; the Nominatim reverse lookup is not called after the deadline.
 - Verified by: E2E `dg-84`.
 
 ### AS-CMF-14 Locating on wizard step 1
@@ -183,7 +183,7 @@ Common setup: the E2E harness with the first-run wizard off unless stated; defau
 ### AS-CMF-15 Closing during a lookup leaves no stale line
 - Given: the AS-CMF-13 state.
 - When: while the lookup runs Escape, Cancel and the backdrop do nothing (`weatherBusy`, `docs/use-my-location.md`); the held position is answered (success, then separately an error); the modal is closed; it is opened again.
-- Then: the new modal shows the full sentence, no busy line, no stale status text, no leftover `aria-disabled`.
+- Then: in the re-opened modal the full sentence shows, with no busy line, no stale status text and no leftover `aria-disabled`.
 - Verified by: E2E `dg-84`.
 
 ### AS-CMF-16 The description does not make the field jump
