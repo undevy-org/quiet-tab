@@ -119,6 +119,8 @@ Common setup of the E2E (`dg-52`): extension build under test, Open-Meteo routed
 
 ### AS-FR-04 The rest of the Tab walk: the field, the clear button, *Cancel* / *Not now*, *Save*
 
+> **Amended by run 45** (`docs/city-suggestion-list.md`, decision 2): Tab no longer walks the suggestion rows (they are `tabindex="-1"`, arrow-only). The Tab order is now the field, "Clear city", the dismiss button, "Save", then the location link; the wording below is the earlier contract (kept). The rows' focus ring is still measured from the keyboard by the ArrowDown/ArrowUp walk (AS-FR-03) in `dg-52`.
+
 - Given: first-run 320x300 and 400x260 (3 rows, docked), forced colors off and on (AS-FR-05), light.
 - When: after the ArrowDown/ArrowUp walk, focus the field and press Tab through the modal (clear button, rows, dismiss button, Save).
 - Then: every stop is whole; the stop order is the field, "Clear city", the N rows in order, the dismiss button ("Not now" in first-run, "Cancel" in change mode), "Save" (assert the order by accessible names). After Save the focus trap returns Tab to the field: that stop is measured too.
