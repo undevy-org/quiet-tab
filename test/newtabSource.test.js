@@ -2549,6 +2549,21 @@ describe("city modal focus and copy source (run 44, docs/city-modal-focus-copy.m
     assert.match(change, /[sS]tale\w*\s*=\s*true/, "a stale flag is set");
   });
 
+  it("AS-CMF-08: the catch of a city attempt marks it stale (a timeout); the busy rescue puts focus on the title in both surfaces", async () => {
+    const change = topLevelFunction(await strippedSource(), "changeCity");
+    const caught = change.slice(change.indexOf("} catch (error) {"), change.indexOf("} finally {"));
+    assert.match(caught, /attempt\.stale = true/, "a failed or timed-out attempt is stale");
+    const sync = topLevelFunction(await strippedSource(), "syncCityModal");
+    assert.match(sync, /rescueFocusToTitle\(cityModalRoot, "#city-modal-title"\)/);
+    assert.match(sync, /rescueFocusToTitle\(onboardingWizardRoot, "#onboarding-step1-title"\)/);
+  });
+
+  it("AS-CMF-11: the `Set a city` line of the City field is muted (the placeholder token), not the text colour", async () => {
+    const rule = ruleFor(await surfaces(), ".city-field > [data-weather-dialog-city][data-empty]");
+    assert.ok(rule, "a rule for the empty value line");
+    assert.match(rule.body, /color: var\(--muted\)/);
+  });
+
   // ---- Decision 5 / AS-CMF-11, AS-CMF-22: the City field with no city ----
   it("AS-CMF-22: `No city set` is not a string literal anywhere in src/ (code, markup)", async () => {
     for (const { name, text } of await allSrc()) {
