@@ -2677,3 +2677,70 @@ describe("city modal focus and copy source (run 44, docs/city-modal-focus-copy.m
     assert.doesNotMatch(listener, /\.detail/, "mousedown is guarded by time alone (the first press has detail 1 too)");
   });
 });
+
+// Run 45 (docs/city-suggestion-list.md): source pins written red-first (TDD); the behaviour itself is measured by E2E dg-85.
+describe("city suggestion list source pins (run 45, docs/city-suggestion-list.md)", () => {
+  const norm = (text) => text.replace(/\s+/g, " ").trim();
+  const stripCss = (text) => text.replace(/\/\*[\s\S]*?\*\//g, "");
+  const cssRules = (css) => [...stripCss(css).matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({ selectors: m[1].split(",").map(norm), body: norm(m[2]) }));
+  const ruleFor = (css, selector) => cssRules(css).find((r) => r.selectors.includes(selector));
+  const strippedSource = async () => stripComments(await source());
+  const surfaces = () => readFile(new URL("../src/surfaces.css", import.meta.url), "utf8");
+  const cityForm = async () => topLevelFunction(await strippedSource(), "createCityForm");
+  // The nested renderSuggestionsList: from its declaration to the closing brace at the form's two-space indent.
+  const renderList = async () => {
+    const form = await cityForm();
+    const start = form.indexOf("function renderSuggestionsList()");
+    assert.notEqual(start, -1, "renderSuggestionsList exists in createCityForm");
+    return form.slice(start, form.indexOf("\n  }\n", start) + 4);
+  };
+
+  it("AS-CSL-01: the city input is an ARIA 1.2 combobox with a listbox popup controlled by weather-city-suggestions", async () => {
+    const form = await cityForm();
+    assert.match(form, /input\.setAttribute\("role", "combobox"\)/);
+    assert.match(form, /input\.setAttribute\("aria-autocomplete", "list"\)/);
+    assert.match(form, /input\.setAttribute\("aria-haspopup", "listbox"\)/);
+    assert.match(form, /input\.setAttribute\("aria-controls", "weather-city-suggestions"\)/);
+    assert.match(form, /input\.setAttribute\("aria-label", "City"\)/, "the existing name stays");
+  });
+
+  it("AS-CSL-01: the suggestion list is a listbox named City suggestions with the id aria-controls points at, and tabindex -1", async () => {
+    const form = await cityForm();
+    assert.match(form, /suggestionsList\.id = "weather-city-suggestions"|suggestionsList\.setAttribute\("id", "weather-city-suggestions"\)/);
+    assert.match(form, /suggestionsList\.setAttribute\("role", "listbox"\)/);
+    assert.match(form, /suggestionsList\.setAttribute\("aria-label", "City suggestions"\)/);
+    assert.match(form, /suggestionsList\.setAttribute\("tabindex", "-1"\)|suggestionsList\.tabIndex = -1/, "a scrollable listbox of tabindex=-1 options is a Tab stop in Chromium unless it is -1 itself (review I1)");
+  });
+
+  it("AS-CSL-02: every suggestion button is a role=option with tabindex -1 and keeps its select-city action", async () => {
+    const render = await renderList();
+    assert.match(render, /createNode\("button", "weather-form__suggestion", label\)/, "still a button");
+    assert.match(render, /\bbutton\.setAttribute\("role", "option"\)/);
+    assert.match(render, /\bbutton\.setAttribute\("tabindex", "-1"\)|\bbutton\.tabIndex = -1/);
+    assert.match(render, /button\.dataset\.weatherAction = "select-city"/);
+  });
+
+  it("AS-CSL-02: renderSuggestionsList keeps aria-expanded equal to isSuggestionsOpen, also on the early return of the closed state", async () => {
+    const render = await renderList();
+    const expanded = render.search(/input\.setAttribute\("aria-expanded"/);
+    const earlyReturn = render.search(/\breturn;/);
+    assert.notEqual(expanded, -1, "aria-expanded is written in renderSuggestionsList");
+    assert.ok(expanded < earlyReturn, "written before the closed-state early return (or in both branches)");
+    assert.match(render, /isSuggestionsOpen\(weatherUi\)/);
+  });
+
+  it("AS-CSL-04: tabTrapFocusables never offers an option as the first or last stop of the trap", async () => {
+    const code = await strippedSource();
+    const trap = topLevelFunction(code, "tabTrapFocusables");
+    assert.match(trap, /role|tabindex|tabIndex/i, "the selector or the filter excludes the role=option / tabindex=-1 buttons");
+  });
+
+  it("AS-CSL-12: .city-location-link:focus-visible pads the text by 1px with an equal negative margin, so the ring reaches 3px", async () => {
+    const rule = ruleFor(await surfaces(), ".city-location-link:focus-visible");
+    assert.ok(rule, "the focus-visible rule exists");
+    assert.match(rule.body, /padding: 0 1px;/);
+    assert.match(rule.body, /margin: 0 -1px;/);
+    assert.match(rule.body, /box-shadow: 0 0 0 2px var\(--focus-[a-z-]*ring\)/, "the 2px ring stays");
+    assert.match(rule.body, /border-radius: var\(--radius-control\)/);
+  });
+});
