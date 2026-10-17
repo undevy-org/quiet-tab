@@ -52,9 +52,12 @@ export function createWeatherService({
     };
   }
 
-  // Change-mode city flow: fetch first (no write), drop a stale attempt, then
-  // write the location and the cache. A failed fetch rejects with the original
-  // error and leaves storage untouched; a cache write failure is not fatal.
+  // Change-mode city flow. Why: a failed change of city must not replace a working city (and its cache) with one whose
+  // forecast cannot be shown, so nothing is written until the forecast and air quality have both arrived. A failed fetch
+  // rejects with the original error and leaves storage untouched; a cache write failure is not fatal (the cache is a cache).
+  // The guarantee is "no write after the attempt is known to be stale" (timeout, newer attempt, teardown): the stale check
+  // happens once, after the fetch. The window between isStale() and setLocation/setCache is accepted
+  // (docs/city-modal-focus-copy.md, Accepted exceptions).
   async function persistAfterForecast(resolvedLocation, isStale) {
     const reading = await fetchReading(resolvedLocation);
 

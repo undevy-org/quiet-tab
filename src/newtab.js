@@ -102,19 +102,19 @@ const ANNOUNCE_FALLBACK_MS = 50;
 let announcePending = null; // { frame, timer } of the text waiting for its frame
 function announce(text) {
   if (!desktopLive) return;
-  if (announcePending) {
+  const cancelPending = () => {
+    if (!announcePending) return;
     cancelAnimationFrame(announcePending.frame);
     clearTimeout(announcePending.timer);
     announcePending = null;
-  }
+  };
+  cancelPending();
   desktopLive.textContent = "";
   if (text === "") return;
   const pending = { frame: 0, timer: 0 };
   const setText = () => {
     if (announcePending !== pending) return;
-    cancelAnimationFrame(pending.frame);
-    clearTimeout(pending.timer);
-    announcePending = null;
+    cancelPending();
     desktopLive.textContent = text;
   };
   pending.frame = requestAnimationFrame(setText);
@@ -1087,6 +1087,7 @@ function buildCityModal(mode, location) {
 
   const title = createNode("h2", "city-modal__title", location ? "Change city" : "Set a city");
   title.id = "city-modal-title";
+  title.tabIndex = -1; // takes the focus while a request runs (rescueFocusToTitle)
   dialog.appendChild(title);
   dialog.appendChild(createCityLocationDescription(mode));
 
@@ -1249,6 +1250,19 @@ async function useMyLocation(variant) {
   }
 }
 
+// While a city request runs the controls are disabled: when the focus is on body, outside `root` or on a disabled control,
+// the (tabindex -1) title takes it, so the focus never drops to body.
+function rescueFocusToTitle(root, titleSelector) {
+  const title = root.querySelector(titleSelector);
+  const active = document.activeElement;
+  const focusLost =
+    !active ||
+    active === document.body ||
+    !root.contains(active) ||
+    (active instanceof HTMLElement && active.matches("input, button") && active.disabled);
+  if (title instanceof HTMLElement && focusLost) title.focus();
+}
+
 function syncCityModal() {
   const host = cityFormHostRoot();
   if (!host) return;
@@ -1263,31 +1277,10 @@ function syncCityModal() {
     host.querySelector('[role="dialog"]')?.setAttribute("aria-busy", String(weatherBusy && !locating));
   }
   if (weatherBusy && !locating && onboardingWizardRoot && onboardingStep === 1) {
-    const title = onboardingWizardRoot.querySelector("#onboarding-step1-title");
-    const active = document.activeElement;
-    const focusLeftWizard =
-      !active ||
-      active === document.body ||
-      !onboardingWizardRoot.contains(active) ||
-      (active instanceof HTMLElement && active.matches("input, button") && active.disabled);
-    if (title instanceof HTMLElement && focusLeftWizard) {
-      title.tabIndex = -1;
-      title.focus();
-    }
+    rescueFocusToTitle(onboardingWizardRoot, "#onboarding-step1-title");
   }
   if (weatherBusy && !locating && cityModalRoot && !onboardingWizardRoot) {
-    // Change mode: the disabled controls must not leave the focus on body; the title takes it for the request.
-    const title = cityModalRoot.querySelector("#city-modal-title");
-    const active = document.activeElement;
-    const focusLost =
-      !active ||
-      active === document.body ||
-      !cityModalRoot.contains(active) ||
-      (active instanceof HTMLElement && active.matches("input, button") && active.disabled);
-    if (title instanceof HTMLElement && focusLost) {
-      title.tabIndex = -1;
-      title.focus();
-    }
+    rescueFocusToTitle(cityModalRoot, "#city-modal-title"); // change mode: the disabled controls must not leave the focus on body
   }
   const errorNode = host.querySelector("[data-city-modal-error]");
   if (errorNode) {
@@ -1364,7 +1357,9 @@ function attachCityModalListeners(root) {
     }
     const picked = activeCityForm?.chosen();
     if (picked) {
-      changeCity((isStale) => weatherService.selectLocation({ name: picked.name, country: picked.country, latitude: picked.latitude, longitude: picked.longitude }, { persist: "after-forecast", isStale }));
+      changeCity((isStale) => weatherService.selectLocation({
+        name: picked.name, country: picked.country, latitude: picked.latitude, longitude: picked.longitude
+      }, { persist: "after-forecast", isStale }));
       return;
     }
     changeCity((isStale) => weatherService.setCity(cityName, { persist: "after-forecast", isStale }));
@@ -1437,7 +1432,15 @@ function showCityModal(mode, openerSelector) {
 function hideCityModal() {
   if (!cityModalRoot) return;
   const mode = cityModalMode(weatherUi);
-  if (cityAttempt) cityAttempt.stale = true; // a request still running when the modal is torn down must not persist
+  const runningAttempt = cityAttempt;
+  if (runningAttempt) {
+    // A request still running when the modal is torn down (a code teardown; the UI cannot close a busy modal) must not persist,
+    // and must not leave the busy state behind: its finally block no longer owns it.
+    runningAttempt.stale = true;
+    cityAttempt = null;
+    weatherBusy = false;
+    weatherChanging = false;
+  }
   teardownLocationLookup();
   activeCityForm?.cancelPending();
   activeCityForm?.dispose?.();
@@ -1455,6 +1458,7 @@ function hideCityModal() {
     desktopDialogRoot.inert = false;
     syncWeatherDialogCity();
   } else if (favoritesRoot) favoritesRoot.inert = false;
+  if (runningAttempt) renderFavorites(); // the tiles leave their loading state
   if (mode === "change") {
     pendingFocus = [cityModalOpener, SETTINGS_TILE_SELECTOR].filter(Boolean);
     applyPendingFocus();
@@ -1466,6 +1470,7 @@ function hideCityModal() {
 // Success of a change-mode city request: the caller, not hideCityModal, picks the focus target and speaks.
 // From the hint tile the hint is gone by now: focus goes to the tile of the hint's metric (Settings when it has none).
 function finishCityChange() {
+  if (!cityModalRoot) return;
   if (cityModalHintMetricId && cityModalOpener === HINT_TILE_SELECTOR) {
     cityModalOpener = `[data-widget-id="${CSS.escape(cityModalHintMetricId)}"]`;
   }
@@ -1475,6 +1480,9 @@ function finishCityChange() {
 }
 
 // Save without a change is Cancel: a chosen city with the stored coordinates, or (no choice) the stored label as text.
+// Spec decision 2: this is not a repeat request; Retry on an error tile is the only way to re-request the forecast.
+// Coordinates are compared as they are stored (a suggestion is stored unrounded, "use your location" is rounded by
+// roundCoordinate before it becomes the choice, so both sides share one rounding).
 function isUnchangedCitySave(picked, cityName) {
   const stored = weatherLocationError ? null : currentLocation();
   if (!stored) return false;
@@ -3165,24 +3173,16 @@ function tabTrapFocusables(trapRoot) {
     }
     return true;
   });
-  if (
-    controls.length === 0 &&
-    trapRoot === onboardingWizardRoot &&
-    weatherBusy &&
-    onboardingStep === 1
-  ) {
-    const title = trapRoot.querySelector("#onboarding-step1-title");
-    if (title instanceof HTMLElement) {
-      title.tabIndex = -1;
-      return [title];
-    }
-  }
-  if (controls.length === 0 && trapRoot === cityModalRoot && weatherBusy) {
-    const title = trapRoot.querySelector("#city-modal-title");
-    if (title instanceof HTMLElement) {
-      title.tabIndex = -1;
-      return [title];
-    }
+  if (controls.length === 0 && weatherBusy) {
+    // Busy with every control disabled: the title (tabindex -1) is the one tab stop.
+    const titleSelector =
+      trapRoot === onboardingWizardRoot && onboardingStep === 1
+        ? "#onboarding-step1-title"
+        : trapRoot === cityModalRoot
+          ? "#city-modal-title"
+          : null;
+    const title = titleSelector ? trapRoot.querySelector(titleSelector) : null;
+    if (title instanceof HTMLElement) return [title];
   }
   return controls;
 }
@@ -3659,6 +3659,10 @@ function changeCity(run, { onSuccess = null } = {}) {
       attempt.stale = true; // a timeout: a result that arrives later is dropped by the service
       cityModalError = weatherErrorMessage(error);
     } finally {
+      // Only the newest attempt owns the busy state and the UI. An attempt that was superseded or whose modal was torn
+      // down (hideCityModal marks it stale and clears the busy state itself) leaves silently.
+      if (cityAttempt !== attempt) return;
+      cityAttempt = null;
       weatherBusy = false;
       weatherChanging = false;
       renderFavorites();
