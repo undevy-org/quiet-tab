@@ -96,8 +96,30 @@ function showDesktopStatus(text, { persist = false, tone = "error" } = {}) {
 }
 
 // Polite live region for outcomes that have no visible change at the focused element.
+// The region is cleared at once and the text is set on the next frame (timer fallback for a hidden tab), so an identical
+// string is a fresh mutation and is read again. A later call replaces the pending text; announce("") only clears.
+const ANNOUNCE_FALLBACK_MS = 50;
+let announcePending = null; // { frame, timer } of the text waiting for its frame
 function announce(text) {
-  if (desktopLive) desktopLive.textContent = text;
+  if (!desktopLive) return;
+  if (announcePending) {
+    cancelAnimationFrame(announcePending.frame);
+    clearTimeout(announcePending.timer);
+    announcePending = null;
+  }
+  desktopLive.textContent = "";
+  if (text === "") return;
+  const pending = { frame: 0, timer: 0 };
+  const setText = () => {
+    if (announcePending !== pending) return;
+    cancelAnimationFrame(pending.frame);
+    clearTimeout(pending.timer);
+    announcePending = null;
+    desktopLive.textContent = text;
+  };
+  pending.frame = requestAnimationFrame(setText);
+  pending.timer = setTimeout(setText, ANNOUNCE_FALLBACK_MS);
+  announcePending = pending;
 }
 
 function createNode(tagName, className, textContent) {
@@ -268,6 +290,8 @@ let weatherFormGeneration = 0;
 // The city modal (present in the DOM only while open) and what it needs across renders.
 let cityModalRoot = null;
 let cityModalOpener = null; // selector of the control that opened it, looked up again at close time
+let cityModalHintMetricId = null; // data-metric-id of the hint tile that opened it (the hint is gone once the first city is set)
+let cityAttempt = null; // { stale } of the newest changeCity attempt
 let cityModalError = "";
 let locationStatusNode = null;
 let locating = false;
@@ -1251,6 +1275,20 @@ function syncCityModal() {
       title.focus();
     }
   }
+  if (weatherBusy && !locating && cityModalRoot && !onboardingWizardRoot) {
+    // Change mode: the disabled controls must not leave the focus on body; the title takes it for the request.
+    const title = cityModalRoot.querySelector("#city-modal-title");
+    const active = document.activeElement;
+    const focusLost =
+      !active ||
+      active === document.body ||
+      !cityModalRoot.contains(active) ||
+      (active instanceof HTMLElement && active.matches("input, button") && active.disabled);
+    if (title instanceof HTMLElement && focusLost) {
+      title.tabIndex = -1;
+      title.focus();
+    }
+  }
   const errorNode = host.querySelector("[data-city-modal-error]");
   if (errorNode) {
     errorNode.textContent = cityModalError;
@@ -1320,12 +1358,16 @@ function attachCityModalListeners(root) {
       form.querySelector(CITY_INPUT_SELECTOR)?.focus();
       return;
     }
-    const picked = activeCityForm?.chosen();
-    if (picked) {
-      changeCity(() => weatherService.selectLocation({ name: picked.name, country: picked.country, latitude: picked.latitude, longitude: picked.longitude }));
+    if (isUnchangedCitySave(activeCityForm?.chosen() ?? null, cityName)) {
+      hideCityModal(); // exactly Cancel: nothing is written or requested
       return;
     }
-    changeCity(() => weatherService.setCity(cityName));
+    const picked = activeCityForm?.chosen();
+    if (picked) {
+      changeCity((isStale) => weatherService.selectLocation({ name: picked.name, country: picked.country, latitude: picked.latitude, longitude: picked.longitude }, { persist: "after-forecast", isStale }));
+      return;
+    }
+    changeCity((isStale) => weatherService.setCity(cityName, { persist: "after-forecast", isStale }));
   });
 }
 
@@ -1376,6 +1418,8 @@ function showCityModal(mode, openerSelector) {
   cityModalShownThisLoad = true;
   weatherUi = openCityModalState(weatherUi, mode);
   cityModalOpener = openerSelector;
+  cityModalHintMetricId =
+    openerSelector === HINT_TILE_SELECTOR ? (favoritesRoot?.querySelector(HINT_TILE_SELECTOR)?.dataset.metricId ?? null) : null;
   cityModalHadFocus = false;
   cityModalOpenedAt = performance.now();
   hideTooltip();
@@ -1393,6 +1437,7 @@ function showCityModal(mode, openerSelector) {
 function hideCityModal() {
   if (!cityModalRoot) return;
   const mode = cityModalMode(weatherUi);
+  if (cityAttempt) cityAttempt.stale = true; // a request still running when the modal is torn down must not persist
   teardownLocationLookup();
   activeCityForm?.cancelPending();
   activeCityForm?.dispose?.();
@@ -1415,6 +1460,26 @@ function hideCityModal() {
     applyPendingFocus();
   }
   cityModalOpener = null;
+  cityModalHintMetricId = null;
+}
+
+// Success of a change-mode city request: the caller, not hideCityModal, picks the focus target and speaks.
+// From the hint tile the hint is gone by now: focus goes to the tile of the hint's metric (Settings when it has none).
+function finishCityChange() {
+  if (cityModalHintMetricId && cityModalOpener === HINT_TILE_SELECTOR) {
+    cityModalOpener = `[data-widget-id="${CSS.escape(cityModalHintMetricId)}"]`;
+  }
+  hideCityModal();
+  const location = currentLocation();
+  if (location) announce(`City set to ${cityDisplayLabel(location)}`);
+}
+
+// Save without a change is Cancel: a chosen city with the stored coordinates, or (no choice) the stored label as text.
+function isUnchangedCitySave(picked, cityName) {
+  const stored = weatherLocationError ? null : currentLocation();
+  if (!stored) return false;
+  if (picked) return picked.latitude === stored.latitude && picked.longitude === stored.longitude;
+  return cityName === cityDisplayLabel(stored);
 }
 
 // Reveal (docs/first-run-empty-desk.md, decision 4): the veil goes away, and unless motion is reduced the whole desk fades in
@@ -3112,6 +3177,13 @@ function tabTrapFocusables(trapRoot) {
       return [title];
     }
   }
+  if (controls.length === 0 && trapRoot === cityModalRoot && weatherBusy) {
+    const title = trapRoot.querySelector("#city-modal-title");
+    if (title instanceof HTMLElement) {
+      title.tabIndex = -1;
+      return [title];
+    }
+  }
   return controls;
 }
 
@@ -3521,7 +3593,6 @@ async function retryWeather() {
     weatherRetryTimer = setTimeout(endWeatherRetryCooldown, Math.max(0, weatherUi.retry.availableAt - Date.now()) + 10);
   } else {
     if (!desktopStatusPersistent) showDesktopStatus(""); // an earlier failure text would now contradict the tiles
-    if (desktopLive) desktopLive.textContent = ""; // cleared first so a repeated "Weather updated" is announced
     announce("Weather updated");
   }
 }
@@ -3557,6 +3628,10 @@ function withTimeout(promise) {
 }
 
 function changeCity(run, { onSuccess = null } = {}) {
+  if (cityAttempt) cityAttempt.stale = true; // a new attempt supersedes the previous one
+  const attempt = { stale: false };
+  cityAttempt = attempt;
+  const isStale = () => attempt.stale;
   weatherBusy = true;
   weatherChanging = true;
   // Cancel the debounce and any in-flight suggestion request and empty the list: nothing rebuilds the form now.
@@ -3570,7 +3645,7 @@ function changeCity(run, { onSuccess = null } = {}) {
   void (async () => {
     let ok = false;
     try {
-      const result = await withTimeout(run());
+      const result = await withTimeout(run(isStale));
       // Only a successful change makes an earlier in-flight boot load stale; a failed one leaves it valid.
       weatherGeneration += 1;
       weatherResult = result;
@@ -3581,6 +3656,7 @@ function changeCity(run, { onSuccess = null } = {}) {
       clearTimeout(weatherRetryTimer);
       ok = true;
     } catch (error) {
+      attempt.stale = true; // a timeout: a result that arrives later is dropped by the service
       cityModalError = weatherErrorMessage(error);
     } finally {
       weatherBusy = false;
@@ -3588,7 +3664,7 @@ function changeCity(run, { onSuccess = null } = {}) {
       renderFavorites();
       if (ok) {
         if (onSuccess) onSuccess();
-        else hideCityModal();
+        else finishCityChange();
       } else {
         if (onboardingWizardRoot) syncOnboardingWizardUi();
         else syncCityModal();

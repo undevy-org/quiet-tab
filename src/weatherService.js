@@ -25,12 +25,19 @@ export function createWeatherService({
   now = () => Date.now()
 }) {
   async function fetchAndCache(location) {
+    return cacheStore.setCache(buildCache(location, await fetchReading(location)));
+  }
+
+  async function fetchReading(location) {
     const [weather, airQuality] = await Promise.all([
       fetchWeather({ latitude: location.latitude, longitude: location.longitude }),
       fetchAirQuality({ latitude: location.latitude, longitude: location.longitude })
     ]);
+    return { weather, airQuality };
+  }
 
-    return cacheStore.setCache({
+  function buildCache(location, { weather, airQuality }) {
+    return {
       locationName: location.name,
       fetchedAt: now(),
       temperature: weather.temperature,
@@ -42,7 +49,37 @@ export function createWeatherService({
       precipitationStartHour: weather.precipitationStartHour,
       usAqi: airQuality.usAqi,
       pm2_5: airQuality.pm2_5
-    });
+    };
+  }
+
+  // Change-mode city flow: fetch first (no write), drop a stale attempt, then
+  // write the location and the cache. A failed fetch rejects with the original
+  // error and leaves storage untouched; a cache write failure is not fatal.
+  async function persistAfterForecast(resolvedLocation, isStale) {
+    const reading = await fetchReading(resolvedLocation);
+
+    if (typeof isStale === "function" && isStale()) {
+      throw new Error("City request is no longer current");
+    }
+
+    const location = await locationStore.setLocation(resolvedLocation);
+    const cacheValue = buildCache(location, reading);
+    let data = cacheValue;
+
+    try {
+      data = await cacheStore.setCache(cacheValue);
+    } catch {
+      // the cache is only a cache: keep the location and show the result
+    }
+
+    return { status: "ready", location, data, error: null };
+  }
+
+  function resolvePersist(resolvedLocation, options) {
+    if (options && options.persist === "after-forecast") {
+      return persistAfterForecast(resolvedLocation, options.isStale);
+    }
+    return persistAndFetch(resolvedLocation);
   }
 
   async function persistAndFetch(resolvedLocation) {
@@ -93,13 +130,13 @@ export function createWeatherService({
       }
     },
 
-    async setCity(name) {
+    async setCity(name, options) {
       const resolved = await geocodeCity(name);
-      return persistAndFetch(resolved);
+      return resolvePersist(resolved, options);
     },
 
-    async selectLocation(location) {
-      return persistAndFetch(location);
+    async selectLocation(location, options) {
+      return resolvePersist(location, options);
     }
   };
 }
