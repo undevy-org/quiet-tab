@@ -108,10 +108,11 @@
   cursor: default;
 }
 
-/* Padding with an equal negative margin: the ring sits clear of the text and the text does not move. */
+/* Padding with an equal negative margin: the ring sits clear of the text and the text does not move. 1px padding + the 2px ring
+   reach 3px beyond the text, less than the space before the link, so the ring never covers the neighbouring word (run 45, decision 7). */
 .city-location-link:focus-visible {
-  padding: 0 4px;
-  margin: 0 -4px;
+  padding: 0 1px;
+  margin: 0 -1px;
   border-radius: var(--radius-control);
   background: var(--soft-fill-strong);
   box-shadow: 0 0 0 2px var(--focus-overlay-ring);

@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `key` must be removed from the zip uploaded to the Web Store (`docs/architecture.md`, "Extension id"). E2E
   `dg-63-nominatim-ua-wire.mjs` reads the header on the wire.
 
+### Changed
+
+- City suggestion list (modal and wizard step 1): the field is an ARIA 1.2 combobox (`role="combobox"`, `aria-expanded`, `aria-controls`) and the list a listbox of `role="option"` buttons; Tab skips the suggestion options and goes clear, Cancel (or Skip), Save (arrow keys are the way into the list); the focus ring of "use your location" reaches 3 px beyond the link text (padding 1 px) and no longer covers a neighbouring character (docs/city-suggestion-list.md).
+
 ### Added
 
 - Size segments show the footprint as a small outline rectangle (width × height) before 1×1 / 1×2 / 2×1 / 2×2, and each Size radio has an accessible name that starts with the visible label (`1×2, 1 wide, 2 high`); the selected dialog segment keeps its mark in forced colors (`forced-color-adjust: none`, `Highlight`). E2E `dg-66-tile-size-followups.mjs` covers the glyphs, the tone contrast table, dark theme, forced colors and two open tabs; unit tests cover 1×2 tiles at the edges of the layout engine (docs/tile-size-followups.md).
