@@ -2,7 +2,7 @@
 
 ## Status
 
-`draft` — revision 2 (2026-10-17, stage 2: fixes after spec review 1 and the spec gate r1; see § Changes after review 1). Revision 1 was stage 0. Run №45 (`city-suggestion-list`), row Р45 of the roadmap ("Список подсказок города", marathon `kickoffs/marathon-45-51.md`). Backlog: the "no ARIA on the suggestion list" nit of run #10 (`backlog.md`, section "Мелочи от проверяющих"), 41 (overlay list covers Save/Cancel; the L2-02 stack part is R46), 101, 108, 110, 113. The facts under § Triage come from reading `origin/main` at `289ea8d`; the executor's first step is to reproduce every item live and record the result there (an item that does not reproduce is closed with a backlog line and its AS and tasks are dropped by a spec fix).
+`implemented` — revision 2 (2026-10-17, stage 2: fixes after spec review 1 and the spec gate r1; see § Changes after review 1). Revision 1 was stage 0. Run №45 (`city-suggestion-list`), row Р45 of the roadmap ("Список подсказок города", marathon `kickoffs/marathon-45-51.md`). Backlog: the "no ARIA on the suggestion list" nit of run #10 (`backlog.md`, section "Мелочи от проверяющих"), 41 (overlay list covers Save/Cancel; the L2-02 stack part is R46), 101, 108, 110, 113. The facts under § Triage come from reading `origin/main` at `289ea8d`; the executor's first step is to reproduce every item live and record the result there (an item that does not reproduce is closed with a backlog line and its AS and tasks are dropped by a spec fix).
 
 **Data compatibility: not required** (no-users policy, `agent-config/CLAUDE.md`). Nothing is stored or migrated by this run.
 
