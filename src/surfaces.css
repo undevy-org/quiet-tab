@@ -505,6 +505,43 @@ img.onboarding-wizard__starter-icon[data-icon-check="pending"] {
   background: var(--panel);
   color: var(--text);
   box-shadow: var(--shadow-modal);
+  /* docs/layers-low-window.md decision 13: the sticky footer covers the lower part of the scrollport, so the room above it for
+     focus() and scrollIntoView is the footer's full box: the 16px gap, one control row and the card padding. */
+  scroll-padding-bottom: calc(var(--modal-actions-margin-top) + var(--control-height) + var(--surface-modal-padding));
+}
+
+/* Decision 13: the Cancel | Save row stays at the bottom edge of the card. Chromium measures a sticky offset from the CONTENT box of
+   the scroll container (measured in run 46: with bottom: 0 the footer stuck 20px above the padding edge, the card's padding), so
+   bottom is minus the card padding, which puts the footer's box on the padding edge; the card's bottom padding moves into the
+   footer (padding-bottom and an equal negative margin: the layout height is unchanged), and the gap above the buttons moves from
+   margin-top to padding-top (same position at rest; the opaque panel covers whatever scrolls under it). The divider is a real 1px border-top (it survives forced colors), taken from the
+   padding-top so the height is unchanged, and painted only while the dialog scrolls (data-scrolls, kept by a ResizeObserver). */
+.desktop-dialog .favorite-form__footer {
+  position: sticky;
+  bottom: calc(-1 * var(--surface-modal-padding));
+  z-index: 1;
+  margin-top: 0;
+  margin-bottom: calc(-1 * var(--surface-modal-padding));
+  padding-top: var(--modal-actions-margin-top);
+  padding-bottom: var(--surface-modal-padding);
+  background: var(--panel);
+}
+
+.desktop-dialog[data-scrolls="true"] .favorite-form__footer {
+  padding-top: calc(var(--modal-actions-margin-top) - 1px);
+  border-top: 1px solid var(--border);
+}
+
+/* Decision 4: ring room at the top and sides for a focused control (a literal, like the city modal's rule above: the widest ring
+   is the forced-colors outline, 2px + 2px offset = 4px, plus one pixel for Chrome's integer scroll offsets). */
+.desktop-dialog :is(button, input) {
+  scroll-margin: 5px;
+}
+
+.desktop-dialog .segmented__option input {
+  /* The 1x1 clipped radio sits at the centre of its option, half a control height from the group's edge; the group's ring is that
+     plus 4px (forced colors) plus the pixel for integer scroll offsets. */
+  scroll-margin-block: calc(var(--control-height) / 2 + 5px);
 }
 
 .desktop-dialog__title {

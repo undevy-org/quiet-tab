@@ -76,7 +76,8 @@ function caseBody(code, kind) {
   const start = code.indexOf(`case "${kind}": {`);
   assert.notEqual(start, -1, `case ${kind} exists`);
   const next = code.indexOf('\n    case "', start + 10);
-  return code.slice(start, next === -1 ? code.length : next);
+  const end = code.indexOf("\n      break;\n    }", start); // the case's own break: edit-weather is the last case and would run to the end of the file
+  return code.slice(start, end !== -1 && (next === -1 || end < next) ? end : next === -1 ? code.length : next);
 }
 // Argument lists of every `name(...)` call in `text` (balanced parentheses), each as an array of top-level entries: a bare list of
 // arguments, and for an object argument its keys (`{ restoreFocusTo: x, y }` gives ["restoreFocusTo: x", "y"] under `.keys`).
@@ -153,23 +154,29 @@ describe("layers and the low window source (run 46, docs/layers-low-window.md)",
     assert.doesNotMatch(await js(), /--status-reserve[^\n]*(?:viewportRows|clientHeight)/, "the reserve is not fed into the layout inputs");
   });
 
-  it("decision 7 / 12: revealAddedTile's bottom edge accounts for the chip reserve", async () => {
-    const reveal = fn(await js(), "revealAddedTile");
-    assert.match(reveal, /--status-reserve/, "it reads the property by name");
-    assert.match(reveal, /getPropertyValue|getComputedStyle/, "it reads its value");
-    assert.match(reveal, /clientHeight\s*-/, "the safe bottom edge is the window height minus the reserve while a chip is shown");
+  it("decision 7 / 12: revealAddedTile's bottom edge accounts for the chip reserve (through isSafelyInsideWindow, which it calls)", async () => {
+    const code = await js();
+    assert.match(fn(code, "revealAddedTile"), /isSafelyInsideWindow\(/, "the reveal asks the shared window test");
+    const inside = fn(code, "isSafelyInsideWindow");
+    assert.match(inside, /--status-reserve/, "it reads the property by name");
+    assert.match(inside, /getPropertyValue|getComputedStyle/, "it reads its value");
+    assert.match(inside, /clientHeight\s*-/, "the safe bottom edge is the window height minus the reserve while a chip is shown");
   });
 
   it("AS-LLW-06 / decision 6: showDialogError focuses with preventScroll, then scrolls the slot instantly (never smooth)", async () => {
-    const body = fn(await js(), "showDialogError");
+    const code = await js();
+    const body = fn(code, "showDialogError");
     const focusAt = body.search(/\.focus\(\{\s*preventScroll:\s*true\s*\}\)/);
     assert.notEqual(focusAt, -1, "the field is focused with preventScroll: true");
     assert.doesNotMatch(body, /\.focus\(\)/, "no plain focus() left in the function");
-    const scrollAt = body.search(/scrollTo\(|scrollTop\s*=|scrollBy\(|scrollIntoView\(/);
-    assert.notEqual(scrollAt, -1, "the dialog is scrolled by code");
-    assert.ok(scrollAt > focusAt, "the scroll comes after the focus");
-    assert.doesNotMatch(body, /smooth/, "the scroll is instant");
-    assert.match(body, /data-dialog-error|slot/, "the slot is what is scrolled to");
+    // The scroll lives in a helper the function calls after the focus (the spec fixes the order, not the function boundary).
+    const callAt = body.search(/scrollDialogErrorIntoView\(/);
+    assert.ok(callAt > focusAt, "the scroll helper is called after the focus");
+    const helper = fn(code, "scrollDialogErrorIntoView");
+    assert.match(helper, /scrollTop\s*=|scrollTo\(|scrollBy\(|scrollIntoView\(/, "the dialog is scrolled by code");
+    assert.doesNotMatch(helper, /smooth/, "the scroll is instant");
+    assert.match(helper, /slot/, "the slot is what is scrolled to");
+    assert.match(helper, /\.favorite-form__footer/, "the sticky footer is the lower bound");
   });
 
   it("decision 7: focusWidgetTarget focuses the opener with preventScroll: true and reveals a neighbour by the nearest edge, instant", async () => {
@@ -252,7 +259,7 @@ describe("layers and the low window source (run 46, docs/layers-low-window.md)",
     assert.ok(rules.length > 0, "the selector exists");
     for (const decl of [
       "position: sticky;",
-      "bottom: 0;",
+      "bottom: calc(-1 * var(--surface-modal-padding));", // spec said bottom: 0; Chromium measures sticky from the container's content box, so the card padding is added back (observable: 20px under the buttons)
       "padding-bottom: var(--surface-modal-padding);",
       "margin-bottom: calc(-1 * var(--surface-modal-padding));",
       "margin-top: 0;",

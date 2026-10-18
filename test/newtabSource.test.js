@@ -1095,7 +1095,7 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     assert.match(fn(code, "handleEditModeClick"), /tile\.dataset\.metricId \?\? tile\.dataset\.widgetId/);
     assert.match(fn(code, "createCityHintTile"), /if \(!desktopUi\.editMode\) button\.dataset\.favoriteAction = "set-city";/);
     // closeDesktopDialog takes a widget id, an { id, badge } target or a list; the weather dialog falls back to its metric.
-    assert.match(fn(code, "closeDesktopDialog"), /if \(restoreFocusTo\) focusWidgetTarget\(\[restoreFocusTo, fallback\]\.flat\(\)\);/);
+    assert.match(fn(code, "closeDesktopDialog"), /if \(restoreFocusTo\) focusWidgetTarget\(\[restoreFocusTo, fallback\]\.flat\(\), \{ preventScroll: true, reveal \}\);/);
     assert.match(fn(code, "focusWidgetTarget"), /typeof target === "string" \? \{ id: target, badge: false \} : target/);
   });
 
@@ -1315,7 +1315,7 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     assert.match(recover, /fresh = outcome\.state;/);
     assert.match(recover, /const outcome = await healClearedDesk\(fresh\);/);
     assert.match(recover, /if \(outcome\.healed\) neighbours = \[SETTINGS_TILE_ID\];/);
-    assert.match(recover, /closeDesktopDialog\(\{ restoreFocusTo: neighbours \}\)/);
+    assert.match(recover, /closeDesktopDialog\(\{ restoreFocusTo: neighbours, reveal: true \}\)/);
     assert.match(recover, /if \(outcome\.healed\) showDesktopStatus\(LAYOUT_RESET_MESSAGE, \{ tone: "info" \}\);\s*else showDesktopStatus\(error\.message\);/);
     assert.ok(recover.indexOf("healClearedDesk(") < recover.indexOf("finishFavoritesAction("), "healed before the one render");
     assert.doesNotMatch(recover, /announce\(/); // the alert status announces it once

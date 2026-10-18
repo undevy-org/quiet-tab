@@ -2210,14 +2210,19 @@ function applyJustAdded(tile, id) {
   });
 }
 
+// Safely inside: ADDED_EDGE_MARGIN_PX from the top and from the bottom edge, which is the window height minus the chip reserve while a
+// chip is shown (docs/layers-low-window.md decision 7).
+function isSafelyInsideWindow(node) {
+  const rect = node.getBoundingClientRect();
+  const statusReserve = Number.parseFloat(document.documentElement.style.getPropertyValue("--status-reserve")) || 0;
+  return rect.top >= ADDED_EDGE_MARGIN_PX && rect.bottom <= document.documentElement.clientHeight - statusReserve - ADDED_EDGE_MARGIN_PX;
+}
+
 // After the dialog is closed and the desk rendered: nothing when the tile is safely inside the window.
 function revealAddedTile(id) {
   const tile = favoritesRoot?.querySelector(`.desktop-grid > [data-widget-id="${CSS.escape(id)}"]`);
   if (!(tile instanceof HTMLElement)) return;
-  const rect = tile.getBoundingClientRect();
-  // The bottom edge is the window height minus the chip reserve while a chip is shown (docs/layers-low-window.md decision 7).
-  const statusReserve = Number.parseFloat(document.documentElement.style.getPropertyValue("--status-reserve")) || 0;
-  if (rect.top >= ADDED_EDGE_MARGIN_PX && rect.bottom <= document.documentElement.clientHeight - statusReserve - ADDED_EDGE_MARGIN_PX) return;
+  if (isSafelyInsideWindow(tile)) return;
   clearJustAdded();
   justAdded = { id, startedAt: performance.now() };
   justAddedTimer = setTimeout(clearJustAdded, ADDED_HIGHLIGHT_MS);
@@ -2225,11 +2230,13 @@ function revealAddedTile(id) {
   tile.scrollIntoView({ block: "center", behavior: prefersReducedMotion() ? "auto" : "smooth" });
 }
 
+const DIALOG_SCROLL_MARGIN_PX = 5; // the scroll-margin of a dialog control (surfaces.css)
 const ADD_TILE_SELECTOR = '[data-widget-id="chrome:add"]';
 const DIALOG_BACKDROP_GUARD_MS = 300;
 let desktopDialogRoot = null;
 let desktopDialogOpener = null; // { id, badge } of the tile or − badge that opened the dialog, looked up again at close
 let desktopDialogOpenedAt = 0;
+let desktopDialogScrollObserver = null; // keeps data-scrolls on the open dialog equal to "it scrolls" (docs/layers-low-window.md decision 13)
 
 const itemById = (id) => widgetsState?.items.find((item) => item.id === id) ?? null;
 const metricName = (id) => METRIC_LABELS[weatherMetricKey(id)];
@@ -2297,7 +2304,7 @@ function buildDialogContent(root, dialog) {
         ).then((ok) => {
           if (ok) {
             announce("Link saved");
-            closeDesktopDialog();
+            closeDesktopDialog({ reveal: true });
             if (payload.backgroundColorSource === "auto") void refreshAutoAccent(item.id);
           }
         });
@@ -2371,7 +2378,7 @@ function buildDialogContent(root, dialog) {
           (columns) => widgetsService.updateWeatherMetric(item.id, size, { columns }),
           { dialogRoot: root }
         ).then((ok) => {
-          if (ok) closeDesktopDialog();
+          if (ok) closeDesktopDialog({ reveal: true });
         });
       });
       form.append(createFormRow("City", cityField), createFormRow("Size", createSizeControl(size)), createDialogErrorSlot(), createDialogFooter(createDialogCancel(), save));
@@ -2400,6 +2407,21 @@ function syncWeatherDialogCity(root = desktopDialogRoot) {
   if (label) field.title = label; // the full label whenever a city is stored; the accessible name comes from aria-labelledby
   else field.removeAttribute("title");
   field.disabled = !weatherService;
+}
+
+// Decision 13: `data-scrolls="true"` on the dialog while its content is taller than its box, which draws the footer's divider. A
+// ResizeObserver on the dialog and its form covers every change of height without a list: open, window resize and zoom, the error
+// slot, the Icon mode switch, a font load. The attribute changes no size (the divider replaces 1px of padding), so it cannot loop.
+function watchDialogScrolls(root) {
+  const sync = () => {
+    root.dataset.scrolls = root.scrollHeight > root.clientHeight ? "true" : "false";
+  };
+  sync();
+  if (typeof ResizeObserver !== "function") return;
+  desktopDialogScrollObserver = new ResizeObserver(sync);
+  desktopDialogScrollObserver.observe(root);
+  const form = root.querySelector("form");
+  if (form) desktopDialogScrollObserver.observe(form);
 }
 
 // `opener`: { id, badge } of the control to refocus at close (a tile or its − badge), looked up again at close time.
@@ -2434,24 +2456,32 @@ function openDesktopDialog(dialog, { opener = focusedWidgetId() } = {}) {
   hideTooltip();
   favoritesRoot.inert = true;
   document.body.append(backdrop, root);
+  watchDialogScrolls(root);
   root.querySelector("input:not(:disabled), button:not(:disabled)")?.focus(); // the first enabled control (a disabled city-field is skipped)
   return true;
 }
 
 // `restoreFocusTo`: a widget id, an { id, badge } target, a list of those (first present wins), or null for none.
 // A weather dialog falls back to its metric's tile (the hint that opened it is gone once a city is set).
-function closeDesktopDialog({ restoreFocusTo = desktopDialogOpener } = {}) {
+// docs/layers-low-window.md decision 7: a close never scrolls the page by itself. `reveal: false` (Cancel, Escape, backdrop, a failed
+// write, the close after Add link) focuses the target with preventScroll; `reveal: true` (after a successful write that can move or
+// remove the target: Save, Delete, Hide, a gone-link recovery) also brings the target in by the nearest edge when it is not safely inside.
+function closeDesktopDialog({ restoreFocusTo = desktopDialogOpener, reveal = false } = {}) {
   const fallback = desktopUi.dialog?.id ?? null;
+  desktopDialogScrollObserver?.disconnect();
+  desktopDialogScrollObserver = null;
   document.querySelectorAll(".desktop-dialog, .desktop-backdrop").forEach((node) => node.remove());
   desktopDialogRoot = null;
   if (favoritesRoot) favoritesRoot.inert = false;
   desktopUi = closeDialog(desktopUi);
   desktopDialogOpener = null;
-  if (restoreFocusTo) focusWidgetTarget([restoreFocusTo, fallback].flat());
+  if (restoreFocusTo) focusWidgetTarget([restoreFocusTo, fallback].flat(), { preventScroll: true, reveal });
 }
 
 // Focuses the first present, enabled target: a widget id string (its tile) or { id, badge } (the tile or its − badge).
-function focusWidgetTarget(targets) {
+// Without options the plain focus() scrolls the target in, as before; `preventScroll` focuses without it, and `reveal` then scrolls by
+// the nearest edge (instant) only when the target is not at least ADDED_EDGE_MARGIN_PX inside the window and above the chip reserve.
+function focusWidgetTarget(targets, { preventScroll = false, reveal = false } = {}) {
   for (const target of [targets].flat()) {
     if (!target) continue;
     const { id, badge } = typeof target === "string" ? { id: target, badge: false } : target;
@@ -2460,10 +2490,12 @@ function focusWidgetTarget(targets) {
     if (!(node instanceof HTMLElement) || node.matches(":disabled")) continue;
     suppressTooltipOnFocus = true;
     try {
-      node.focus();
+      if (preventScroll) node.focus({ preventScroll: true });
+      else node.focus();
     } finally {
       suppressTooltipOnFocus = false;
     }
+    if (reveal && !isSafelyInsideWindow(node)) node.scrollIntoView({ block: "nearest", behavior: "auto" });
     return true;
   }
   return false;
@@ -2484,7 +2516,7 @@ async function confirmDeleteFavorite(id) {
   const opener = desktopDialogOpener;
   const ok = await runDesktopMutation((columns) => widgetsService.deleteFavorite(id, { columns }));
   if (!desktopDialogRoot) return; // closed meanwhile
-  closeDesktopDialog({ restoreFocusTo: ok ? next : opener });
+  closeDesktopDialog({ restoreFocusTo: ok ? next : opener, reveal: ok });
   if (ok) announce("Link deleted");
 }
 
@@ -2497,7 +2529,7 @@ async function hideWeatherMetric(metricId) {
   const opener = desktopDialogOpener;
   const ok = await runDesktopMutation((columns) => widgetsService.updateWeatherMetric(metricId, { enabled: false }, { columns }));
   if (!desktopDialogRoot) return; // closed meanwhile
-  closeDesktopDialog({ restoreFocusTo: ok ? next : opener });
+  closeDesktopDialog({ restoreFocusTo: ok ? next : opener, reveal: ok });
   if (ok) announce(HIDE_COPY[weatherMetricKey(metricId)].done);
 }
 
@@ -2691,7 +2723,32 @@ function showDialogError(root, message, field) {
     named.setAttribute("aria-describedby", slot.id);
   }
   const target = named ?? root.querySelector(invalidFieldFor(message)) ?? root.querySelector('button[type="submit"]');
-  if (target instanceof HTMLElement && !target.matches(":disabled")) target.focus();
+  if (target instanceof HTMLElement && !target.matches(":disabled")) target.focus({ preventScroll: true });
+  scrollDialogErrorIntoView(root, slot, target);
+}
+
+// docs/layers-low-window.md decision 6: after the focus (which did not scroll) the dialog scrolls instantly so the alert slot is above
+// the sticky footer; when the focused field's top and the slot's bottom (5px margins) fit in the visible height together, both are
+// in view, otherwise the slot wins and the field may be out of view. Nothing moves when the slot is already in view.
+function scrollDialogErrorIntoView(root, slot, target) {
+  const footer = root.querySelector(".favorite-form__footer");
+  const portTop = root.getBoundingClientRect().top + root.clientTop;
+  const portBottom = portTop + root.clientHeight;
+  const footerTop = footer ? Math.min(footer.getBoundingClientRect().top, portBottom) : portBottom;
+  const slotRect = slot.getBoundingClientRect();
+  const fieldRect = target instanceof HTMLElement ? target.getBoundingClientRect() : null;
+  const margin = DIALOG_SCROLL_MARGIN_PX;
+  const slotDown = slotRect.bottom + margin - footerTop; // > 0: the slot is under the footer
+  let delta;
+  if (fieldRect && slotRect.bottom - fieldRect.top + 2 * margin <= footerTop - portTop) {
+    const fieldLimit = Math.floor(fieldRect.top - margin - portTop); // the most the dialog may scroll down before the field leaves the top
+    delta = Math.min(Math.max(0, Math.ceil(slotDown)), fieldLimit);
+  } else if (slotDown > 0) {
+    delta = Math.ceil(slotDown);
+  } else {
+    delta = Math.min(0, slotRect.top - margin - portTop);
+  }
+  if (delta !== 0) root.scrollTop = root.scrollTop + delta;
 }
 
 const LAYOUT_RESET_MESSAGE = "Your layout was reset in another tab.";
@@ -2800,8 +2857,8 @@ async function recoverFromGoneLink(generation, error) {
     showLayoutRestoreFailure();
     return;
   }
-  if (desktopDialogRoot) closeDesktopDialog({ restoreFocusTo: neighbours });
-  else focusWidgetTarget(neighbours);
+  if (desktopDialogRoot) closeDesktopDialog({ restoreFocusTo: neighbours, reveal: true });
+  else focusWidgetTarget(neighbours, { preventScroll: true, reveal: true });
   if (outcome.healed) showDesktopStatus(LAYOUT_RESET_MESSAGE, { tone: "info" });
   else showDesktopStatus(error.message);
 }
