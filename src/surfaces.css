@@ -483,6 +483,12 @@ img.onboarding-wizard__starter-icon[data-icon-check="pending"] {
   background: var(--surface-backdrop);
 }
 
+/* Decision 3 of docs/layers-low-window.md: the card under a stacked city modal is not painted (inert is set on a
+   .desktop-dialog only by showCityModal when it stacks and cleared by hideCityModal); it stays in the DOM with its values. */
+.desktop-dialog[inert] {
+  visibility: hidden;
+}
+
 .desktop-dialog {
   position: fixed;
   z-index: 101;

@@ -38,9 +38,13 @@ describe("city modal focus ring when focus scrolls (scroll-margin)", () => {
     assert.deepEqual(inFocus.map((r) => r.selector), []);
   });
 
-  it("uses no scroll-padding and no scroll-snap anywhere in src/*.css", async () => {
+  it("uses no scroll-snap anywhere in src/*.css, and scroll-padding only on html (the chip reserve) and on .desktop-dialog (the sticky footer)", async () => {
+    // Run 46 (docs/layers-low-window.md decisions 12 and 13) added those two scroll-padding rules; the city modal still has none.
     for (const [name, css] of Object.entries(await allCss())) {
-      assert.doesNotMatch(css, /scroll-padding|scroll-snap/, name);
+      assert.doesNotMatch(css, /scroll-snap/, name);
+      for (const rule of rules(css).filter((r) => /scroll-padding/.test(r.body))) {
+        assert.ok(["html", ".desktop-dialog"].includes(rule.selector), `${name}: scroll-padding in ${rule.selector}`);
+      }
     }
   });
 

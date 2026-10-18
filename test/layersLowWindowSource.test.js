@@ -8,7 +8,23 @@ import { describe, it } from "node:test";
 const read = (name) => readFile(new URL(`../src/${name}`, import.meta.url), "utf8");
 const norm = (text) => text.replace(/\s+/g, " ").trim();
 const stripCss = (text) => text.replace(/\/\*[\s\S]*?\*\//g, "");
-const cssRules = (css) => [...stripCss(css).matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({ selectors: m[1].split(",").map(norm), body: norm(m[2]), at: m.index }));
+// A selector list splits on commas outside parentheses only: `body:has(.a, .b) #x` and `.x :is(button, input)` are one selector each.
+function splitSelectors(text) {
+  const parts = [];
+  let depth = 0;
+  let from = 0;
+  for (let i = 0; i < text.length; i += 1) {
+    if (text[i] === "(") depth += 1;
+    else if (text[i] === ")") depth -= 1;
+    else if (text[i] === "," && depth === 0) {
+      parts.push(norm(text.slice(from, i)));
+      from = i + 1;
+    }
+  }
+  parts.push(norm(text.slice(from)));
+  return parts;
+}
+const cssRules = (css) => [...stripCss(css).matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({ selectors: splitSelectors(m[1]), body: norm(m[2]), at: m.index }));
 const rulesFor = (css, selector) => cssRules(css).filter((r) => r.selectors.includes(selector));
 const hasDecl = (rules, decl) => rules.some((r) => r.body.includes(decl));
 

@@ -92,7 +92,9 @@ describe("city modal placePopover without reserve machinery", () => {
     }
     const code = await read("newtab.js");
     assert.doesNotMatch(code, /import \{[^}]*feedbackReserve[^}]*\} from "\.\/cityPrompt\.js";/);
-    assert.doesNotMatch(code, /ResizeObserver/);
+    // Run 46 (docs/layers-low-window.md decision 12): the status chip has its own ResizeObserver; the city modal and the wizard still have none.
+    for (const [, target] of code.matchAll(/\.observe\(([^)]*)\)/g)) assert.doesNotMatch(target, /city|wizard|popover|suggest/i, `no ResizeObserver on the city modal: ${target}`);
+    assert.match(code, /\.observe\(desktopStatus\)/, "the chip observer is the one that exists");
     assert.equal((code.match(/addEventListener\("resize"/g) ?? []).length, 3, "the resize listeners of the page are unchanged");
   });
 

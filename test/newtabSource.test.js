@@ -996,7 +996,8 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     for (const v of ["--cell-size", "--grid-gap", "--grid-pad"]) assert.ok(metrics.includes(`style.setProperty("${v}"`), v);
     assert.match(code, /return document\.documentElement\.clientWidth;/);
     const styles = await css();
-    assert.match(styles, /html \{\s*scrollbar-gutter: stable;\s*\}/);
+    // Run 46 (decision 12) added the chip reserve to the same rule.
+    assert.match(styles, /html \{\s*scrollbar-gutter: stable;\s*(?:\/\*[\s\S]*?\*\/\s*)?scroll-padding-bottom: var\(--status-reserve, 0px\);\s*\}/);
     assert.doesNotMatch(styles, /--cell-size:\s*\d/, "no CSS sets a cell size");
     assert.doesNotMatch(styles, /--grid-gap:\s*\d/);
   });

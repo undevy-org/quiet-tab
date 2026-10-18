@@ -95,6 +95,21 @@ function showDesktopStatus(text, { persist = false, tone = "error" } = {}) {
   if (text !== "" && !persist) desktopStatusTimer = setTimeout(() => showDesktopStatus(""), DESKTOP_STATUS_MS);
 }
 
+// docs/layers-low-window.md decision 12: --status-reserve (px) on :root is the distance from the window bottom to the chip's
+// top while the chip exists (border box height + --status-chip-offset-bottom), 0 when it is hidden. The chip is
+// position: fixed, so it takes no room by itself; the CSS uses the property for .desktop padding-bottom and the root
+// scroll-padding-bottom only, never for any layout input (columns, viewportRows) and nothing is written to storage.
+if (desktopStatus && typeof ResizeObserver === "function") {
+  const writeStatusReserve = (height) => {
+    const offset = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--status-chip-offset-bottom")) || 0;
+    document.documentElement.style.setProperty("--status-reserve", desktopStatus.hidden || height <= 0 ? "0px" : `${height + offset}px`);
+  };
+  new ResizeObserver((entries) => {
+    const entry = entries[entries.length - 1];
+    writeStatusReserve(entry.borderBoxSize?.[0]?.blockSize ?? desktopStatus.offsetHeight);
+  }).observe(desktopStatus);
+}
+
 // Polite live region for outcomes that have no visible change at the focused element.
 // The region is cleared at once and the text is set on the next frame (timer fallback for a hidden tab), so an identical
 // string is a fresh mutation and is read again. A later call replaces the pending text; announce("") only clears.
@@ -2200,7 +2215,9 @@ function revealAddedTile(id) {
   const tile = favoritesRoot?.querySelector(`.desktop-grid > [data-widget-id="${CSS.escape(id)}"]`);
   if (!(tile instanceof HTMLElement)) return;
   const rect = tile.getBoundingClientRect();
-  if (rect.top >= ADDED_EDGE_MARGIN_PX && rect.bottom <= document.documentElement.clientHeight - ADDED_EDGE_MARGIN_PX) return;
+  // The bottom edge is the window height minus the chip reserve while a chip is shown (docs/layers-low-window.md decision 7).
+  const statusReserve = Number.parseFloat(document.documentElement.style.getPropertyValue("--status-reserve")) || 0;
+  if (rect.top >= ADDED_EDGE_MARGIN_PX && rect.bottom <= document.documentElement.clientHeight - statusReserve - ADDED_EDGE_MARGIN_PX) return;
   clearJustAdded();
   justAdded = { id, startedAt: performance.now() };
   justAddedTimer = setTimeout(clearJustAdded, ADDED_HIGHLIGHT_MS);
