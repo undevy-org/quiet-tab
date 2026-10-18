@@ -538,9 +538,14 @@ img.onboarding-wizard__starter-icon[data-icon-check="pending"] {
 }
 
 /* A shown error in a scrolling dialog keeps 5px (the dialog's scroll-margin) above the footer's divider even at the end of the scroll,
-   where the layout, not the scroll position, decides the distance. */
+   where the layout, not the scroll position, decides the distance. The 5px come out of the footer's padding-top, so the distance
+   from the error to the buttons stays 16px. */
 .desktop-dialog[data-scrolls="true"] .desktop-dialog__error:not([hidden]) {
   margin-bottom: 5px;
+}
+
+.desktop-dialog[data-scrolls="true"] .favorite-form:has(.desktop-dialog__error:not([hidden])) .favorite-form__footer {
+  padding-top: calc(var(--modal-actions-margin-top) - 6px);
 }
 
 /* Decision 4: ring room at the top and sides for a focused control (a literal, like the city modal's rule above: the widest ring
