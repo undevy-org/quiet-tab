@@ -111,11 +111,6 @@
   --shadow-status: var(--shadow-popover);
 }
 
-/* Cell 56 (gap 6, pad 8): the badge sits 6px outside the grid edge, clear of the document top and of the neighbours. */
-:root[data-cell="56"] {
-  --tile-remove-offset: 6px;
-}
-
 @media (prefers-color-scheme: dark) {
   :root {
     --color-bg: #14171c;

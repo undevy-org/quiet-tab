@@ -539,12 +539,14 @@ img.onboarding-wizard__starter-icon[data-icon-check="pending"] {
 
 /* A shown error in a scrolling dialog keeps 5px (the dialog's scroll-margin) above the footer's divider even at the end of the scroll,
    where the layout, not the scroll position, decides the distance. The 5px come out of the footer's padding-top, so the distance
-   from the error to the buttons stays 16px. */
+   from the error to the buttons stays 16px. The footer minus 6px is 5px (the error's margin-bottom) plus 1px (the divider's border-top,
+   which already replaces 1px of the resting padding-top). The adjacent-sibling selector matches both layouts: the error slot is the
+   footer's previous sibling in the forms and directly in the confirm dialogs, where the footer is a child of .desktop-dialog. */
 .desktop-dialog[data-scrolls="true"] .desktop-dialog__error:not([hidden]) {
   margin-bottom: 5px;
 }
 
-.desktop-dialog[data-scrolls="true"] .favorite-form:has(.desktop-dialog__error:not([hidden])) .favorite-form__footer {
+.desktop-dialog[data-scrolls="true"] .desktop-dialog__error:not([hidden]) + .favorite-form__footer {
   padding-top: calc(var(--modal-actions-margin-top) - 6px);
 }
 

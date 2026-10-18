@@ -2411,7 +2411,8 @@ function syncWeatherDialogCity(root = desktopDialogRoot) {
 
 // Decision 13: `data-scrolls="true"` on the dialog while its content is taller than its box, which draws the footer's divider. A
 // ResizeObserver on the dialog and its form covers every change of height without a list: open, window resize and zoom, the error
-// slot, the Icon mode switch, a font load. The attribute changes no size (the divider replaces 1px of padding), so it cannot loop.
+// slot, the Icon mode switch, a font load. The attribute changes no size (the divider replaces 1px of padding), so it cannot loop; the same
+// holds under a shown error: the slot's margin-bottom 5px and the footer's padding-top minus 6px (5px + the divider's 1px) net to zero.
 function syncDialogScrolls(root) {
   root.dataset.scrolls = root.scrollHeight > root.clientHeight ? "true" : "false";
 }

@@ -271,8 +271,8 @@ describe("layers and the low window source (run 46, docs/layers-low-window.md)",
     assert.ok(hasAnyDecl(scrolling, ["background: var(--panel);", "background-color: var(--panel);"]), "opaque --panel background while the dialog scrolls");
     const room = rulesFor(css, '.desktop-dialog[data-scrolls="true"] .desktop-dialog__error:not([hidden])');
     assert.ok(hasDecl(room, "margin-bottom: 5px;"), "a shown error keeps 5px above the footer even at the end of the scroll (checkpoint L2-02: the scroll position cannot, it is at its maximum)");
-    const paid = rulesFor(css, '.desktop-dialog[data-scrolls="true"] .favorite-form:has(.desktop-dialog__error:not([hidden])) .favorite-form__footer');
-    assert.ok(hasDecl(paid, "padding-top: calc(var(--modal-actions-margin-top) - 6px);"), "the 5px come out of the footer's padding-top: the error-to-buttons distance stays 16px (dg-58 AS-MO-18)");
+    const paid = rulesFor(css, '.desktop-dialog[data-scrolls="true"] .desktop-dialog__error:not([hidden]) + .favorite-form__footer');
+    assert.ok(hasDecl(paid, "padding-top: calc(var(--modal-actions-margin-top) - 6px);"), "the 5px come out of the footer's padding-top: the error-to-buttons distance stays 16px (dg-58 AS-MO-18); the adjacent-sibling selector also matches the confirm dialogs, whose footer is a direct child of .desktop-dialog (review of task 5)");
   });
 
   it("decision 13: the divider is a real 1px border-top in --border on the footer (a scrolling dialog only; the mechanism is the plan's)", async () => {

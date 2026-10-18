@@ -489,6 +489,12 @@ body:has(.desktop-dialog, .city-modal) #desktop-status {
   line-height: 1.2;
 }
 
+/* Cell 56 (gap 6, pad 8; the base --tile-remove-offset 8px is in design-tokens.css): the remove badge sits 6px outside the grid edge,
+   clear of the document top and of the neighbours (docs/layers-low-window.md decision 8). */
+:root[data-cell="56"] {
+  --tile-remove-offset: 6px;
+}
+
 /* The narrowest cell (56px, windows up to 360px; backlog 78): the label column of a 1×2 tile was 42px, so "YouTube", "ChatGPT" and
    "Amazon" at 11px broke in the middle of the word; side padding 6 -> 3px (column 48px) and a 10px label keep every starter label on
    one line. "ChatGPT" on a 2×1 tile overflowed its 56px line by 1px; 12px fits. */
