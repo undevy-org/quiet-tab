@@ -254,26 +254,20 @@ describe("layers and the low window source (run 46, docs/layers-low-window.md)",
     assert.ok(hasDecl(rules, "scroll-padding-bottom: calc(var(--modal-actions-margin-top) + var(--control-height) + var(--surface-modal-padding));"));
   });
 
-  it("decision 13: .desktop-dialog .favorite-form__footer is sticky with the padding recipe and z-index 1; the opaque panel and the divider belong to a scrolling dialog only, with 5px of room under a shown error", async () => {
+  it("decision 13: .desktop-dialog .favorite-form__footer has the padding recipe; the sticky layer (z-index 1), the opaque panel and the divider belong to a scrolling dialog only, with 5px of room under a shown error", async () => {
     const css = await allCss();
     const rules = rulesFor(css, ".desktop-dialog .favorite-form__footer");
     assert.ok(rules.length > 0, "the selector exists");
-    for (const decl of [
-      "position: sticky;",
-      "bottom: calc(-1 * var(--surface-modal-padding));", // Chromium measures sticky from the container's content box, so the card padding is added back (observable: 20px under the buttons)
-      "padding-bottom: var(--surface-modal-padding);",
-      "margin-bottom: calc(-1 * var(--surface-modal-padding));",
-      "margin-top: 0;",
-      "z-index: 1;"
-    ]) {
+    for (const decl of ["padding-bottom: var(--surface-modal-padding);", "margin-bottom: calc(-1 * var(--surface-modal-padding));", "margin-top: 0;"]) {
       assert.ok(hasDecl(rules, decl), decl);
     }
     assert.ok(rules.some((r) => /padding-top: var\(--modal-actions-margin-top\);/.test(r.body)), "the 16px gap moves into the footer's padding-top");
-    // Replaced, not weakened (checkpoint L2-01): the opaque panel used to sit on the resting rule and painted over 0.34px of a fitting
-    // confirm dialog's card edge (y~476/487 differed from origin/main by up to 9 per channel). Now it is under [data-scrolls=true] and the
-    // resting rule must have none, so a fitting dialog is pixel-equal to origin/main.
-    assert.ok(!rules.some((r) => /background/.test(r.body)), "a fitting dialog's footer has no background of its own");
+    // Replaced, not weakened (checkpoint L2-01 and its follow-up): position sticky and the opaque panel used to sit on the resting rule.
+    // They painted over 0.34px of a fitting confirm dialog's card edge (up to 9 per channel) and re-rasterised a button's text at a
+    // fractional position (1 level), so a fitting dialog was not pixel-equal to origin/main. The resting rule must have neither.
+    assert.ok(!rules.some((r) => /background|position:|z-index|(?<![-\w])bottom:/.test(r.body)), "a fitting dialog's footer has no sticky layer and no background of its own");
     const scrolling = rulesFor(css, '.desktop-dialog[data-scrolls="true"] .favorite-form__footer');
+    for (const decl of ["position: sticky;", "bottom: calc(-1 * var(--surface-modal-padding));", "z-index: 1;"]) assert.ok(hasDecl(scrolling, decl), `${decl} (Chromium measures sticky from the container's content box, so the card padding is added back: 20px under the buttons)`);
     assert.ok(hasAnyDecl(scrolling, ["background: var(--panel);", "background-color: var(--panel);"]), "opaque --panel background while the dialog scrolls");
     const room = rulesFor(css, '.desktop-dialog[data-scrolls="true"] .desktop-dialog__error:not([hidden])');
     assert.ok(hasDecl(room, "margin-bottom: 5px;"), "a shown error keeps 5px above the footer even at the end of the scroll (checkpoint L2-02: the scroll position cannot, it is at its maximum)");

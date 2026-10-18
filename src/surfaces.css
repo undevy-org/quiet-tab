@@ -516,15 +516,12 @@ img.onboarding-wizard__starter-icon[data-icon-check="pending"] {
   scroll-padding-bottom: calc(var(--modal-actions-margin-top) + var(--control-height) + var(--surface-modal-padding));
 }
 
-/* The Cancel | Save row stays at the bottom edge of the card. Chromium measures a sticky offset from the container's content box,
-   hence the negative bottom: it puts the footer on the padding edge. The card's bottom padding and the gap above the buttons move
-   into the footer (an equal negative margin and padding-top keep the layout height, so a fitting dialog is unchanged). Only a
-   scrolling dialog (data-scrolls, kept by a ResizeObserver) gets the opaque panel behind the footer and the 1px divider (a real
-   border, it survives forced colors). */
+/* The Cancel | Save row stays at the bottom edge of the card of a scrolling dialog (data-scrolls, kept by a ResizeObserver). Chromium
+   measures a sticky offset from the container's content box, hence the negative bottom: it puts the footer on the padding edge. The
+   card's bottom padding and the gap above the buttons move into the footer (an equal negative margin and padding-top keep the layout
+   height). Only a scrolling dialog gets the sticky layer, the opaque panel behind it and the 1px divider (a real border, it survives
+   forced colors): a fitting dialog is painted exactly as before (a sticky layer re-rasterises text on fractional positions). */
 .desktop-dialog .favorite-form__footer {
-  position: sticky;
-  bottom: calc(-1 * var(--surface-modal-padding));
-  z-index: 1;
   margin-top: 0;
   margin-bottom: calc(-1 * var(--surface-modal-padding));
   padding-top: var(--modal-actions-margin-top);
@@ -532,6 +529,9 @@ img.onboarding-wizard__starter-icon[data-icon-check="pending"] {
 }
 
 .desktop-dialog[data-scrolls="true"] .favorite-form__footer {
+  position: sticky;
+  bottom: calc(-1 * var(--surface-modal-padding));
+  z-index: 1;
   padding-top: calc(var(--modal-actions-margin-top) - 1px);
   border-top: 1px solid var(--border);
   background: var(--panel);
