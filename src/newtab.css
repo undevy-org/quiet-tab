@@ -22,12 +22,16 @@ body {
    gutter is always reserved so a scrollbar appearing never changes the width the column count is computed from. */
 html {
   scrollbar-gutter: stable;
+  /* docs/layers-low-window.md decision 12: room under the status chip while it exists (written by newtab.js from the chip's
+     border box); a tile scrolled or focused into view stops above it. 0 when there is no chip. */
+  scroll-padding-bottom: var(--status-reserve, 0px);
 }
 
 .desktop {
   min-height: 100vh;
   box-sizing: border-box;
   padding: var(--grid-pad, 16px);
+  padding-bottom: calc(var(--grid-pad, 16px) + var(--status-reserve, 0px)); /* document height only: nothing the layout reads changes */
 }
 
 /* First run (docs/first-run-empty-desk.md): while the first-run city modal is open the desk is veiled. Nothing is painted,
@@ -244,6 +248,15 @@ button.weather-tile {
 
 .desktop-status[hidden] {
   display: none;
+}
+
+/* docs/layers-low-window.md decisions 1 and 11: while any modal layer is in the DOM (a desktop dialog, the city modal in
+   either mode, the wizard, which is a .city-modal) the chip is not painted. Derived from the DOM, so no path can leave it
+   wrong. Instant, no transition; opacity and pointer-events keep it in the accessibility tree and keep its layout box
+   (the reserve does not move); the z-index stays 50, never above a backdrop. */
+body:has(.desktop-dialog, .city-modal) #desktop-status {
+  opacity: 0;
+  pointer-events: none;
 }
 
 /* A neutral notice (docs/stale-tab-closeout.md decision 2): the reset message; errors keep the danger look above. */
@@ -474,6 +487,12 @@ button.weather-tile {
 .favorite-tile[data-w="1"][data-h="2"] .favorite-tile__host {
   font-size: 10px;
   line-height: 1.2;
+}
+
+/* Cell 56 (gap 6, pad 8; the base --tile-remove-offset 8px is in design-tokens.css): the remove badge sits 6px outside the grid edge,
+   clear of the document top and of the neighbours (docs/layers-low-window.md decision 8). */
+:root[data-cell="56"] {
+  --tile-remove-offset: 6px;
 }
 
 /* The narrowest cell (56px, windows up to 360px; backlog 78): the label column of a 1×2 tile was 42px, so "YouTube", "ChatGPT" and

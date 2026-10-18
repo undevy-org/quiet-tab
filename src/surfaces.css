@@ -136,7 +136,7 @@
 .onboarding-wizard__step-title:focus-visible {
   outline: 2px solid transparent; /* forced colors turn this into a visible indicator */
   border-radius: var(--radius-control);
-  box-shadow: 0 0 0 2px var(--focus-overlay-ring);
+  box-shadow: 0 0 0 2px var(--focus-ring); /* solid: a target that takes focus programmatically (run 46, decision 9) */
 }
 
 .city-modal .status--full {
@@ -176,6 +176,12 @@
 .city-modal :is(button, input, .weather-form__suggestion):focus-visible {
   outline: 2px solid transparent; /* forced colors turn this into a visible indicator */
   outline-offset: 2px;
+}
+
+/* Forced colors: the outline hugs the link's padded box so it stays inside the space before the link. After the shared rule above:
+   equal specificity (0,3,0), order decides. */
+.city-modal .city-location-link:focus-visible {
+  outline-offset: 0;
 }
 
 .city-modal .favorite-input:focus-visible {
@@ -236,15 +242,15 @@
   overflow-wrap: anywhere;
 }
 
-/* Locked list = keyboard scroll stop. An outline, because the opaque rows would hide an inset shadow of the list; it is painted over
-   the content. A locked row does not look busy (the list stays on the default cursor). */
+/* Locked list = keyboard scroll stop. The ring is an outline outside the list's box: the opaque rows cannot cover it and it does not
+   scroll with them. A locked row does not look busy (the list stays on the default cursor). */
 .onboarding-wizard__starters[data-starters-locked="true"] {
   cursor: default;
 }
 
 .onboarding-wizard__starters[data-starters-locked="true"]:focus-visible {
   outline: 2px solid var(--focus-ring); /* the solid token: the translucent overlay ring measured 1.6:1 over the white rows */
-  outline-offset: -2px;
+  outline-offset: 0;
   border-radius: var(--radius-control);
 }
 
@@ -483,6 +489,12 @@ img.onboarding-wizard__starter-icon[data-icon-check="pending"] {
   background: var(--surface-backdrop);
 }
 
+/* Decision 3 of docs/layers-low-window.md: the card under a stacked city modal is not painted (inert is set on a
+   .desktop-dialog only by showCityModal when it stacks and cleared by hideCityModal); it stays in the DOM with its values. */
+.desktop-dialog[inert] {
+  visibility: hidden;
+}
+
 .desktop-dialog {
   position: fixed;
   z-index: 101;
@@ -499,6 +511,55 @@ img.onboarding-wizard__starter-icon[data-icon-check="pending"] {
   background: var(--panel);
   color: var(--text);
   box-shadow: var(--shadow-modal);
+  /* docs/layers-low-window.md decision 13: the sticky footer covers the lower part of the scrollport, so the room above it for
+     focus() and scrollIntoView is the footer's full box: the 16px gap, one control row and the card padding. */
+  scroll-padding-bottom: calc(var(--modal-actions-margin-top) + var(--control-height) + var(--surface-modal-padding));
+}
+
+/* The Cancel | Save row stays at the bottom edge of the card of a scrolling dialog (data-scrolls, kept by a ResizeObserver). Chromium
+   measures a sticky offset from the container's content box, hence the negative bottom: it puts the footer on the padding edge. The
+   card's bottom padding and the gap above the buttons move into the footer (an equal negative margin and padding-top keep the layout
+   height). Only a scrolling dialog gets the sticky layer, the opaque panel behind it and the 1px divider (a real border, it survives
+   forced colors): a fitting dialog is painted exactly as before (a sticky layer re-rasterises text on fractional positions). */
+.desktop-dialog .favorite-form__footer {
+  margin-top: 0;
+  margin-bottom: calc(-1 * var(--surface-modal-padding));
+  padding-top: var(--modal-actions-margin-top);
+  padding-bottom: var(--surface-modal-padding);
+}
+
+.desktop-dialog[data-scrolls="true"] .favorite-form__footer {
+  position: sticky;
+  bottom: calc(-1 * var(--surface-modal-padding));
+  z-index: 1;
+  padding-top: calc(var(--modal-actions-margin-top) - 1px);
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+}
+
+/* A shown error in a scrolling dialog keeps 5px (the dialog's scroll-margin) above the footer's divider even at the end of the scroll,
+   where the layout, not the scroll position, decides the distance. The 5px come out of the footer's padding-top, so the distance
+   from the error to the buttons stays 16px. The footer minus 6px is 5px (the error's margin-bottom) plus 1px (the divider's border-top,
+   which already replaces 1px of the resting padding-top). The adjacent-sibling selector matches both layouts: the error slot is the
+   footer's previous sibling in the forms and directly in the confirm dialogs, where the footer is a child of .desktop-dialog. */
+.desktop-dialog[data-scrolls="true"] .desktop-dialog__error:not([hidden]) {
+  margin-bottom: 5px;
+}
+
+.desktop-dialog[data-scrolls="true"] .desktop-dialog__error:not([hidden]) + .favorite-form__footer {
+  padding-top: calc(var(--modal-actions-margin-top) - 6px);
+}
+
+/* Decision 4: ring room at the top and sides for a focused control (a literal, like the city modal's rule above: the widest ring
+   is the forced-colors outline, 2px + 2px offset = 4px, plus one pixel for Chrome's integer scroll offsets). */
+.desktop-dialog :is(button, input) {
+  scroll-margin: 5px;
+}
+
+.desktop-dialog .segmented__option input {
+  /* The 1x1 clipped radio sits at the centre of its option, half a control height from the group's edge; the group's ring is that
+     plus 4px (forced colors) plus the pixel for integer scroll offsets. */
+  scroll-margin-block: calc(var(--control-height) / 2 + 5px);
 }
 
 .desktop-dialog__title {

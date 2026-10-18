@@ -996,7 +996,8 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     for (const v of ["--cell-size", "--grid-gap", "--grid-pad"]) assert.ok(metrics.includes(`style.setProperty("${v}"`), v);
     assert.match(code, /return document\.documentElement\.clientWidth;/);
     const styles = await css();
-    assert.match(styles, /html \{\s*scrollbar-gutter: stable;\s*\}/);
+    // Run 46 (decision 12) added the chip reserve to the same rule.
+    assert.match(styles, /html \{\s*scrollbar-gutter: stable;\s*(?:\/\*[\s\S]*?\*\/\s*)?scroll-padding-bottom: var\(--status-reserve, 0px\);\s*\}/);
     assert.doesNotMatch(styles, /--cell-size:\s*\d/, "no CSS sets a cell size");
     assert.doesNotMatch(styles, /--grid-gap:\s*\d/);
   });
@@ -1094,7 +1095,7 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     assert.match(fn(code, "handleEditModeClick"), /tile\.dataset\.metricId \?\? tile\.dataset\.widgetId/);
     assert.match(fn(code, "createCityHintTile"), /if \(!desktopUi\.editMode\) button\.dataset\.favoriteAction = "set-city";/);
     // closeDesktopDialog takes a widget id, an { id, badge } target or a list; the weather dialog falls back to its metric.
-    assert.match(fn(code, "closeDesktopDialog"), /if \(restoreFocusTo\) focusWidgetTarget\(\[restoreFocusTo, fallback\]\.flat\(\)\);/);
+    assert.match(fn(code, "closeDesktopDialog"), /if \(restoreFocusTo\) focusWidgetTarget\(\[restoreFocusTo, fallback\]\.flat\(\), \{ preventScroll: true, reveal \}\);/);
     assert.match(fn(code, "focusWidgetTarget"), /typeof target === "string" \? \{ id: target, badge: false \} : target/);
   });
 
@@ -1314,7 +1315,7 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     assert.match(recover, /fresh = outcome\.state;/);
     assert.match(recover, /const outcome = await healClearedDesk\(fresh\);/);
     assert.match(recover, /if \(outcome\.healed\) neighbours = \[SETTINGS_TILE_ID\];/);
-    assert.match(recover, /closeDesktopDialog\(\{ restoreFocusTo: neighbours \}\)/);
+    assert.match(recover, /closeDesktopDialog\(\{ restoreFocusTo: neighbours, reveal: true \}\)/);
     assert.match(recover, /if \(outcome\.healed\) showDesktopStatus\(LAYOUT_RESET_MESSAGE, \{ tone: "info" \}\);\s*else showDesktopStatus\(error\.message\);/);
     assert.ok(recover.indexOf("healClearedDesk(") < recover.indexOf("finishFavoritesAction("), "healed before the one render");
     assert.doesNotMatch(recover, /announce\(/); // the alert status announces it once
@@ -2646,11 +2647,11 @@ describe("city modal focus and copy source (run 44, docs/city-modal-focus-copy.m
     assert.doesNotMatch(topLevelFunction(code, "buildOnboardingStep2"), /tabindex|tabIndex|Starter links/, "the unlocked list has no static tab stop or name");
   });
 
-  it("AS-CMF-18: the locked list has a visible, unclipped focus ring (inset ring or negative-offset outline) in a focus token", async () => {
+  it("AS-CMF-18: the locked list has a visible, unclipped focus ring (an outline outside the list box, so the opaque rows cannot cover it; run 46 decision 9) in a focus token", async () => {
     const rule = ruleFor(await surfaces(), '.onboarding-wizard__starters[data-starters-locked="true"]:focus-visible');
     assert.ok(rule, "a :focus-visible rule for the locked list");
     assert.match(rule.body, /outline: 2px solid var\(--focus-[a-z-]*ring\)/, "an outline is painted over the opaque rows (an inset shadow is hidden by them)");
-    assert.match(rule.body, /outline-offset: -/);
+    assert.match(rule.body, /outline-offset: 0;/, "outside the list box (run 46 decision 9 replaces the inset -2px outline the rows covered)");
     assert.doesNotMatch(rule.body, /inset/);
   });
 

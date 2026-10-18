@@ -18,6 +18,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Layers and low windows: the status message no longer shows through the backdrop of a dialog, the city modal or the
+  wizard, and while it is on screen the page keeps room below the last row so tiles can be scrolled clear of it. A dialog
+  taller than the window keeps Cancel and Save at its bottom edge (a divider appears only while it scrolls), keeps a
+  focused control's ring and a shown error in view, and closing a dialog no longer scrolls the page by itself. The city
+  modal stacked over the weather dialog hides the lower card, and several focus rings (title, starter list, "use your
+  location") and the remove badge at the narrowest grid are no longer cut or covered (`docs/layers-low-window.md`).
+  E2E: `dg-86-layers-low-window.mjs`.
+
 - City suggestion list (modal and wizard step 1) is an ARIA 1.2 combobox with a listbox of options. Tab skips the
   suggestions (clear, Cancel or Skip, Save); arrow keys enter the list. The focus ring of "use your location" now
   reaches 3 px beyond the link text and no longer covers a neighbouring character (`docs/city-suggestion-list.md`).

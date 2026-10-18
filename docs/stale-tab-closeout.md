@@ -4,6 +4,8 @@
 
 `implemented` — closes backlog 73 and 74 and the open items of runs 29 and 30: a city kept in the stale tab's memory, low windows, a rejected second write after Add link. Follow-up to `docs/stale-tab-recovery-followups.md` (`implemented`). **Data compatibility: not required** (no-users policy, `agent-config/CLAUDE.md`); storage shape unchanged.
 
+**Amended by `docs/layers-low-window.md` (run 46):** the failure chip (`#desktop-status`, including the neutral reset message and the Reload button) is no longer painted while a modal layer is in the DOM (a desktop dialog, the city modal, the wizard); it stays in the accessibility tree and keeps its box, and while it exists the page keeps a bottom reserve (`--status-reserve`) so the last row and a focused tile clear it. The texts, the Escape layer `status` and the heal flow of this spec are unchanged.
+
 ## Intake log
 
 | Date | Raw note (owner) | Verdict | Reference |
