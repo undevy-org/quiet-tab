@@ -334,6 +334,25 @@ Tiles take one of four footprints (1×1, 1×2, 2×1, 2×2; chrome tiles 1×1 onl
   grid inert; a write failure inside a dialog is shown in its alert line; a failed
   drag, delete, hide or restore is shown in the page status line (`role="alert"`,
   cleared by the next action or after 8 s) and nothing is persisted.
+- **Layers and the low window** (`docs/layers-low-window.md`). The page status
+  chip (`#desktop-status`) is not painted while any modal layer is in the DOM (a
+  dialog, the city modal, the wizard): `body:has(.desktop-dialog, .city-modal)`
+  makes it `opacity: 0; pointer-events: none`, so it stays in the accessibility
+  tree and keeps its box. While it exists, `newtab.js` writes `--status-reserve`
+  (its height plus the bottom offset, 0 when hidden) from a `ResizeObserver`; it
+  feeds only the `.desktop` bottom padding and the root `scroll-padding-bottom`,
+  never a layout input or storage. A dialog taller than the window scrolls
+  (`data-scrolls="true"`, kept by a `ResizeObserver` on the dialog and its form):
+  only then the Cancel | Save footer is sticky (`bottom` is negative by the card
+  padding because Chromium measures it from the content box), with an opaque panel
+  and a 1px divider; a dialog that fits is unchanged. `scroll-padding-bottom` of
+  the dialog is the footer's box and `scroll-margin: 5px` keeps a focused control's
+  ring in view; a shown error is scrolled above the footer without moving the
+  field's focus. A dialog closes in one of two modes: without a write that moves
+  anything (Cancel, Escape, backdrop, failure, Add link) focus returns with
+  `preventScroll`; after a successful Save, Delete, Hide or a gone-link recovery
+  the target is also brought in by the nearest edge when it is not safely inside
+  the window and above the chip.
 - **DOM order and focus.** Tiles are in `(y, x)` order of the displayed layout,
   each − badge right after its tile; after a delete or hide focus moves to the next
   tile, else the previous, else Settings.

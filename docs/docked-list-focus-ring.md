@@ -4,6 +4,8 @@
 
 `implemented` (spec gate and final design review passed; merged in `29f8758`)
 
+**Amended by `docs/layers-low-window.md` (run 46):** the same `scroll-margin` idea now covers the scrolling desktop dialogs (5px room around focused controls, `scroll-padding-bottom` for the sticky footer), the focus ring of the locked starter list is painted outside the list box (`outline-offset: 0`, the opaque rows no longer cover it) and the "use your location" link has `outline-offset: 0`; the docked list's own `scroll-margin` of this spec is unchanged.
+
 Decision: **do it**, with a narrower and different fix than the backlog item implied. Backlog item 5 ("focus ring of the docked list cut by about 2.4 px; layout of `placePopover`; risk for the dg-48 thresholds") was reproduced and measured. The cut is real, but it is not a layout problem and it is not limited to the docked list: it happens whenever keyboard focus scrolls the suggestion list or the dialog by just enough to bring the focused row into view. The fix is one `scroll-margin` declaration; `placePopover`, its thresholds and every metric of the dialog stay exactly as they are (see "Default decisions").
 
 ## Intake log
