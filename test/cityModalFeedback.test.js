@@ -92,9 +92,15 @@ describe("city modal placePopover without reserve machinery", () => {
     }
     const code = await read("newtab.js");
     assert.doesNotMatch(code, /import \{[^}]*feedbackReserve[^}]*\} from "\.\/cityPrompt\.js";/);
-    // Run 46 (docs/layers-low-window.md decision 12): the status chip has its own ResizeObserver; the city modal and the wizard still have none.
-    for (const [, target] of code.matchAll(/\.observe\(([^)]*)\)/g)) assert.doesNotMatch(target, /city|wizard|popover|suggest/i, `no ResizeObserver on the city modal: ${target}`);
-    assert.match(code, /\.observe\(desktopStatus\)/, "the chip observer is the one that exists");
+    // Run 46 (docs/layers-low-window.md decisions 12 and 13): exactly two ResizeObservers exist, the status chip's and the one that keeps
+    // data-scrolls on a desktop dialog (watchDialogScrolls: the dialog and its form); the city modal and the wizard have none.
+    assert.equal((code.match(/new ResizeObserver\(/g) ?? []).length, 2, "the chip observer and the dialog-scroll observer");
+    assert.equal((code.match(/\.observe\(/g) ?? []).length, 3, "observe: the chip, and the dialog and its form");
+    const start = code.indexOf("function watchDialogScrolls(");
+    assert.notEqual(start, -1, "watchDialogScrolls exists");
+    const watcher = code.slice(start, code.indexOf("\n}\n", start));
+    assert.equal((watcher.match(/\.observe\(/g) ?? []).length, 2, "two of the three observe calls are in watchDialogScrolls");
+    assert.match(code.replace(watcher, ""), /\.observe\(desktopStatus\)/, "the third is the chip");
     assert.equal((code.match(/addEventListener\("resize"/g) ?? []).length, 3, "the resize listeners of the page are unchanged");
   });
 

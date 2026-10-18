@@ -2412,10 +2412,13 @@ function syncWeatherDialogCity(root = desktopDialogRoot) {
 // Decision 13: `data-scrolls="true"` on the dialog while its content is taller than its box, which draws the footer's divider. A
 // ResizeObserver on the dialog and its form covers every change of height without a list: open, window resize and zoom, the error
 // slot, the Icon mode switch, a font load. The attribute changes no size (the divider replaces 1px of padding), so it cannot loop.
+function syncDialogScrolls(root) {
+  root.dataset.scrolls = root.scrollHeight > root.clientHeight ? "true" : "false";
+}
+
 function watchDialogScrolls(root) {
-  const sync = () => {
-    root.dataset.scrolls = root.scrollHeight > root.clientHeight ? "true" : "false";
-  };
+  desktopDialogScrollObserver?.disconnect();
+  const sync = () => syncDialogScrolls(root);
   sync();
   if (typeof ResizeObserver !== "function") return;
   desktopDialogScrollObserver = new ResizeObserver(sync);
@@ -2729,8 +2732,10 @@ function showDialogError(root, message, field) {
 
 // docs/layers-low-window.md decision 6: after the focus (which did not scroll) the dialog scrolls instantly so the alert slot is above
 // the sticky footer; when the focused field's top and the slot's bottom (5px margins) fit in the visible height together, both are
-// in view, otherwise the slot wins and the field may be out of view. Nothing moves when the slot is already in view.
+// in view, otherwise the slot wins and the field may be out of view. The dialog moves down only as far as the footer requires and
+// up when the field (both fit) or the slot is above the top edge; what must be visible already is, nothing moves.
 function scrollDialogErrorIntoView(root, slot, target) {
+  syncDialogScrolls(root); // the error may have made the dialog scroll: its 5px room above the divider must be in the layout now
   const footer = root.querySelector(".favorite-form__footer");
   const portTop = root.getBoundingClientRect().top + root.clientTop;
   const portBottom = portTop + root.clientHeight;

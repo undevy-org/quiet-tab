@@ -516,12 +516,11 @@ img.onboarding-wizard__starter-icon[data-icon-check="pending"] {
   scroll-padding-bottom: calc(var(--modal-actions-margin-top) + var(--control-height) + var(--surface-modal-padding));
 }
 
-/* Decision 13: the Cancel | Save row stays at the bottom edge of the card. Chromium measures a sticky offset from the CONTENT box of
-   the scroll container (measured in run 46: with bottom: 0 the footer stuck 20px above the padding edge, the card's padding), so
-   bottom is minus the card padding, which puts the footer's box on the padding edge; the card's bottom padding moves into the
-   footer (padding-bottom and an equal negative margin: the layout height is unchanged), and the gap above the buttons moves from
-   margin-top to padding-top (same position at rest; the opaque panel covers whatever scrolls under it). The divider is a real 1px border-top (it survives forced colors), taken from the
-   padding-top so the height is unchanged, and painted only while the dialog scrolls (data-scrolls, kept by a ResizeObserver). */
+/* The Cancel | Save row stays at the bottom edge of the card. Chromium measures a sticky offset from the container's content box,
+   hence the negative bottom: it puts the footer on the padding edge. The card's bottom padding and the gap above the buttons move
+   into the footer (an equal negative margin and padding-top keep the layout height, so a fitting dialog is unchanged). Only a
+   scrolling dialog (data-scrolls, kept by a ResizeObserver) gets the opaque panel behind the footer and the 1px divider (a real
+   border, it survives forced colors). */
 .desktop-dialog .favorite-form__footer {
   position: sticky;
   bottom: calc(-1 * var(--surface-modal-padding));
@@ -530,12 +529,18 @@ img.onboarding-wizard__starter-icon[data-icon-check="pending"] {
   margin-bottom: calc(-1 * var(--surface-modal-padding));
   padding-top: var(--modal-actions-margin-top);
   padding-bottom: var(--surface-modal-padding);
-  background: var(--panel);
 }
 
 .desktop-dialog[data-scrolls="true"] .favorite-form__footer {
   padding-top: calc(var(--modal-actions-margin-top) - 1px);
   border-top: 1px solid var(--border);
+  background: var(--panel);
+}
+
+/* A shown error in a scrolling dialog keeps 5px (the dialog's scroll-margin) above the footer's divider even at the end of the scroll,
+   where the layout, not the scroll position, decides the distance. */
+.desktop-dialog[data-scrolls="true"] .desktop-dialog__error:not([hidden]) {
+  margin-bottom: 5px;
 }
 
 /* Decision 4: ring room at the top and sides for a focused control (a literal, like the city modal's rule above: the widest ring
