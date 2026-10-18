@@ -136,7 +136,7 @@
 .onboarding-wizard__step-title:focus-visible {
   outline: 2px solid transparent; /* forced colors turn this into a visible indicator */
   border-radius: var(--radius-control);
-  box-shadow: 0 0 0 2px var(--focus-overlay-ring);
+  box-shadow: 0 0 0 2px var(--focus-ring); /* solid: a target that takes focus programmatically (run 46, decision 9) */
 }
 
 .city-modal .status--full {
@@ -176,6 +176,12 @@
 .city-modal :is(button, input, .weather-form__suggestion):focus-visible {
   outline: 2px solid transparent; /* forced colors turn this into a visible indicator */
   outline-offset: 2px;
+}
+
+/* Forced colors: the outline hugs the link's padded box so it stays inside the space before the link. After the shared rule above:
+   equal specificity (0,3,0), order decides. */
+.city-modal .city-location-link:focus-visible {
+  outline-offset: 0;
 }
 
 .city-modal .favorite-input:focus-visible {
@@ -236,15 +242,15 @@
   overflow-wrap: anywhere;
 }
 
-/* Locked list = keyboard scroll stop. An outline, because the opaque rows would hide an inset shadow of the list; it is painted over
-   the content. A locked row does not look busy (the list stays on the default cursor). */
+/* Locked list = keyboard scroll stop. The ring is an outline outside the list's box: the opaque rows cannot cover it and it does not
+   scroll with them. A locked row does not look busy (the list stays on the default cursor). */
 .onboarding-wizard__starters[data-starters-locked="true"] {
   cursor: default;
 }
 
 .onboarding-wizard__starters[data-starters-locked="true"]:focus-visible {
   outline: 2px solid var(--focus-ring); /* the solid token: the translucent overlay ring measured 1.6:1 over the white rows */
-  outline-offset: -2px;
+  outline-offset: 0;
   border-radius: var(--radius-control);
 }
 

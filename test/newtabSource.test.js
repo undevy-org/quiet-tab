@@ -2647,11 +2647,11 @@ describe("city modal focus and copy source (run 44, docs/city-modal-focus-copy.m
     assert.doesNotMatch(topLevelFunction(code, "buildOnboardingStep2"), /tabindex|tabIndex|Starter links/, "the unlocked list has no static tab stop or name");
   });
 
-  it("AS-CMF-18: the locked list has a visible, unclipped focus ring (inset ring or negative-offset outline) in a focus token", async () => {
+  it("AS-CMF-18: the locked list has a visible, unclipped focus ring (an outline outside the list box, so the opaque rows cannot cover it; run 46 decision 9) in a focus token", async () => {
     const rule = ruleFor(await surfaces(), '.onboarding-wizard__starters[data-starters-locked="true"]:focus-visible');
     assert.ok(rule, "a :focus-visible rule for the locked list");
     assert.match(rule.body, /outline: 2px solid var\(--focus-[a-z-]*ring\)/, "an outline is painted over the opaque rows (an inset shadow is hidden by them)");
-    assert.match(rule.body, /outline-offset: -/);
+    assert.match(rule.body, /outline-offset: 0;/, "outside the list box (run 46 decision 9 replaces the inset -2px outline the rows covered)");
     assert.doesNotMatch(rule.body, /inset/);
   });
 
