@@ -31,7 +31,9 @@ html {
   min-height: 100vh;
   box-sizing: border-box;
   padding: var(--grid-pad, 16px);
-  padding-bottom: calc(var(--grid-pad, 16px) + var(--status-reserve, 0px)); /* document height only: nothing the layout reads changes */
+  /* document height only: nothing the layout reads changes. --drag-hold (docs/drag-scroll-target.md) is the page-height hold
+     newtab.js sets after a drag ended on a scrolled page; additive with the chip reserve by construction. */
+  padding-bottom: calc(var(--grid-pad, 16px) + var(--status-reserve, 0px) + var(--drag-hold, 0px));
 }
 
 /* First run (docs/first-run-empty-desk.md): while the first-run city modal is open the desk is veiled. Nothing is painted,
