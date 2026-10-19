@@ -177,6 +177,21 @@ export function maxDropRow(layout, id, h, viewportRows = 0) {
   return Math.max(lowest + 1, screen, layout.get(id)?.y ?? 0);
 }
 
+// Page-height hold (docs/drag-scroll-target.md decisions 2a/2b): extra document height below the grid so that a render after
+// a drag does not make the browser clamp `scrollY`. `ceil` because scrollY and the heights can be fractional. With a numeric
+// `previousHold` (outside the settling) the hold can only shrink. Non-finite inputs are a safe 0.
+export function pageHoldHeight({ scrollY, clientHeight, naturalHeight, previousHold } = {}) {
+  if (![scrollY, clientHeight, naturalHeight].every(Number.isFinite)) return 0;
+  const formula = Math.max(0, Math.ceil(scrollY + clientHeight - naturalHeight));
+  return Number.isFinite(previousHold) ? Math.min(formula, previousHold) : formula;
+}
+
+// The hold may go when nothing can clamp: the window bottom is within 1 px of the natural height (absorbs fractions).
+export function holdReleasable({ scrollY, clientHeight, naturalHeight } = {}) {
+  if (![scrollY, clientHeight, naturalHeight].every(Number.isFinite)) return false;
+  return scrollY + clientHeight <= naturalHeight + 1;
+}
+
 // Drop/resize validity against a displayed layout: inside the columns, no overlap, not below `maxDropRow`.
 export function canPlace(layout, id, { x, y, w, h }, columns, viewportRows = 0) {
   return y <= maxDropRow(layout, id, h, viewportRows) && blockFree(occupancyOf(layout, id), x, y, w, h, columns);

@@ -2755,3 +2755,111 @@ describe("city suggestion list source pins (run 45, docs/city-suggestion-list.md
     assert.match(rule.body, /border-radius: var\(--radius-control\)/);
   });
 });
+
+describe("drag scrolling source pins (run 47, docs/drag-scroll-target.md)", () => {
+  const LAYOUT_READ = /scrollHeight|clientHeight|offsetHeight|getBoundingClientRect|scrollY|pageYOffset|innerHeight/;
+
+  // The one window `scroll` listener: its inline handler, or the named top-level function it points at.
+  function scrollHandler(code) {
+    const matches = [...code.matchAll(/window\.addEventListener\("scroll",/g)];
+    assert.equal(matches.length, 1, "exactly one window scroll listener");
+    const rest = code.slice(matches[0].index + matches[0][0].length);
+    const end = rest.indexOf("{ passive: true })");
+    assert.notEqual(end, -1, "the scroll listener is passive");
+    const argument = rest.slice(0, end);
+    const named = argument.match(/^\s*([A-Za-z_$][\w$]*)\s*,\s*$/);
+    return { index: matches[0].index, text: named ? topLevelFunction(code, named[1]) : argument };
+  }
+
+  it("registers one passive window scroll listener at boot next to the other drag listeners, never per drag", async () => {
+    const code = stripComments(await source());
+    const { index } = scrollHandler(code);
+    assert.match(code, /window\.addEventListener\("scroll",[\s\S]*?\{ passive: true \}\);/);
+    assert.doesNotMatch(code, /removeEventListener\("scroll"/);
+    const pointermove = code.indexOf('window.addEventListener("pointermove", onDragPointerMove)');
+    assert.notEqual(pointermove, -1);
+    assert.ok(Math.abs(index - pointermove) < 1500, "registered in the same wiring block as pointermove/pointerup/pointercancel/blur");
+    for (const name of ["beginPointerDrag", "onDragPointerMove", "cancelDrag", "returnDraggedTile"]) {
+      assert.doesNotMatch(topLevelFunction(code, name), /addEventListener\("scroll"/, `${name} does not attach a scroll listener`);
+    }
+  });
+
+  it("the scroll handler updates the target only for a started drag and otherwise only the lazy release", async () => {
+    const { text } = scrollHandler(stripComments(await source()));
+    assert.match(text, /dragSession\?\.started/);
+    assert.match(text, /updateDragTarget\(dragSession\)/);
+    assert.match(text, /holdReleasable\(/);
+    assert.doesNotMatch(text, /createNode|drop-highlight|data-dragging|dataset\.dragging|renderFavorites|renderDesktop/, "never creates, moves or redraws anything itself");
+    assert.ok(text.indexOf("updateDragTarget(") < text.indexOf("holdReleasable("), "drag target first, release only in the no-drag branch");
+  });
+
+  it("the scroll handler reads no layout when there is no hold and no started drag", async () => {
+    const { text } = scrollHandler(stripComments(await source()));
+    const firstRead = text.search(LAYOUT_READ);
+    assert.notEqual(firstRead, -1, "the release condition reads the layout");
+    const before = text.slice(0, firstRead);
+    assert.match(before, /hold/i, "a hold guard precedes the first layout read");
+    assert.match(before, /return/, "the guard leaves early");
+  });
+
+  it("onDragPointerUp recomputes the target before it reads the drag state", async () => {
+    const up = topLevelFunction(stripComments(await source()), "onDragPointerUp");
+    const started = up.indexOf("if (!s.started) return");
+    const update = up.indexOf("updateDragTarget(s)");
+    const read = up.indexOf("desktopUi.drag");
+    assert.ok(started !== -1 && update !== -1 && read !== -1);
+    assert.ok(started < update && update < read, "tap exit, then updateDragTarget(s), then desktopUi.drag");
+  });
+
+  it("renderDesktop: scrollY first (before applyGridMetrics), hold cleared after replaceChildren, measured, set, scrollTo last", async () => {
+    const render = topLevelFunction(stripComments(await source()), "renderDesktop");
+    const earlyExitEnd = render.indexOf("const focusTarget");
+    assert.notEqual(earlyExitEnd, -1);
+    const exits = render.slice(0, earlyExitEnd);
+    assert.doesNotMatch(exits, /drag-hold|pageHoldHeight|scrollTo|scrollY/, "the early exits (widgetsNewer, no widgetsState) do not touch the hold");
+    const at = (re, from = 0) => {
+      const i = render.slice(from).search(re);
+      assert.notEqual(i, -1, `renderDesktop contains ${re}`);
+      return from + i;
+    };
+    const readScroll = at(/(?:const|let) \w+ = (?:window\.)?(?:scrollY|pageYOffset)/);
+    const metrics = at(/applyGridMetrics\(\)/);
+    const replace = at(/favoritesRoot\.replaceChildren\(grid\)/);
+    const clear = at(/(?:setProperty\("--drag-hold", "0px"\)|removeProperty\("--drag-hold"\))/, replace);
+    const measure = at(/scrollHeight/, clear);
+    const compute = at(/pageHoldHeight\(/, measure);
+    const set = at(/setProperty\("--drag-hold"/, compute);
+    const focus = at(/restoreFocus\(focusTarget\)/, replace);
+    const settle = at(/settleTileAt\(tile, pendingDrop\.id/, replace);
+    const reattach = at(/reattachDrag\(\)/, replace);
+    const scrollTo = at(/scrollTo\(0, /, set);
+    assert.ok(readScroll < metrics, "scrollY is read before applyGridMetrics");
+    assert.doesNotMatch(render.slice(earlyExitEnd, readScroll), /applyGridMetrics|replaceChildren|scrollHeight|getBoundingClientRect|offsetHeight/, "no layout-forcing statement before the scrollY read");
+    assert.ok(metrics < replace && replace < clear && clear < measure && measure < compute && compute < set, "render, clear, measure, compute, set");
+    assert.ok(set < scrollTo && focus < scrollTo && settle < scrollTo && reattach < scrollTo, "scrollTo comes after restoreFocus, settleTileAt and reattachDrag");
+    assert.equal(render.lastIndexOf("scrollTo("), scrollTo, "no scrollTo after the restoring one");
+    assert.equal(render.indexOf("scrollTo("), scrollTo, "exactly one scrollTo in renderDesktop");
+    assert.equal(render.slice(scrollTo).includes("pageHoldHeight("), false);
+  });
+
+  it("the hold is not released by a drag start or by opening a dialog", async () => {
+    const code = stripComments(await source());
+    for (const name of ["beginPointerDrag", "openDesktopDialog"]) {
+      assert.doesNotMatch(topLevelFunction(code, name), /--drag-hold|pageHoldHeight|holdReleasable/, `${name} does not release or touch the hold`);
+    }
+  });
+
+  it("the hold is a bottom-padding term of .desktop next to --status-reserve", async () => {
+    const css = stripComments(await readFile(new URL("../src/newtab.css", import.meta.url), "utf8"));
+    const rule = css.match(/\n\.desktop \{([^}]*)\}/);
+    assert.ok(rule, ".desktop rule exists");
+    assert.match(rule[1], /padding-bottom: calc\([^;]*var\(--status-reserve, 0px\)[^;]*var\(--drag-hold, 0px\)[^;]*\);/);
+    assert.doesNotMatch(css, /min-height: calc\([^;]*--drag-hold/, "not a min-height (would absorb a later chip)");
+  });
+
+  it("AUTOSCROLL_STEP_PX is unchanged and the autoscroll frame keeps its own target update", async () => {
+    const code = stripComments(await source());
+    assert.match(code, /const AUTOSCROLL_STEP_PX = 12;/);
+    assert.match(topLevelFunction(code, "autoscrollFrame"), /window\.scrollBy\(0, direction \* AUTOSCROLL_STEP_PX\)[\s\S]*updateDragTarget\(/);
+  });
+});

@@ -689,3 +689,89 @@ describe("1×2 tile edge cases (AS-TSF-07)", () => {
     });
   });
 });
+
+// Run 47 (docs/drag-scroll-target.md decisions 2a/2b): the pure arithmetic of the page-height hold.
+describe("pageHoldHeight (settling: the pure formula)", () => {
+  const hold = (scrollY, clientHeight, naturalHeight, previousHold) =>
+    engine.pageHoldHeight({ scrollY, clientHeight, naturalHeight, previousHold });
+
+  it("scrollY 0 holds nothing", () => {
+    assert.equal(hold(0, 800, 1384), 0);
+  });
+
+  it("a page that fits holds nothing", () => {
+    assert.equal(hold(0, 800, 800), 0); // scrollHeight is never below clientHeight: a fitting page is natural = client
+    assert.equal(hold(0, 800, 801), 0);
+  });
+
+  it("scrollY at restingMax + 80 holds 80", () => {
+    assert.equal(hold(584 + 80, 800, 1384), 80);
+  });
+
+  it("exactly equal holds nothing, below restingMax holds nothing", () => {
+    assert.equal(hold(584, 800, 1384), 0);
+    assert.equal(hold(300, 800, 1384), 0);
+  });
+
+  it("fractional values round the hold up (never short by a fraction)", () => {
+    assert.equal(hold(583.6, 800, 1383.2), 1); // 1383.6 − 1383.2 = 0.4 -> 1
+    assert.equal(hold(584.4, 800, 1384), 1); // 0.4 -> 1
+  });
+
+  it("a fractional naturalHeight never leaves a hold that holdReleasable refuses at scrollY <= restingMax", () => {
+    for (const natural of [1383.2, 1383.5, 1383.9, 1384]) {
+      const clientHeight = 800;
+      const restingMax = natural - clientHeight;
+      assert.equal(hold(restingMax, clientHeight, natural), 0, `natural ${natural} at restingMax`);
+      assert.equal(hold(restingMax - 0.3, clientHeight, natural), 0, `natural ${natural} just below restingMax`);
+    }
+    // a hold that exists is released once scrollY comes back to restingMax
+    const h = hold(583.6 + 0.8, 800, 1383.2);
+    assert.ok(h >= 1);
+    assert.equal(engine.holdReleasable({ scrollY: 1383.2 - 800, clientHeight: 800, naturalHeight: 1383.2 }), true);
+  });
+
+  it("previousHold smaller than the formula wins (outside the settling it only shrinks)", () => {
+    assert.equal(hold(584 + 80, 800, 1384, 30), 30);
+    assert.equal(hold(584 + 80, 800, 1384, 0), 0);
+  });
+
+  it("previousHold larger than the formula: the formula wins", () => {
+    assert.equal(hold(584 + 20, 800, 1384, 80), 20);
+    assert.equal(hold(584, 800, 1384, 80), 0);
+  });
+
+  it("a missing or non-numeric previousHold is the pure formula", () => {
+    assert.equal(hold(584 + 80, 800, 1384, undefined), 80);
+    assert.equal(hold(584 + 80, 800, 1384, null), 80);
+    assert.equal(hold(584 + 80, 800, 1384, "30"), 80);
+    assert.equal(hold(584 + 80, 800, 1384, Number.NaN), 80);
+  });
+
+  it("invalid inputs are a safe 0", () => {
+    assert.equal(hold(Number.NaN, 800, 1384), 0);
+    assert.equal(hold(664, undefined, 1384), 0);
+    assert.equal(hold(664, 800, "1384"), 0);
+    assert.equal(hold(Infinity, 800, 1384), 0);
+    assert.equal(engine.pageHoldHeight(), 0);
+  });
+});
+
+describe("holdReleasable (+1 px absorbs fractions)", () => {
+  const releasable = (scrollY, clientHeight, naturalHeight) => engine.holdReleasable({ scrollY, clientHeight, naturalHeight });
+
+  it("is true at and below natural + 1, false above", () => {
+    assert.equal(releasable(584, 800, 1384), true);
+    assert.equal(releasable(585, 800, 1384), true); // exactly natural + 1
+    assert.equal(releasable(585.01, 800, 1384), false);
+    assert.equal(releasable(0, 800, 1384), true);
+    assert.equal(releasable(664, 800, 1384), false);
+  });
+
+  it("invalid inputs are false (never release on garbage)", () => {
+    assert.equal(releasable(Number.NaN, 800, 1384), false);
+    assert.equal(releasable(0, undefined, 1384), false);
+    assert.equal(releasable(0, 800, "1384"), false);
+    assert.equal(engine.holdReleasable(), false);
+  });
+});
