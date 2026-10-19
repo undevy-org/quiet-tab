@@ -14,6 +14,7 @@ import { createIconNode } from "./icons.js";
 import {
   canPlace, cellFromPoint, clampDropCell, displayLayout, effectiveColumns, gridMetrics, maxDropRow, viewportRows
 } from "./desktopLayout.js";
+import { holdReleasable, pageHoldHeight } from "./desktopLayout.js";
 import {
   closeDialog,
   createDesktopUiState,
@@ -2991,6 +2992,8 @@ function renderDesktop() {
   }
 
   const focusTarget = focusedWidgetId();
+  // docs/drag-scroll-target.md decision 2a: scrollY is read FIRST (before anything that can force a layout, which would clamp it).
+  const scrollY = window.scrollY;
   const metrics = applyGridMetrics();
   const columns = currentColumns();
   renderedColumns = columns;
@@ -3034,12 +3037,25 @@ function renderDesktop() {
   grid.append(...entries.flatMap(({ nodes }) => nodes));
   favoritesRoot.dataset.edit = String(desktopUi.editMode);
   favoritesRoot.replaceChildren(grid);
+  // The page keeps the height its scroll position needs after a drag ended (the grid shrank): a bottom-padding term on .desktop,
+  // set here before focus or settling can lay out and clamp. Inside the settling the pure formula; outside it can only shrink.
+  const holding = dragSettling || dragHoldPx > 0;
+  if (holding) {
+    favoritesRoot.style.setProperty("--drag-hold", "0px"); // .desktop survives the render: the property is reset explicitly
+    const root = document.documentElement;
+    const naturalHeight = root.scrollHeight;
+    dragHoldPx = pageHoldHeight({
+      scrollY, clientHeight: root.clientHeight, naturalHeight, previousHold: dragSettling ? undefined : dragHoldPx
+    });
+    favoritesRoot.style.setProperty("--drag-hold", `${dragHoldPx}px`);
+  }
   restoreFocus(focusTarget);
   if (pendingDrop) {
     const tile = grid.querySelector(`:scope > [data-widget-id="${CSS.escape(pendingDrop.domId)}"]`);
     if (tile) settleTileAt(tile, pendingDrop.id, pendingDrop.cell);
   }
   if (dragSession) reattachDrag();
+  if (holding && window.scrollY !== scrollY) window.scrollTo(0, scrollY); // the measurement clamped: put the page back, same task
 }
 
 // A resize only re-renders (when the column count or the cell size changed); it never writes.
@@ -3063,6 +3079,11 @@ const DROP_RETURN_MS = 180;
 //   pointerId, startX, startY, lastX, lastY, baseLeft, baseTop, grab, started, frame, viewportRows, maxY, rows }
 let dragSession = null;
 let dropReturnTimer = 0;
+// Page-height hold (docs/drag-scroll-target.md decision 2): extra px under the grid after a drag ended on a scrolled page, so the
+// browser does not clamp scrollY and the dropped tile lands on its outline. `dragSettling` is armed at the end of a started drag
+// and disarmed once the render that ends the drop has happened.
+let dragHoldPx = 0;
+let dragSettling = false;
 // One-shot: the click that trails a started drag (same press) is swallowed, so Settings never toggles after a drag.
 let suppressDragClick = false;
 
@@ -3123,6 +3144,21 @@ function onDragPointerMove(event) {
   }
   applyDragVisuals(s);
   if (!s.frame && edgeDirection(s.lastY) !== 0) s.frame = requestAnimationFrame(autoscrollFrame);
+}
+
+// Every scroll of the page (wheel, keys, scrollbar, autoscroll): the grid moved under a still pointer, so the target is judged
+// again; with no drag it only releases the page-height hold, and only where nothing can clamp (docs/drag-scroll-target.md 1, 2b).
+function onWindowScroll() {
+  if (dragSession?.started) {
+    updateDragTarget(dragSession);
+    return;
+  }
+  if (dragHoldPx === 0) return; // no hold, no drag: nothing to read
+  const root = document.documentElement;
+  const naturalHeight = root.scrollHeight - dragHoldPx;
+  if (!holdReleasable({ scrollY: window.scrollY, clientHeight: root.clientHeight, naturalHeight })) return;
+  dragHoldPx = 0;
+  favoritesRoot?.style.setProperty("--drag-hold", "0px");
 }
 
 function edgeDirection(clientY) {
@@ -3224,6 +3260,8 @@ async function onDragPointerUp(event) {
   dragSession = null;
   stopDragFrame(s);
   if (!s.started) return; // below the threshold it is a tap: the click handler runs as before
+  dragSettling = true;
+  updateDragTarget(s); // a release in the same frame as a scroll: judge the page as it is now, from the last pointer position
   const drag = desktopUi.drag;
   desktopUi = endDrag(desktopUi);
   const target = drag?.target;
@@ -3233,6 +3271,7 @@ async function onDragPointerUp(event) {
   }
   if (drag?.valid) {
     renderFavorites(); // dropped on its own cell: nothing to write
+    dragSettling = false;
     focusDragTile(s.domId);
     return;
   }
@@ -3263,8 +3302,13 @@ async function commitDrop(s, target) {
     }
   );
   pendingDrop = null;
-  if (ok) focusDragTile(s.domId);
-  else if (!dropReturnTimer && s.tile.isConnected && s.tile.classList.contains("is-settled")) returnDraggedTile(s);
+  if (ok) {
+    dragSettling = false;
+    focusDragTile(s.domId);
+  } else if (!dropReturnTimer) {
+    if (s.tile.isConnected && s.tile.classList.contains("is-settled")) returnDraggedTile(s);
+    else dragSettling = false; // recovered from a gone link (already rendered) or the return already finished
+  }
 }
 
 // Puts the dropped tile (and its badge) on `cell` inside the grid, out of the fixed drag state.
@@ -3289,6 +3333,7 @@ function returnDraggedTile(s) {
   const finish = () => {
     dropReturnTimer = 0;
     renderFavorites();
+    dragSettling = false;
     focusDragTile(s.domId);
   };
   const grid = dragGridOf();
@@ -3320,7 +3365,9 @@ function cancelDrag() {
   stopDragFrame(s);
   if (!s.started) return; // a pending press had changed nothing on screen
   desktopUi = endDrag(desktopUi);
+  dragSettling = true;
   renderFavorites();
+  dragSettling = false;
 }
 
 function tabTrapFocusables(trapRoot) {
@@ -3543,6 +3590,7 @@ if (favoritesRoot) {
     if (desktopUi.editMode) event.preventDefault();
   });
   window.addEventListener("pointermove", onDragPointerMove);
+  window.addEventListener("scroll", onWindowScroll, { passive: true });
   window.addEventListener("pointerup", (event) => {
     void onDragPointerUp(event);
     // The trailing click of this press (if any) is dispatched before this timeout runs; clear the flag after it.
