@@ -31,7 +31,15 @@ Marathon row Р48, no questions to Kier. Decisions of Kier (2026-10-15, row Р48
 
 ## Live measurement
 
-To be filled by the executor at step 1 of the kickoff (probe in notes `scratch/run-48-triage/`, throw-away profile): item 10 (route that never fulfils Open-Meteo, tiles state at 1 s, 16 s, 30 s), 16 (stored city, first `storage.sync.get` of the location key made to reject once, then a load that succeeds: city modal prefill and weather dialog city field), 14 (cache `fetchedAt` 2 h old, fetch aborted: description text), 111 (boot fetch held, city changed to B, boot fetch released: `weatherCache.locationName`), 112 (`storage.sync.set` rejecting on the location key: modal error text). A non-reproducing item: a `backlog.md` line, its decision and AS dropped from this spec.
+Measured on `origin/main` `e1e85eb` (2026-10-19, Mac, throw-away profile, Open-Meteo mocked; probe `scratch/run-48-triage/probe.mjs` in notes). All five items reproduce.
+
+| Item | Measured |
+|------|----------|
+| 10 | Stored city, no cache, forecast and air-quality requests held forever. At 1.0 s, 16.0 s and 30.0 s all four tiles are identical: `aria-busy="true"`, text `…`, description `Loading weather…`, no retry control, `#desktop-status` empty, no page error. |
+| 16 | First read of the city key rejects, second passes. The tiles show values (21 / 10% / 40 9.0 PM2.5 / 3). The weather dialog city field is `Set a city` (empty state, hint hidden); the city modal input is empty (`""`) with Save disabled. |
+| 14 | Cache `fetchedAt` 2 h old, fetch aborted: tiles `stale`, retry `ready`; description and tooltip `Couldn't refresh - showing saved data. Currently 21°. Today at 15:00 — 24°, yesterday at 15:00 — 22°.` No `Updated`/`ago` anywhere. (Hover measured; `:focus-visible` uses the same text.) |
+| 111 | Stored Tbilisi, boot requests held, city changed to Berlin (stored city and cache `Berlin`), held requests released: stored city `Berlin`, cache `locationName` = `Tbilisi`, `fetchedAt` 1503 ms old; tiles keep their values. |
+| 112 | `storage.sync.set` on the city key rejects once: the modal stays open, input `Berlin`, `role="alert"` text `Couldn't load weather. Try again in a moment.`, Save enabled, stored city still `Tbilisi`. |
 
 ## Decisions
 
