@@ -93,7 +93,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keys, scrollbar), not only the pointer, and a release writes to the cell under the pointer.
 - A tile dropped on a page scrolled to its bottom lands on its outline: the page keeps the height its scroll position needs until you scroll
   up out of it, instead of the browser shifting everything down by the rows the drop freed. E2E: `dg-87-drag-scroll-target.mjs`.
-
 - City modal (`docs/city-modal-focus-copy.md`): changing the city is saved only after the forecast has loaded. A failed forecast or
   geocoding keeps the modal open with the error, the focused field and the old city, cache and tiles (the first-run wizard keeps saving
   the city first). Save without a change is Cancel: no request, no write. After a successful Save focus goes to the weather tile of the

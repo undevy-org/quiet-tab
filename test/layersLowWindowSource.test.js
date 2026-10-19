@@ -149,7 +149,7 @@ describe("layers and the low window source (run 46, docs/layers-low-window.md)",
   it("decision 12: .desktop padding-bottom and html scroll-padding-bottom come from --status-reserve (no layout input is touched)", async () => {
     const css = await allCss();
     const desktop = rulesFor(css, ".desktop");
-    assert.ok(desktop.some((r) => /padding-bottom: calc\(var\(--grid-pad, 16px\) \+ var\(--status-reserve, 0px\)(?: \+ var\(--drag-hold, 0px\))?\)/.test(r.body)), ".desktop padding-bottom adds the reserve (and, since run 47, the drag hold) to the grid pad");
+    assert.ok(desktop.some((r) => /padding-bottom: calc\(var\(--grid-pad, 16px\) \+ var\(--status-reserve, 0px\) \+ var\(--drag-hold, 0px\)\)/.test(r.body)), ".desktop padding-bottom adds the reserve (and, since run 47, the drag hold) to the grid pad");
     assert.ok(hasDecl([...rulesFor(css, "html"), ...rulesFor(css, ":root")], "scroll-padding-bottom: var(--status-reserve, 0px)"), "the root's scroll-padding-bottom is the reserve");
     assert.doesNotMatch(await js(), /--status-reserve[^\n]*(?:viewportRows|clientHeight)/, "the reserve is not fed into the layout inputs");
   });

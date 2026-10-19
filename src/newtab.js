@@ -3260,8 +3260,8 @@ async function onDragPointerUp(event) {
   dragSession = null;
   stopDragFrame(s);
   if (!s.started) return; // below the threshold it is a tap: the click handler runs as before
-  dragSettling = true;
   updateDragTarget(s); // a release in the same frame as a scroll: judge the page as it is now, from the last pointer position
+  dragSettling = true;
   const drag = desktopUi.drag;
   desktopUi = endDrag(desktopUi);
   const target = drag?.target;
@@ -3290,24 +3290,28 @@ async function commitDrop(s, target) {
   const cell = { x: target.x, y: target.y, w: s.cell.w, h: s.cell.h };
   pendingDrop = { domId: s.domId, id: s.id, cell };
   settleTileAt(s.tile, s.id, cell);
-  const ok = await runDesktopMutation(
-    (columns) => widgetsService.moveWidget(s.id, { x: target.x, y: target.y }, { columns, viewportRows: s.viewportRows }),
-    {
-      renderPending: false,
-      onFailure: (message) => {
-        pendingDrop = null;
-        showDesktopStatus(message); // #desktop-status, role=alert; edit mode stays on
-        returnDraggedTile(s);
+  try {
+    const ok = await runDesktopMutation(
+      (columns) => widgetsService.moveWidget(s.id, { x: target.x, y: target.y }, { columns, viewportRows: s.viewportRows }),
+      {
+        renderPending: false,
+        onFailure: (message) => {
+          pendingDrop = null;
+          showDesktopStatus(message); // #desktop-status, role=alert; edit mode stays on
+          returnDraggedTile(s);
+        }
       }
+    );
+    pendingDrop = null;
+    if (ok) {
+      dragSettling = false;
+      focusDragTile(s.domId);
+    } else if (!dropReturnTimer) {
+      if (s.tile.isConnected && s.tile.classList.contains("is-settled")) returnDraggedTile(s);
+      else dragSettling = false; // recovered from a gone link (already rendered) or the return already finished
     }
-  );
-  pendingDrop = null;
-  if (ok) {
-    dragSettling = false;
-    focusDragTile(s.domId);
-  } else if (!dropReturnTimer) {
-    if (s.tile.isConnected && s.tile.classList.contains("is-settled")) returnDraggedTile(s);
-    else dragSettling = false; // recovered from a gone link (already rendered) or the return already finished
+  } finally {
+    if (!dropReturnTimer) dragSettling = false; // never left armed by a throw; the animated return clears it in its finish
   }
 }
 
