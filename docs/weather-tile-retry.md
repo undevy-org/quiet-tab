@@ -26,7 +26,7 @@ Chromium via Playwright (`.private/e2e/lib/harness.mjs`), unpacked extension, st
 | Stale (cache 2 h old, forecast unreachable) | The cached values, dashed border (`data-stale`), no explanation on the tile; the description starts `Couldn't refresh - showing saved data.` Also no control. |
 | Loading | `…`, `aria-busy="true"`, description `Loading weather…` (only at boot, a city change, or while the first city loads). |
 | Edit mode | Every metric tile is a `button` named `Edit <metric>`; the error text is still the description. |
-| Boot request that never answers (route that never fulfils, 18 s) | Tiles stay `…` with `aria-busy="true"` **forever**: `startWeather` has no timeout (the city request has one, 15 s). Not part of this run; recorded in the backlog. |
+| Boot request that never answers (route that never fulfils, 18 s) | Measured in this run: tiles stayed `…` with `aria-busy="true"` forever, `startWeather` had no timeout. **Since run 48** the boot load has the same 15 s guard: after it the tiles are the retryable error tiles described here (`docs/weather-reliability.md` decision 1). |
 | Tab order | One stop per weather tile (they are `tabindex="0"` groups), in DOM order, unchanged by the state. |
 | Hint tile (no city) | A `button`, opens the city modal. Not an error state; untouched. |
 
@@ -80,7 +80,7 @@ This changes what the user sees and can do on a tile, so it follows the full UI-
 
 - Automatic retries by a timer, exponential backoff, retry on `online`/`visibilitychange`/focus, `navigator.onLine` detection, notifications, a persistent offline banner (each is a backlog line).
 - A manual refresh of a *fresh* (ready) tile, and any "force" that bypasses the 30 min cache.
-- A timeout for the **boot** load (measured: it can stay `…` forever; separate backlog line).
+- ~~A timeout for the **boot** load~~ (done in run 48, `docs/weather-reliability.md` decision 1).
 - Changing the error texts, the stale marking, the cache TTL or version, the parallel fetch, `weatherApi.js`.
 - Retry from the city modal (that is `network-error.md` decision 3: Save is the retry there), the shared network-error state, the hint tile.
 - Cross-tab live updates (`chrome.storage.onChanged`): an open tab stays stale until its own action, as today; the cache read in `initialize()` is the only cross-tab effect.

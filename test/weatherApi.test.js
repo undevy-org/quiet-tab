@@ -847,6 +847,18 @@ describe("network failures and user-facing error text", () => {
     );
   });
 
+  it("maps the storage kind to the save-your-city text and keeps unknown for everything else", () => {
+    assert.equal(
+      weatherErrorMessage(new WeatherApiError("x", { kind: "storage" })),
+      "Couldn't save your city. Try again in a moment."
+    );
+    assert.equal(weatherErrorMessage(new Error("quota")), "Couldn't load weather. Try again in a moment.");
+    assert.equal(
+      weatherErrorMessage(new WeatherApiError("x", { kind: "nope" })),
+      "Couldn't load weather. Try again in a moment."
+    );
+  });
+
   it("maps every kind to its fixed text and everything else to the unknown text", () => {
     const unknown = "Couldn't load weather. Try again in a moment.";
     assert.equal(

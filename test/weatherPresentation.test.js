@@ -4,6 +4,7 @@ import {
   formatPm25,
   formatPrecipitation,
   formatTemperature,
+  formatUpdatedAge,
   rainTone,
   temperatureTone,
   usAqiTone,
@@ -71,5 +72,50 @@ describe("weather formatting", () => {
     assert.deepEqual(formatPrecipitation(0, null), ["0%", null]);
     assert.equal(formatPm25(9.3), "9.3");
     assert.equal(formatPm25(225.4321), "225.4");
+  });
+});
+
+describe("formatUpdatedAge", () => {
+  const NOW = 1_700_000_000_000;
+  const MIN = 60 * 1000;
+  const HOUR = 60 * MIN;
+  const age = (ms) => formatUpdatedAge(NOW - ms, NOW);
+
+  it("says just now under one minute, including 0 and 59 s", () => {
+    assert.equal(age(0), "Updated just now");
+    assert.equal(age(59 * 1000), "Updated just now");
+    assert.equal(age(59 * 1000 + 999), "Updated just now");
+  });
+
+  it("switches to minutes at exactly 60 s and floors", () => {
+    assert.equal(age(60 * 1000), "Updated 1 min ago");
+    assert.equal(age(90 * 1000), "Updated 1 min ago");
+    assert.equal(age(45 * MIN), "Updated 45 min ago");
+    assert.equal(age(59 * MIN), "Updated 59 min ago");
+    assert.equal(age(59 * MIN + 59 * 1000), "Updated 59 min ago");
+  });
+
+  it("switches to hours at exactly 60 min and floors", () => {
+    assert.equal(age(60 * MIN), "Updated 1 h ago");
+    assert.equal(age(130 * MIN), "Updated 2 h ago");
+    assert.equal(age(23 * HOUR + 59 * MIN), "Updated 23 h ago");
+  });
+
+  it("switches to days at exactly 24 h and floors, with no upper bound", () => {
+    assert.equal(age(24 * HOUR), "Updated 1 d ago");
+    assert.equal(age(26 * HOUR), "Updated 1 d ago");
+    assert.equal(age(48 * HOUR), "Updated 2 d ago");
+    assert.equal(age(400 * 24 * HOUR), "Updated 400 d ago");
+  });
+
+  it("treats a clock that moved backwards (negative age) as just now", () => {
+    assert.equal(formatUpdatedAge(NOW + 5 * MIN, NOW), "Updated just now");
+  });
+
+  it("returns null when either time is not a finite number", () => {
+    for (const bad of [NaN, Infinity, -Infinity, undefined, null, "1", {}]) {
+      assert.equal(formatUpdatedAge(bad, NOW), null, String(bad));
+      assert.equal(formatUpdatedAge(NOW, bad), null, String(bad));
+    }
   });
 });

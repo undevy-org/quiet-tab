@@ -11,6 +11,7 @@ const ERROR_MESSAGES = {
   network: "Can't reach the weather service. Check your connection and try again.",
   timeout: "The request took too long. Check your connection and try again.",
   http: "The weather service isn't responding right now. Try again in a moment.",
+  storage: "Couldn't save your city. Try again in a moment.",
   unknown: "Couldn't load weather. Try again in a moment."
 };
 
