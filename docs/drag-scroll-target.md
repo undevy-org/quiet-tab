@@ -24,7 +24,45 @@ Not reproduced by reading: none. Step 1 (browser, § Live measurement, filled in
 
 ## Live measurement
 
-Filled in at step 1 of the kickoff (2026-10-19 or later): real Chromium with the unpacked extension, `origin/main` head printed, probe in notes `scratch/run-47-triage/`. It measures, with premises printed first: item 18 (wheel `deltaY` 200 with a still pointer at 1280×800 and 500×800, 188 links; outline cell before and after, drop cell after release; the same by keyboard Page Down); item 19 (188 links, page at the bottom, drag the lowest tile to the first-screen row, outline rectangle against the tile rectangle after the drop and `scrollY` before and after, at 1280×800, 500×800 and 320×600; the same on a page that fits).
+Measured 2026-10-19, real Chromium (Playwright, unpacked extension built from `git archive origin/main`), `origin/main` head `ed74a797c141159017d93df20cbcbd40bb565304` (`ed74a79`; `git diff origin/main -- src` in the worktree is empty). Probe: notes `scratch/run-47-triage/probe.mjs` (`E2E_TAG=run47 node probe.mjs`). Every value below was printed after its premise: edit mode (`data-edit=true`), 188 links, drag held (2 drag markers), outline valid.
+
+Seed: link `i` in rows 1.. on columns 0..C-2 (column C-1 is a free hole in every row); item 19 adds the 188th link alone one row below the block (the lowest tile); Settings/Add in row 0; metrics hidden.
+
+**Item 18: drop target after a scroll with a still pointer — `воспроизведено` (2026-10-19, `ed74a79`).** `f0` held over the hole `A` = (C-1, last visible row), 108 px above the bottom edge (outside the 48 px autoscroll zone), `scrollY` 0, outline `A` valid, then the page scrolled with no `pointermove`, 300 ms wait.
+
+| Window | Scroll | `scrollY` | Outline before -> after | Cell under pointer (`cellFromPoint`) | Release without moving: stored `f0` |
+|--------|--------|-----------|-------------------------|--------------------------------------|-------------------------------------|
+| 1280×800 (C=14) | wheel `deltaY` 200 | 0 -> 200 | (13,8) valid -> (13,8) valid, stale | (13,10) | (13,8) = `A`, not the cell under the pointer |
+| 1280×800 | `PageDown` | 0 -> 584 | (13,8) -> (13,8), stale | (13,15) | (13,8) |
+| 1280×800 | `scrollBy(0,150)` | 0 -> 150 | (13,8) -> (13,8), stale | (13,10) | (13,8) |
+| 500×800 (C=6) | wheel 200 | 0 -> 200 | (5,9) -> (5,9), stale | (5,12) | (5,9) |
+| 500×800 | `PageDown` | 0 -> 760 | (5,9) -> (5,9), stale | (5,20) | (5,9) |
+| 500×800 | `scrollBy(0,150)` | 0 -> 150 | (5,9) -> (5,9), stale | (5,11) | (5,9) |
+
+Notes: the drag is not cancelled by the scroll or by `PageDown` (2 drag markers after each). The write goes to the stale outline cell `A`, so outline and write agree (as the intake note says) but both disagree with where the pointer is. The cell under the pointer was not clamped in this column (the "under pointer" cell is the raw `cellFromPoint`); in all six cases it differs from the outline. The under-pointer cells are holes or occupied cells depending on the row; validity after the fix is not measured here.
+
+**Item 19: tile lands off the outline after a drop at the bottom of the page — `воспроизведено` (2026-10-19, `ed74a79`).** 188 links, page scrolled to the maximum, the lowest tile `f187` (alone in its row) dragged to a free cell (hole in column C-1) in the upper part of the window (about 130 px below the window top), outline valid, released, 400 ms.
+
+| Window | `scrollY` before -> after | `scrollHeight` before -> after | `--rows` drag -> rest | Outline rect top before release | Tile rect top +400 ms | Delta top | Stored `f187` |
+|--------|---------------------------|--------------------------------|-----------------------|--------------------------------|-----------------------|-----------|---------------|
+| 1280×800 (max 584) | 584 -> 504 | 1384 -> 1304 | 17 -> 16 | 72.0 | 151.9 | +79.9 px (one row, 72+8) | (13,8) |
+| 500×800 (max 2096) | 2096 -> 2024 | 2896 -> 2824 | 40 -> 39 | 76.0 | 147.9 | +71.9 px (64+8) | (5,30) |
+| 320×600 (max 3440) | 3440 -> 3378 | 4040 -> 3978 | 65 -> 64 | 102.0 | 163.9 | +61.9 px (56+6) | (3,57) |
+
+Left edge: delta -0.1 px (jiggle scale), the tile's column is right. Outline and write agree (stored cell = outlined cell); only the on-screen position differs.
+
+**Surprise (mechanism differs from the triage text).** On this seed the drag grid is NOT higher than the grid at rest before the drag (`--rows` 17 during the drag, 17 at rest before it): the drag grid equals the pre-drag resting height. The page shrinks because the drop moves the lowest tile out of the last row, so the resting grid AFTER the drop is one row shorter than the drag grid. The premise of AS-DST-04 "`dragRows > restingRows`" is therefore not met literally; it should read "the grid after the drop is shorter than during the drag". (Dragging a tile that is not alone in the lowest row makes the drag grid one row higher than rest, `maxDropRow` = lowest other row + 1: control below, 18 vs 17.) The clamp is always `scrollY` max minus one row (the case in the intake note, 264 -> 184 = 80 px, is the same shape).
+
+**Controls (item 19 / AS-DST-06).**
+
+| Case | Premise | `scrollY` before -> after | `scrollHeight` before -> after | `--rows` drag -> rest | Tile vs outline top |
+|------|---------|---------------------------|--------------------------------|-----------------------|---------------------|
+| 188 links, `scrollY` 0 (max 584), `f0` (0,1) dropped on hole (13,3) | outline valid | 0 -> 0 | 1464 -> 1384 | 18 -> 17 | -0.1 px (on the outline) |
+| page that fits (6 tiles + 3 links), `f0` dropped on hole (13,1) | `scrollHeight` 800 = `clientHeight` 800, max scroll 0 | 0 -> 0 | 800 -> 800 | 9 -> 2 | -0.1 px (on the outline) |
+
+In both controls the grid shrinks after the drop (18 -> 17 rows; 9 -> 2 rows) but nothing is clamped (`scrollY` 0 and the fitting page never scrolls), so the tile lands on the outline: no defect at `scrollY` 0 or on a fitting page.
+
+Also run as a first attempt and discarded: a "top" control that tried to drag the lowest tile at `scrollY` 0 (the tile is off screen, no outline; premise not met, not counted). 
 
 ## Decisions
 
