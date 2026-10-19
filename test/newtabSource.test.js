@@ -2862,4 +2862,13 @@ describe("drag scrolling source pins (run 47, docs/drag-scroll-target.md)", () =
     assert.match(code, /const AUTOSCROLL_STEP_PX = 12;/);
     assert.match(topLevelFunction(code, "autoscrollFrame"), /window\.scrollBy\(0, direction \* AUTOSCROLL_STEP_PX\)[\s\S]*updateDragTarget\(/);
   });
+
+  it("a chip cleared while a drop settles hands its reserve to the hold in the same task (checkpoint L2-01)", async () => {
+    const code = stripComments(await source());
+    const status = topLevelFunction(code, "showDesktopStatus");
+    assert.match(status, /text === "" && !desktopStatus\.hidden\) keepHoldAcrossChipRelease\(\)/);
+    const keep = topLevelFunction(code, "keepHoldAcrossChipRelease");
+    assert.match(keep, /if \(!dragSettling\) return;/);
+    assert.match(keep, /dragHoldPx \+= reserve;[\s\S]*"--drag-hold"[\s\S]*"--status-reserve", "0px"/);
+  });
 });

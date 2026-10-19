@@ -87,6 +87,7 @@ let desktopStatusPersistent = false; // the shown message is a `persist` one (th
 // `tone: "info"` is the neutral look (a reset notice); every other call is the danger look, set on each call so it never sticks.
 function showDesktopStatus(text, { persist = false, tone = "error" } = {}) {
   if (!desktopStatus) return;
+  if (text === "" && !desktopStatus.hidden) keepHoldAcrossChipRelease();
   clearTimeout(desktopStatusTimer);
   layoutFailureChipShown = false;
   desktopStatus.classList.toggle("desktop-status--info", tone === "info");
@@ -3084,6 +3085,19 @@ let dropReturnTimer = 0;
 // and disarmed once the render that ends the drop has happened.
 let dragHoldPx = 0;
 let dragSettling = false;
+
+// A chip that goes away while a drop settles (a write starts by clearing the status) would shorten the page by its reserve
+// before the render measures the hold, and the browser would clamp the scroll position first. The hold takes over that room
+// in the same task; the render then measures it again from scratch.
+function keepHoldAcrossChipRelease() {
+  if (!dragSettling) return;
+  const root = document.documentElement;
+  const reserve = Number.parseFloat(root.style.getPropertyValue("--status-reserve")) || 0;
+  if (reserve <= 0) return;
+  dragHoldPx += reserve;
+  favoritesRoot?.style.setProperty("--drag-hold", `${dragHoldPx}px`);
+  root.style.setProperty("--status-reserve", "0px");
+}
 // One-shot: the click that trails a started drag (same press) is swallowed, so Settings never toggles after a drag.
 let suppressDragClick = false;
 
