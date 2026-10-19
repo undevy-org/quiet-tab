@@ -26,7 +26,7 @@ Chromium via Playwright (`.private/e2e/lib/harness.mjs`), unpacked extension, st
 | Stale (cache 2 h old, forecast unreachable) | The cached values, dashed border (`data-stale`), no explanation on the tile; the description starts `Couldn't refresh - showing saved data.` Also no control. |
 | Loading | `…`, `aria-busy="true"`, description `Loading weather…` (only at boot, a city change, or while the first city loads). |
 | Edit mode | Every metric tile is a `button` named `Edit <metric>`; the error text is still the description. |
-| Boot request that never answers (route that never fulfils, 18 s) | Tiles stay `…` with `aria-busy="true"` **forever**: `startWeather` has no timeout (the city request has one, 15 s). Not part of this run; recorded in the backlog. |
+| Boot request that never answers (route that never fulfils, 18 s) | Measured in this run: tiles stayed `…` with `aria-busy="true"` forever, `startWeather` had no timeout. **Since run 48** the boot load has the same 15 s guard: after it the tiles are the retryable error tiles described here (`docs/weather-reliability.md` decision 1). |
 | Tab order | One stop per weather tile (they are `tabindex="0"` groups), in DOM order, unchanged by the state. |
 | Hint tile (no city) | A `button`, opens the city modal. Not an error state; untouched. |
 
@@ -80,7 +80,7 @@ This changes what the user sees and can do on a tile, so it follows the full UI-
 
 - Automatic retries by a timer, exponential backoff, retry on `online`/`visibilitychange`/focus, `navigator.onLine` detection, notifications, a persistent offline banner (each is a backlog line).
 - A manual refresh of a *fresh* (ready) tile, and any "force" that bypasses the 30 min cache.
-- A timeout for the **boot** load (measured: it can stay `…` forever; separate backlog line).
+- ~~A timeout for the **boot** load~~ (done in run 48, `docs/weather-reliability.md` decision 1).
 - Changing the error texts, the stale marking, the cache TTL or version, the parallel fetch, `weatherApi.js`.
 - Retry from the city modal (that is `network-error.md` decision 3: Save is the retry there), the shared network-error state, the hint tile.
 - Cross-tab live updates (`chrome.storage.onChanged`): an open tab stays stale until its own action, as today; the cache read in `initialize()` is the only cross-tab effect.
@@ -90,7 +90,7 @@ This changes what the user sees and can do on a tile, so it follows the full UI-
 
 - **Fresh tiles have no refresh control.** A user whose data is fresh but wrong-looking cannot force a refresh; that is a different feature (cache semantics). Not a defect of this run.
 - **The tooltip is hidden by each full render for keyboard users.** After a restore of focus the tooltip stays hidden until the focus moves again (existing `suppressTooltipOnFocus`). For a resting pointer the new node receives `pointerover` and the tooltip returns at once with the new description (decision 11); that is the existing behaviour of every re-render.
-- **A late answer after the 15 s timeout may still write the weather cache.** `initialize()` is not cancellable. The tiles and the status line do not change (token); only `quietTabWeatherCache` can be rewritten, which is correct data for the stored city. The mutation test that drops the token check is therefore caught by the tile assertions, not by a cache assertion.
+- **A late answer after the 15 s timeout may still write the weather cache.** `initialize()` is not cancellable. The tiles and the status line do not change (token); only `quietTabWeatherCache` can be rewritten, which is correct data for the stored city (and, since run 48, only while the stored city is unchanged). The mutation test that drops the token check is therefore caught by the tile assertions, not by a cache assertion.
 - **Repeated `hang` attempts leave pending requests.** Each timed-out attempt leaves its two requests open until the browser drops them (Chrome allows 6 connections per host); with the 3 s cooldown and 15 s timeout at most a few are pending. Accepted, as with the city request.
 - **The accessible name does not contain the visible value.** `Retry Temperature` does not contain `—` or `21`. The tile's name never did (`Temperature`), the value is exposed through the description; WCAG 2.5.3 is about visible *labels*, and the glyph and the value are not a label. Recorded so the reviewer does not reopen it.
 - **Cooldown dims the glyph to half opacity.** An inactive component is exempt from the 3:1 non-text contrast rule (WCAG 1.4.11); the glyph is still visible and the state is exposed as `aria-disabled="true"`. The ready and retrying phases are measured at 3:1 or more.

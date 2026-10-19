@@ -31,6 +31,7 @@ Picked by the spec author so the pipeline does not wait. Override any of them be
    | `timeout` | `The request took too long. Check your connection and try again.` (unchanged) |
    | `http` | `The weather service isn't responding right now. Try again in a moment.` |
    | `notFound` | `City "<name>" was not found` (unchanged; the name is inserted with `textContent` only) |
+   | `storage` | `Couldn't save your city. Try again in a moment.` (run 48: the city write was rejected, `docs/weather-reliability.md` decision 5) |
    | `unknown` | `Couldn't load weather. Try again in a moment.` |
 
    No technical words (`fetch`, `TypeError`, `Open-Meteo`, status codes), no apology, no exclamation mark.
@@ -58,7 +59,7 @@ This changes text the user sees, so it follows the full UI-phase cycle: spec, pl
 
 - Retry with backoff, offline detection (`navigator.onLine`), a persistent offline banner, or caching geocoding results.
 - Changing the weather cache, the 30-minute TTL, or the stale fallback rules.
-- Messages for storage failures of the city write beyond the `unknown` text (they share the generic message; a dedicated one belongs with a storage-error task).
+- ~~Messages for storage failures of the city write beyond the `unknown` text~~ (done in run 48: kind `storage`, `Couldn't save your city. Try again in a moment.`; read failures of the city and the cache keep the `unknown` text).
 - Localization (the UI is English).
 - New design tokens or colors; the border/city-field contrast problem is a separate task.
 - Surfacing suggestion-request failures (decision 6).

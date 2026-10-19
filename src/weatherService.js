@@ -1,4 +1,5 @@
 import {
+  WeatherApiError,
   fetchAirQuality as defaultFetchAirQuality,
   fetchWeather as defaultFetchWeather,
   geocodeCity as defaultGeocodeCity,
@@ -26,6 +27,34 @@ export function createWeatherService({
 }) {
   async function fetchAndCache(location) {
     return cacheStore.setCache(buildCache(location, await fetchReading(location)));
+  }
+
+  // A rejected city write (a storage failure, or the store's own validation error) means "your city was not saved",
+  // not "weather could not load" (docs/weather-reliability.md decision 5).
+  async function saveLocation(resolvedLocation) {
+    try {
+      return await locationStore.setLocation(resolvedLocation);
+    } catch (error) {
+      throw new WeatherApiError("City was not saved", { kind: "storage", cause: error });
+    }
+  }
+
+  // Boot/retry path only: the cache is written for the city the fetch was made for, and only while that city is
+  // still the stored one. A changed or removed city means the forecast is returned but not written (decision 4). A
+  // re-read that fails counts as "unchanged" (a cache is only a cache). The window between the re-read and the
+  // write is accepted (docs/weather-reliability.md, Accepted exceptions).
+  async function fetchAndCacheIfCurrent(location) {
+    const cacheValue = buildCache(location, await fetchReading(location));
+    let current = true;
+
+    try {
+      const stored = await locationStore.getLocation();
+      current = Boolean(stored) && stored.name === location.name;
+    } catch {
+      current = true;
+    }
+
+    return current ? cacheStore.setCache(cacheValue) : cacheValue;
   }
 
   async function fetchReading(location) {
@@ -65,7 +94,7 @@ export function createWeatherService({
       throw new Error("City request is no longer current");
     }
 
-    const location = await locationStore.setLocation(resolvedLocation);
+    const location = await saveLocation(resolvedLocation);
     const cacheValue = buildCache(location, reading);
     let data = cacheValue;
 
@@ -86,7 +115,7 @@ export function createWeatherService({
   }
 
   async function persistAndFetch(resolvedLocation) {
-    const location = await locationStore.setLocation(resolvedLocation);
+    const location = await saveLocation(resolvedLocation);
 
     try {
       const data = await fetchAndCache(location);
@@ -123,7 +152,7 @@ export function createWeatherService({
       }
 
       try {
-        const data = await fetchAndCache(location);
+        const data = await fetchAndCacheIfCurrent(location);
         return { status: "ready", location, data, error: null };
       } catch (error) {
         if (cached && cached.locationName === location.name) {

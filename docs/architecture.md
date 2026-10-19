@@ -184,10 +184,17 @@ the forecast arrives. A 2-wide tile shows the primary and secondary values, a
    exists, the tiles show it marked as stale (dashed border). With no cache the
    tiles show an unavailable state and their descriptions carry the user-safe error text.
    Failures are classified, never echoed: `weatherApi.js` tags each `WeatherApiError`
-   with `details.kind` (`network`, `timeout`, `http`, `notFound`, otherwise unknown) and
+   with `details.kind` (`network`, `timeout`, `http`, `notFound`, `storage`, otherwise unknown) and
    wraps a rejected `fetch` as `network`; `weatherErrorMessage(error)` turns the kind
    into a fixed calm text, so `result.error` and the city modal's error slot never
-   hold a browser or developer message.
+   hold a browser or developer message. A rejected write of the city (`setLocation`) is
+   wrapped by the service as kind `storage`: `Couldn't save your city. Try again in a moment.`
+   The boot load runs under the same 15 s guard as the city change and the retry: a hung
+   request ends in the retryable error tiles. A stale tile's tooltip and description say how
+   old the data is (`Couldn't refresh - showing saved data. Updated 2 h ago. ...`; relative,
+   computed at render, the tile face is unchanged). Before the cache is written, `initialize()`
+   re-reads the stored city and skips the write when it is no longer the one the forecast was
+   fetched for (no foreign cache). `docs/weather-reliability.md`.
 4. Setting a city, from the city modal, geocodes the typed name (Open-Meteo returns English place
    names), stores the resolved location, and fetches a fresh forecast. **Use your location** (wizard
    step 1 and change mode only) asks the browser for a position, rounds it, reverse-geocodes via
@@ -207,7 +214,7 @@ the forecast arrives. A 2-wide tile shows the primary and secondary values, a
 ### Retry from a tile
 
 An error or stale tile in normal mode is one native button, `Retry <Metric>`. Pressing it runs
-ONE attempt for every tile, through the unchanged `weatherService.initialize()`: it re-reads the
+ONE attempt for every tile, through `weatherService.initialize()` (with the run-48 cache guard): it re-reads the
 city, serves a cache that another tab refreshed in the meantime (no request, the only cross-tab
 effect; there is no `onChanged` listener) or fetches again. There is no way to refresh a fresh
 tile. `retryWeather()` in `newtab.js` wraps the call in the same 15 s `withTimeout` as a city

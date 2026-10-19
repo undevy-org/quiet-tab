@@ -2082,12 +2082,14 @@ function showOnboardingWizard() {
 // tile gets the city name. Type sizes come from CSS keyed on data-w/data-h.
 function createWeatherMetricTile(item, cell, view) {
   const size = cell.w === 2 ? "wide" : cell.h === 2 ? "tall" : "square";
-  const model = describeWeatherMetric({ metricKey: weatherMetricKey(item.id), result: view, size, retry: weatherRetryPhase(weatherUi, Date.now()) });
+  const editing = desktopUi.editMode;
+  // The age sentence of a stale description is for normal mode (tooltip and description); edit mode stays as it was, so no `now` there
+  // (docs/weather-reliability.md AS-WRL-04).
+  const model = describeWeatherMetric({ metricKey: weatherMetricKey(item.id), result: view, size, retry: weatherRetryPhase(weatherUi, Date.now()), now: editing ? undefined : Date.now() });
   if (!model) return null;
 
   // Edit mode: the tile becomes a button named "Edit <metric name>"; a tap opens the weather edit dialog.
   // An error or stale tile in normal mode is one native button "Retry <metric name>" (one shared attempt, see retryWeather).
-  const editing = desktopUi.editMode;
   const retryable = !editing && model.retry !== null;
   const tile = createNode(editing || retryable ? "button" : "div", "weather-tile");
   tile.dataset.widgetId = item.id;
@@ -3732,7 +3734,7 @@ async function startWeather() {
   const generation = weatherGeneration;
   let result;
   try {
-    result = await weatherService.initialize();
+    result = await withTimeout(weatherService.initialize());
   } catch (error) {
     result = {
       status: "error",
@@ -3748,6 +3750,10 @@ async function startWeather() {
   }
 
   weatherResult = result;
+  if (result.location) {
+    weatherLocation = result.location;
+    weatherLocationError = "";
+  }
   renderFavorites();
 }
 

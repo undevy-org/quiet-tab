@@ -18,6 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Weather reliability: the first load of a new tab now gives up after 15 s like a city change or a retry, so tiles
+  no longer stay on `…` forever and become the retryable error tiles instead; a stale tile's tooltip and screen-reader
+  description say how old the data is (`Updated 2 h ago`); a forecast that arrives after the city was changed no longer
+  overwrites the saved weather of the new city; a city that could not be saved shows `Couldn't save your city. Try again
+  in a moment.`; and after a successful first load the city is known again for the city modal and the weather dialog
+  (`docs/weather-reliability.md`).
 - Layers and low windows: the status message no longer shows through the backdrop of a dialog, the city modal or the
   wizard, and while it is on screen the page keeps room below the last row so tiles can be scrolled clear of it. A dialog
   taller than the window keeps Cancel and Save at its bottom edge (a divider appears only while it scrolls), keeps a

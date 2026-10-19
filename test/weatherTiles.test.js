@@ -212,3 +212,48 @@ describe("describeWeatherMetric", () => {
     });
   });
 });
+
+describe("describeWeatherMetric stale age (run 48)", () => {
+  const NOW = 1_700_000_000_000;
+  const HOUR = 60 * 60 * 1000;
+  const staleAt = (ageMs) => ({ status: "stale", data: { ...data, fetchedAt: NOW - ageMs }, error: "offline" });
+  const PREFIX = "Couldn't refresh - showing saved data. ";
+
+  it("puts the age sentence between the prefix and the values when now and fetchedAt are given", () => {
+    const m = describeWeatherMetric({ metricKey: "temperature", result: staleAt(2 * HOUR), size: "square", now: NOW });
+    assert.equal(m.description, `${PREFIX}Updated 2 h ago. Currently 21°. Today at 15:00 — 24°, yesterday at 15:00 — 22°.`);
+    assert.equal(m.stale, true);
+    assert.equal(m.primary, "21");
+  });
+
+  it("says the age on every metric", () => {
+    for (const k of keys) {
+      const m = describeWeatherMetric({ metricKey: k, result: staleAt(45 * 60 * 1000), size: "square", now: NOW });
+      assert.match(m.description, /^Couldn't refresh - showing saved data\. Updated 45 min ago\. \S/, k);
+    }
+  });
+
+  it("without now the description has no age sentence, as before", () => {
+    const m = describeWeatherMetric({ metricKey: "uv", result: staleAt(2 * HOUR), size: "square" });
+    assert.match(m.description, /^Couldn't refresh - showing saved data\. Current UV index 3/);
+    assert.doesNotMatch(m.description, /Updated|ago/);
+  });
+
+  it("without a finite fetchedAt the sentence is omitted", () => {
+    for (const fetchedAt of [undefined, NaN, "x", Infinity]) {
+      const result = { status: "stale", data: { ...data, fetchedAt }, error: "offline" };
+      const m = describeWeatherMetric({ metricKey: "uv", result, size: "square", now: NOW });
+      assert.match(m.description, /^Couldn't refresh - showing saved data\. Current UV index 3/);
+    }
+  });
+
+  it("retrying, ready and error ignore now and carry no age", () => {
+    const retrying = describeWeatherMetric({ metricKey: "uv", result: staleAt(2 * HOUR), size: "square", retry: "retrying", now: NOW });
+    assert.match(retrying.description, /^Trying again… Current UV index 3/);
+    assert.doesNotMatch(retrying.description, /Updated|ago/);
+    const rdy = describeWeatherMetric({ metricKey: "uv", result: { status: "ready", data: { ...data, fetchedAt: NOW - 2 * HOUR }, error: null }, size: "square", now: NOW });
+    assert.doesNotMatch(rdy.description, /Updated|ago|Couldn't refresh/);
+    const err = describeWeatherMetric({ metricKey: "uv", result: failed, size: "square", now: NOW });
+    assert.equal(err.description, "Weather unavailable: boom");
+  });
+});

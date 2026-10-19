@@ -626,3 +626,186 @@ describe("createWeatherService", () => {
     }
   });
 });
+
+describe("createWeatherService run 48: foreign cache guard and storage error", () => {
+  const BERLIN = { name: "Berlin", country: "Germany", latitude: 52.52, longitude: 13.41 };
+
+  function guardHarness({ onFetch, locationReads } = {}) {
+    const locationStore = createWeatherLocationStore(createMemoryStorageArea());
+    const cacheArea = createMemoryStorageArea();
+    const realCache = createWeatherCacheStore(cacheArea);
+    const writes = [];
+    const cacheStore = {
+      getCache: () => realCache.getCache(),
+      setCache: async (value) => {
+        writes.push(value.locationName);
+        return realCache.setCache(value);
+      }
+    };
+    let reads = 0;
+    const countingLocationStore = {
+      ...locationStore,
+      getLocation: async () => {
+        reads += 1;
+        if (locationReads) return locationReads(reads, locationStore);
+        return locationStore.getLocation();
+      }
+    };
+    const service = createWeatherService({
+      locationStore: countingLocationStore,
+      cacheStore,
+      fetchWeather: async () => {
+        if (onFetch) await onFetch(locationStore);
+        return WEATHER_READING;
+      },
+      fetchAirQuality: async () => AIR_READING,
+      geocodeCity: async () => TBILISI,
+      now: () => 1_000_000
+    });
+    return { locationStore, cacheStore: realCache, service, writes };
+  }
+
+  it("initialize writes the cache once when the stored city did not change during the fetch", async () => {
+    const { service, locationStore, writes } = guardHarness();
+    await locationStore.setLocation(TBILISI);
+    const result = await service.initialize();
+    assert.equal(result.status, "ready");
+    assert.deepEqual(writes, [TBILISI.name]);
+  });
+
+  it("initialize does not write the cache when the city changed during the fetch, and returns the fetched city's forecast", async () => {
+    const { service, locationStore, cacheStore, writes } = guardHarness({
+      onFetch: (store) => store.setLocation(BERLIN)
+    });
+    await locationStore.setLocation(TBILISI);
+    const result = await service.initialize();
+    assert.deepEqual(writes, []);
+    assert.equal(await cacheStore.getCache(), null);
+    assert.equal(result.status, "ready");
+    assert.equal(result.location.name, TBILISI.name);
+    assert.equal(result.data.locationName, TBILISI.name);
+    assert.equal(result.data.temperature, WEATHER_READING.temperature);
+  });
+
+  it("initialize does not write the cache when the city was removed during the fetch", async () => {
+    const { service, locationStore, writes } = guardHarness({
+      onFetch: (store) => store.clearLocation()
+    });
+    await locationStore.setLocation(TBILISI);
+    const result = await service.initialize();
+    assert.deepEqual(writes, []);
+    assert.equal(result.status, "ready");
+    assert.equal(result.location.name, TBILISI.name);
+  });
+
+  it("initialize treats a failing re-read of the city as unchanged and writes once", async () => {
+    const { service, locationStore, writes } = guardHarness({
+      locationReads: (n, store) => {
+        if (n === 1) return store.getLocation();
+        throw new Error("storage unavailable");
+      }
+    });
+    await locationStore.setLocation(TBILISI);
+    const result = await service.initialize();
+    assert.equal(result.status, "ready");
+    assert.deepEqual(writes, [TBILISI.name]);
+  });
+
+  it("initialize re-reads the stored city once more on the fetch path and not on a fresh cache", async () => {
+    let reads = 0;
+    const locationStore = createWeatherLocationStore(createMemoryStorageArea());
+    await locationStore.setLocation(TBILISI);
+    const service = createWeatherService({
+      locationStore: { ...locationStore, getLocation: async () => (reads += 1, locationStore.getLocation()) },
+      cacheStore: createWeatherCacheStore(createMemoryStorageArea()),
+      fetchWeather: async () => WEATHER_READING,
+      fetchAirQuality: async () => AIR_READING,
+      geocodeCity: async () => TBILISI,
+      now: () => 1_000_000
+    });
+    await service.initialize();
+    assert.equal(reads, 2);
+    reads = 0;
+    await service.initialize(); // now a fresh cache: no fetch, no guard read
+    assert.equal(reads, 1);
+  });
+
+  it("a failing setCache inside initialize still gives the error result as before", async () => {
+    const locationStore = createWeatherLocationStore(createMemoryStorageArea());
+    await locationStore.setLocation(TBILISI);
+    const service = createWeatherService({
+      locationStore,
+      cacheStore: {
+        getCache: async () => null,
+        setCache: async () => {
+          throw new Error("quota");
+        }
+      },
+      fetchWeather: async () => WEATHER_READING,
+      fetchAirQuality: async () => AIR_READING,
+      geocodeCity: async () => TBILISI,
+      now: () => 1_000_000
+    });
+    const result = await service.initialize();
+    assert.equal(result.status, "error");
+    assert.equal(result.error, "Couldn't load weather. Try again in a moment.");
+  });
+
+  for (const [label, rejection] of [
+    ["a storage failure", new Error("QUOTA_BYTES_PER_ITEM quota exceeded")],
+    ["the store's Invalid weather location error", new Error("Invalid weather location")]
+  ]) {
+    it(`persistAfterForecast turns ${label} of setLocation into a storage WeatherApiError and writes no cache`, async () => {
+      const writes = [];
+      const rejecting = createWeatherService({
+        locationStore: { getLocation: async () => null, setLocation: async () => { throw rejection; } },
+        cacheStore: { getCache: async () => null, setCache: async () => { writes.push("x"); } },
+        fetchWeather: async () => WEATHER_READING,
+        fetchAirQuality: async () => AIR_READING,
+        geocodeCity: async () => TBILISI,
+        now: () => 1_000_000
+      });
+      await assert.rejects(
+        () => rejecting.selectLocation(BERLIN, { persist: "after-forecast" }),
+        (error) => error instanceof WeatherApiError && error.details.kind === "storage"
+      );
+      assert.deepEqual(writes, []);
+    });
+
+    it(`persistAndFetch turns ${label} of setLocation into a storage WeatherApiError`, async () => {
+      const rejecting = createWeatherService({
+        locationStore: { getLocation: async () => null, setLocation: async () => { throw rejection; } },
+        cacheStore: { getCache: async () => null, setCache: async () => { throw new Error("not expected"); } },
+        fetchWeather: async () => WEATHER_READING,
+        fetchAirQuality: async () => AIR_READING,
+        geocodeCity: async () => TBILISI,
+        now: () => 1_000_000
+      });
+      await assert.rejects(
+        () => rejecting.selectLocation(BERLIN),
+        (error) => error instanceof WeatherApiError && error.details.kind === "storage"
+      );
+      await assert.rejects(
+        () => rejecting.setCity("Berlin"),
+        (error) => error instanceof WeatherApiError && error.details.kind === "storage"
+      );
+    });
+  }
+
+  it("a forecast failure in persistAfterForecast keeps its own error, not the storage text", async () => {
+    const service = createWeatherService({
+      locationStore: { getLocation: async () => null, setLocation: async () => { throw new Error("must not be reached"); } },
+      cacheStore: { getCache: async () => null, setCache: async () => {} },
+      fetchWeather: async () => {
+        throw new WeatherApiError("x", { kind: "network" });
+      },
+      fetchAirQuality: async () => AIR_READING,
+      geocodeCity: async () => TBILISI,
+      now: () => 1_000_000
+    });
+    await assert.rejects(
+      () => service.selectLocation(BERLIN, { persist: "after-forecast" }),
+      (error) => error instanceof WeatherApiError && error.details.kind === "network"
+    );
+  });
+});

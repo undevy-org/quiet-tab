@@ -3,6 +3,7 @@ import {
   formatPm25,
   formatPrecipitation,
   formatTemperature,
+  formatUpdatedAge,
   rainTone,
   temperatureTone,
   usAqiTone,
@@ -60,7 +61,9 @@ function readyModel(metricKey, data, size) {
 // should exist (no city). `retry` ("ready" | "retrying" | "cooldown", default "ready") only matters for
 // error and stale results: the model's `retry` is the phase for those and null for every other state;
 // while retrying it is `busy`, an error tile shows "…" and the description says it is trying again.
-export function describeWeatherMetric({ metricKey, result, size, retry = "ready" }) {
+// `now` (ms, optional, supplied by the caller, never read here) adds the age sentence to a stale description
+// (docs/weather-reliability.md decision 3); without it, or without a finite `fetchedAt`, the description is the plain one.
+export function describeWeatherMetric({ metricKey, result, size, retry = "ready", now }) {
   const label = LABELS[metricKey];
   const base = { label, secondary: null, tone: null, stale: false, busy: false, retry: null };
 
@@ -84,12 +87,14 @@ export function describeWeatherMetric({ metricKey, result, size, retry = "ready"
   const model = readyModel(metricKey, result.data, size);
   const isStale = result.status === "stale";
   if (!isStale) return { ...base, ...model, stale: false, description: model.description };
+  const age = formatUpdatedAge(result.data?.fetchedAt, now);
+  const staleDescription = age ? `${STALE_PREFIX}${age}. ${model.description}` : `${STALE_PREFIX}${model.description}`;
   return {
     ...base,
     ...model,
     stale: true,
     busy: retrying,
     retry,
-    description: retrying ? `${TRYING_AGAIN} ${model.description}` : `${STALE_PREFIX}${model.description}`
+    description: retrying ? `${TRYING_AGAIN} ${model.description}` : staleDescription
   };
 }

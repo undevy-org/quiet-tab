@@ -39,7 +39,8 @@ describe("newtab weather source", () => {
 
   it("initializes weather independently of the favorites boot", async () => {
     const code = await source();
-    assert.match(code, /result = await weatherService\.initialize\(\);/);
+    // run 48: the boot load has the same 15 s guard as the retry and the city change
+    assert.match(code, /result = await withTimeout\(weatherService\.initialize\(\)\);/);
     assert.match(code, /weatherResult = result;/);
     assert.match(code, /void startWeather\(\);/);
   });
@@ -318,7 +319,8 @@ describe("newtab weather source", () => {
     const code = await source();
 
     assert.doesNotMatch(code, /formHost/);
-    assert.match(code, /weatherResult = result;\s*renderFavorites\(\);/);
+    // run 48: startWeather also records the known city between the result and the render
+    assert.match(code, /weatherResult = result;\s*if \(result\.location\) \{\s*weatherLocation = result\.location;\s*weatherLocationError = "";\s*\}\s*renderFavorites\(\);/);
     assert.match(code, /if \(generation !== weatherGeneration\) \{\s*return;\s*\}/);
     assert.match(code, /const result = await withTimeout\(run\(isStale\)\);[\s\S]*?weatherGeneration \+= 1;\s*weatherResult = result;/);
     assert.doesNotMatch(code, /function changeCity\(run\) \{\s*weatherGeneration \+= 1;/);
@@ -410,5 +412,21 @@ describe("newtab weather retry source (AS-WR-13)", () => {
     assert.match(unreleased, /### Added[\s\S]*can now be pressed\s+to try again/);
     assert.match(unreleased, /dg-54-weather-tile-retry\.mjs/);
     assert.doesNotMatch(unreleased, /fresh tile can be refreshed/i);
+  });
+
+  it("startWeather (run 48): withTimeout, location and read error set after the generation check, now passed to the tile model", async () => {
+    const code = await source();
+    const start = code.indexOf("async function startWeather()");
+    const body = code.slice(start, code.indexOf("\n}\n", start));
+    assert.match(body, /await withTimeout\(weatherService\.initialize\(\)\)/);
+    assert.match(body, /error: weatherErrorMessage\(error\)/);
+    const guard = body.indexOf("generation !== weatherGeneration");
+    const assign = body.indexOf("weatherLocation = result.location;");
+    const clear = body.indexOf('weatherLocationError = "";');
+    const render = body.lastIndexOf("renderFavorites();");
+    assert.ok(guard > -1 && assign > guard && clear > guard && render > assign && render > clear, "assignments after the generation check, before render");
+    assert.match(body, /if \(result\.location\) \{[\s\S]*weatherLocation = result\.location;[\s\S]*weatherLocationError = "";[\s\S]*\}/);
+    assert.match(code, /const CITY_REQUEST_TIMEOUT_MS = 15000;/);
+    assert.match(code, /retry: weatherRetryPhase\(weatherUi, Date\.now\(\)\), now: editing \? undefined : Date\.now\(\) \}\)/);
   });
 });
