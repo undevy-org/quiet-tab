@@ -2,7 +2,7 @@
 
 ## Status
 
-`draft` — revision 3 (2026-10-19, stage 2 of run 47, second pass: answers the stage-3 re-review N1 to N6 and the design gate round 2 L0-13, S0-01; revision 2 answered stage 1 and gate round 1; see `## Review rounds`). Run №47 (`drag-scroll-target`), row Р47 of the roadmap ("Drag и прокрутка", marathon `kickoffs/marathon-45-51.md`). Backlog items 18 and 19 (item 21 was closed by run 39, item 24 moved to Р42 and is done). Both items are first reproduced on `origin/main` (step 1 of the kickoff); the triage below is by reading `main` at `ed74a79` (runs 45 and 46 merged). Run 46 changed the document padding and `scroll-padding-bottom` for the status chip (`--status-reserve`) but touched nothing in the drag code (`beginPointerDrag` … `returnDraggedTile`), so the triage still holds.
+`implemented` — revision 3 (2026-10-19, stage 2 of run 47, second pass: answers the stage-3 re-review N1 to N6 and the design gate round 2 L0-13, S0-01; revision 2 answered stage 1 and gate round 1; see `## Review rounds`). Run №47 (`drag-scroll-target`), row Р47 of the roadmap ("Drag и прокрутка", marathon `kickoffs/marathon-45-51.md`). Backlog items 18 and 19 (item 21 was closed by run 39, item 24 moved to Р42 and is done). Both items are first reproduced on `origin/main` (step 1 of the kickoff); the triage below is by reading `main` at `ed74a79` (runs 45 and 46 merged). Run 46 changed the document padding and `scroll-padding-bottom` for the status chip (`--status-reserve`) but touched nothing in the drag code (`beginPointerDrag` … `returnDraggedTile`), so the triage still holds.
 
 **Data compatibility: not required** (no-users policy, `agent-config/CLAUDE.md`). Nothing is stored or migrated by this run; a drop writes exactly what it writes today.
 

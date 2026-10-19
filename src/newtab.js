@@ -92,7 +92,7 @@ function showDesktopStatus(text, { persist = false, tone = "error" } = {}) {
   layoutFailureChipShown = false;
   desktopStatus.classList.toggle("desktop-status--info", tone === "info");
   desktopStatus.textContent = text;
-  desktopStatus.hidden = text === "";
+  desktopStatus.hidden = text === ""; // the only place the chip is hidden: keepHoldAcrossChipRelease depends on the call above
   desktopStatusPersistent = persist && text !== "";
   if (text !== "" && !persist) desktopStatusTimer = setTimeout(() => showDesktopStatus(""), DESKTOP_STATUS_MS);
 }
