@@ -214,7 +214,7 @@ the forecast arrives. A 2-wide tile shows the primary and secondary values, a
 ### Retry from a tile
 
 An error or stale tile in normal mode is one native button, `Retry <Metric>`. Pressing it runs
-ONE attempt for every tile, through the unchanged `weatherService.initialize()`: it re-reads the
+ONE attempt for every tile, through `weatherService.initialize()` (with the run-48 cache guard): it re-reads the
 city, serves a cache that another tab refreshed in the meantime (no request, the only cross-tab
 effect; there is no `onChanged` listener) or fetches again. There is no way to refresh a fresh
 tile. `retryWeather()` in `newtab.js` wraps the call in the same 15 s `withTimeout` as a city

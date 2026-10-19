@@ -2,7 +2,7 @@
 
 ## Status
 
-`draft` — revision 3 (2026-10-19, stage 2 of run 48 after the second review pass; revisions 1 and 2 earlier). Run №48 (`weather-reliability`), row Р48 of the roadmap ("Погода: надёжность", marathon `kickoffs/marathon-45-51.md`). Backlog items 10, 14, 16, 111, 112. Triage below is by reading `origin/main` at `e1e85eb` (runs 45–47 merged); the first step of the kickoff re-checks every item live on `origin/main` before stage 1.
+`implemented` — revision 3 (2026-10-19, stage 2 of run 48 after the second review pass; revisions 1 and 2 earlier). Run №48 (`weather-reliability`), row Р48 of the roadmap ("Погода: надёжность", marathon `kickoffs/marathon-45-51.md`). Backlog items 10, 14, 16, 111, 112. Triage below is by reading `origin/main` at `e1e85eb` (runs 45–47 merged); the first step of the kickoff re-checks every item live on `origin/main` before stage 1.
 
 **Data compatibility: not required** (no-users policy, `agent-config/CLAUDE.md`). No key or field changes; the cache and the city are written exactly as today.
 
@@ -123,9 +123,9 @@ Measured on `origin/main` `e1e85eb` (2026-10-19, Mac, throw-away profile, Open-M
 4. A `getLocation`/`getCache` read failure keeps the generic text.
 5. Two cities with the same `name` (Paris FR / Paris TX) are not told apart by the decision 4 guard (the cache keys on `name`, as today).
 6. A hung boot with a stale cache shows error tiles, not the stale values (Ruling in decision 1).
+7. The age is read as "2 h ago" by a screen reader; no expanded unit words, no upper bound on N ("400 d" is allowed).
 8. If the city changes in another tab while a boot fetch runs, this tab keeps the fetched city's tiles until its next mutation or reload (no storage listener, as today); the cache is not written (decision 4).
 9. The store's `Invalid weather location` rejection (unreachable from the UI: coordinates come from geocoding or the browser) shows the same `Couldn't save your city. Try again in a moment.`; unit test only.
-7. The age is read as "2 h ago" by a screen reader; no expanded unit words, no upper bound on N ("400 d" is allowed).
 
 ## Non-goals
 
