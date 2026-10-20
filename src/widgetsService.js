@@ -22,19 +22,24 @@ import {
 
 const URL_SCHEME_PATTERN = /^([a-z][a-z\d+.-]*):(.*)$/i;
 
-function hasUrlScheme(value) {
+// The text after `scheme:` when the value has a scheme (`localhost:3000` has none: its "scheme" is a host and a port), else null.
+function schemeRest(value) {
   const match = value.match(URL_SCHEME_PATTERN);
 
   if (!match) {
-    return false;
+    return null;
   }
 
   const [, , rest] = match;
   if (rest.startsWith("//")) {
-    return true;
+    return rest;
   }
 
-  return !isHostPortWithoutScheme(rest);
+  return isHostPortWithoutScheme(rest) ? null : rest;
+}
+
+function hasUrlScheme(value) {
+  return schemeRest(value) !== null;
 }
 
 function isHostPortWithoutScheme(rest) {
@@ -52,7 +57,30 @@ const LINK_TOO_LONG = "That link is too long (up to 2000 characters)"; // = LINK
 const ICON_LINK_TOO_LONG = "That icon link is too long (up to 2000 characters)"; // = LINK_URL_MAX_LENGTH
 const LABEL_TOO_LONG = "That name is too long (up to 100 characters)"; // = LINK_LABEL_MAX_LENGTH
 const IPV6_HOST_PATTERN = /^\[[0-9a-f:.]+\]$/i;
-const PLAIN_HOST_PATTERN = /^[a-z0-9._-]+$/i;
+const IPV4_HOST_PATTERN = /^\d+\.\d+\.\d+\.\d+$/;
+const HOST_LABEL_PATTERN = /^[a-z0-9_-]+$/i;
+
+// The host part of what the person typed, read by URL grammar before the parser normalizes anything (docs/typography-copy.md
+// decision 7): drop an optional `scheme:` and the slashes or backslashes after it, cut at the first `/`, `\`, `?` or `#`, take what
+// follows the last `@` (credentials and several `@` are not part of the host), drop a trailing `:port`. No percent-decoding, no digit
+// folding and no leading-zero removal, so every spelling the parser would normalize differs from the parsed host.
+function typedHost(typed) {
+  const rest = (schemeRest(typed) ?? typed).replace(/^[\\/]+/, "");
+  const end = rest.search(/[\\/?#]/);
+  const authority = end === -1 ? rest : rest.slice(0, end);
+  return authority.slice(authority.lastIndexOf("@") + 1).replace(/:\d*$/, "").toLowerCase();
+}
+
+// Can this parsed host name a site? An IPv6 literal in brackets: yes. Four decimal parts: only when the person typed exactly that
+// address (`127.1`, `2130706433`, `0x7f.0.0.1` and `192.168.001.1` are the parser's work, far more often a typo than a wish).
+// Anything else: one trailing dot is allowed (a rooted name), every other label is 1 or more characters from [a-z0-9_-], does not
+// begin or end with `-` and holds a letter or a digit. No length rule: the 2000-character limit stays the only one.
+function isRealHost(hostname, typed) {
+  if (IPV6_HOST_PATTERN.test(hostname)) return true;
+  if (IPV4_HOST_PATTERN.test(hostname)) return typedHost(typed) === hostname;
+  const labels = (hostname.endsWith(".") ? hostname.slice(0, -1) : hostname).split(".");
+  return labels.every((label) => HOST_LABEL_PATTERN.test(label) && !label.startsWith("-") && !label.endsWith("-") && /[a-z0-9]/i.test(label));
+}
 
 function withUrlProtocol(value) {
   return hasUrlScheme(value) ? value : `https://${value}`;
@@ -85,7 +113,7 @@ export function normalizeFavoriteUrl(input) {
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     throw fieldError("Only http and https URLs are supported", "url");
   }
-  if (!IPV6_HOST_PATTERN.test(parsed.hostname) && !PLAIN_HOST_PATTERN.test(parsed.hostname)) {
+  if (!isRealHost(parsed.hostname, typed)) {
     throw fieldError("Enter a valid URL", "url");
   }
 

@@ -18,6 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Link addresses: a host that cannot name a site is now refused with `Enter a valid URL` in Add link, Edit link and the first-run starters: an empty
+  label (`a..b`, `.com`), a label that begins or ends with `-` or has no letter or digit (`-a.com`, `_`), and an IPv4 address the browser
+  expands from a short form (`1`, `127.1`, `2130706433`, `0x7f.0.0.1`, `192.168.001.1`, `192.168.0.1.`); an address typed in full
+  (`192.168.0.1`, also behind credentials, a port or a path) and every real name keep working. A link saved earlier stays on the grid and opens;
+  its Edit dialog asks for a valid address before it saves (`docs/typography-copy.md` decision 7, `docs/link-dialog-validation.md`).
 - Weather reliability: the first load of a new tab now gives up after 15 s like a city change or a retry, so tiles
   no longer stay on `…` forever and become the retryable error tiles instead; a stale tile's tooltip and screen-reader
   description say how old the data is (`Updated 2 h ago`); a forecast that arrives after the city was changed no longer
