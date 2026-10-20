@@ -834,7 +834,7 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
 
   it("pins the page shell: one desktop root, a polite live region and a hidden page-level alert line", async () => {
     const markup = await html();
-    assert.match(markup, /<main class="desktop" id="favorites" aria-label="Widgets" data-edit="false"><\/main>/);
+    assert.match(markup, /<main class="desktop" id="favorites" aria-label="Grid" data-edit="false"><\/main>/);
     assert.match(markup, /<div class="sr-only" id="desktop-live" role="status" aria-live="polite"><\/div>/);
     assert.match(markup, /<div class="desktop-status" id="desktop-status" role="alert" hidden><\/div>/);
     assert.doesNotMatch(markup, /favorites-panel|favorites-bar|data-position/);
@@ -1278,11 +1278,12 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     assert.match(controls, /\.segmented__glyph--size-1x2 \{ width: 5px; height: 11px; \}/);
     assert.match(controls, /\.segmented__glyph--size-2x1 \{ width: 11px; height: 5px; \}/);
     assert.match(controls, /\.segmented__glyph--size-2x2 \{ width: 11px; height: 11px; \}/);
-    // The segment rule lives in its own 451px block; the row wrapping stays in the 400px block.
+    // The segment rule lives in its own 451px block; the row wrapping stays in the row-stacking block (since run 49 its query is
+    // `@media (max-width: 400px), (max-width: 25rem)`: 400 px at the default font size, 600 px at 150 %).
     const narrow = surfaces.slice(surfaces.indexOf("@media (max-width: 451px)"));
     assert.match(narrow, /\.desktop-dialog \.segmented__option \{\s*padding: 0 5px;\s*white-space: nowrap;\s*\}/);
     assert.match(narrow, /\.segmented__glyph--size-1x2 \{ width: 4px; height: 9px; \}/);
-    const wrap = surfaces.slice(surfaces.indexOf("@media (max-width: 400px)"), surfaces.indexOf("@media (max-width: 451px)"));
+    const wrap = surfaces.slice(surfaces.indexOf("@media (max-width: 400px), (max-width: 25rem)"), surfaces.indexOf("@media (max-width: 451px)"));
     assert.match(wrap, /flex-wrap: wrap;/);
     assert.doesNotMatch(wrap, /segmented__option/);
   });
@@ -2870,5 +2871,87 @@ describe("drag scrolling source pins (run 47, docs/drag-scroll-target.md)", () =
     const keep = topLevelFunction(code, "keepHoldAcrossChipRelease");
     assert.match(keep, /if \(!dragSettling\) return;/);
     assert.match(keep, /dragHoldPx \+= reserve;[\s\S]*"--drag-hold"[\s\S]*"--status-reserve", "0px"/);
+  });
+});
+
+// Run 49 (docs/typography-copy.md decisions 1, 3, 4, 6): source pins of the typography and copy changes. The existing pins on the
+// 1×1 and 1×2 hint (one unbroken if / else if / else chain) stay as they are; the trigger is a separate statement after the chain.
+describe("typography and copy source pins (run 49)", () => {
+  const read = (name) => readFile(new URL(`../src/${name}`, import.meta.url), "utf8");
+  const block = (css, header) => {
+    const start = css.indexOf(header);
+    assert.notEqual(start, -1, `${header} exists`);
+    return css.slice(start, css.indexOf("}", start) + 1);
+  };
+
+  it("the main landmark is named Grid, not Widgets (decision 4)", async () => {
+    const markup = await read("newtab.html");
+    assert.match(markup, /<main class="desktop" id="favorites" aria-label="Grid" data-edit="false"><\/main>/);
+    assert.doesNotMatch(markup, /aria-label="Widgets"/);
+  });
+
+  it("body takes the dialog body size, var(--font-size-md) (decision 1)", async () => {
+    const css = await read("newtab.css");
+    assert.match(css, /(?:^|\n)body \{[^}]*font-size:\s*var\(--font-size-md\);/);
+  });
+
+  it(".segmented__option has min-height and no standalone height, so a wrapped label grows its option (decision 3)", async () => {
+    const rule = block(await read("controls.css"), ".segmented__option {");
+    assert.match(rule, /(?<![-\w])min-height:\s*calc\(var\(--control-height\) - 2 \* var\(--control-border-width\)\);/);
+    assert.doesNotMatch(rule, /(?<![-\w])height:/);
+  });
+
+  it("the row-stacking query is exactly `@media (max-width: 400px), (max-width: 25rem)`, once; the bare 400 px query is gone (S0-01, backlog 144 R3-03)", async () => {
+    const css = await read("surfaces.css");
+    assert.equal(css.split("@media (max-width: 400px), (max-width: 25rem) {").length - 1, 1, "the new query appears exactly once");
+    assert.doesNotMatch(css, /@media \(max-width: 400px\) \{/, "the bare 400 px query is replaced, not kept beside it");
+    const stack = css.slice(css.indexOf("@media (max-width: 400px), (max-width: 25rem) {"), css.indexOf("@media (max-width: 451px)"));
+    assert.match(stack, /\.desktop-dialog \.favorite-form__row \{\s*flex-wrap: wrap;\s*row-gap: 6px;\s*\}/);
+    assert.match(stack, /\.desktop-dialog \.favorite-form__row-label \{\s*width: 100%;\s*\}/);
+    assert.doesNotMatch(stack, /segmented__option/, "the segment rule stays in the 451 px block");
+  });
+
+  it("the 1×1 hint sets data-tooltip-trigger and data-tooltip-label \"Set a city\" in a separate statement after the chain, only for 1×1 (decision 6)", async () => {
+    const hint = topLevelFunction(await source(), "createCityHintTile");
+    const chain = 'else button.appendChild(createIconNode("mapPin"));';
+    const at = hint.indexOf(chain);
+    assert.notEqual(at, -1, "the if / else if / else chain is still one unbroken statement");
+    const before = hint.slice(0, at + chain.length);
+    const after = hint.slice(at + chain.length);
+    assert.doesNotMatch(before, /tooltip/i, "neither the 2×1, 2×2 nor the 1×2 branch gets a trigger, and nothing in the chain does");
+    const trigger = /(?:dataset\.tooltipTrigger = ""|setAttribute\("data-tooltip-trigger", ""\))/;
+    const label = /(?:dataset\.tooltipLabel = "Set a city"|setAttribute\("data-tooltip-label", "Set a city"\))/;
+    const guarded = after.match(/if \(cell\.w === 1 && cell\.h === 1\) \{([^}]*)\}/);
+    assert.ok(guarded, "a separate if (cell.w === 1 && cell.h === 1) block follows the chain");
+    assert.match(guarded[1], trigger);
+    assert.match(guarded[1], label);
+    assert.match(after, /return button;\s*\}\s*$/, "the function still ends with the return");
+  });
+
+  it("the hint keeps its accessible name and gets no aria-describedby and no native title (decision 6)", async () => {
+    const hint = topLevelFunction(await source(), "createCityHintTile");
+    assert.match(hint, /button\.setAttribute\("aria-label", "Set a city"\);/);
+    assert.doesNotMatch(hint, /aria-describedby|setAttribute\("title"|\.title\s*=/);
+    assert.doesNotMatch(hint, /data-tooltip-text|tooltipText/, "no text node is added: dg-21 asserts the 1×1 tile has no text");
+  });
+
+  it("showTooltipFor reads trigger.dataset.tooltipLabel first and the [data-tooltip-text] child second (decision 6)", async () => {
+    const show = topLevelFunction(await source(), "showTooltipFor");
+    assert.match(show, /const text = trigger\.dataset\.tooltipLabel \?\? trigger\.querySelector\("\[data-tooltip-text\]"\)\?\.textContent;/);
+    assert.match(show, /if \(desktopUi\.editMode \|\| dragSession\) return;/, "edit mode and drag still show no tooltip");
+  });
+
+  it("the texts of newtab.js follow decisions 4 and 5: the em dash, tiles, links and the grid", async () => {
+    const code = await source();
+    assert.match(code, /const ENSURE_FAILED_MESSAGE =\s*"Couldn't add the weather and settings tiles \u2014 Chrome Sync may be full or unavailable\. Free up sync space, then reload this tab to try again\.";/);
+    assert.match(code, /favoritesError = "Chrome APIs for the grid are unavailable\.";/);
+    assert.equal(code.split('throw new Error("Link not found")').length - 1, 2, "the two stale-link guards of the drop and the edit say Link not found");
+    assert.doesNotMatch(code, /Favorite not found|favorites are unavailable|Chrome APIs for favorites/);
+  });
+
+  it("only the hint tile and showTooltipFor know the tooltip label: the weather tiles are unchanged (decision 6)", async () => {
+    let code = await source();
+    for (const name of ["createCityHintTile", "showTooltipFor"]) code = code.replace(topLevelFunction(code, name), "");
+    assert.doesNotMatch(code, /tooltipLabel|data-tooltip-label/);
   });
 });
