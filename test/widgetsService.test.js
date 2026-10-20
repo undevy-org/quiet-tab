@@ -368,7 +368,7 @@ describe("widgetsService", () => {
 
     await assert.rejects(
       () => service.addFavorite({ url: "https://new.example.com" }, COLS),
-      new RegExp(`up to ${MAX_FAVORITE_WIDGETS} favorites`)
+      new RegExp(`up to ${MAX_FAVORITE_WIDGETS} links`)
     );
     assert.equal((await store.getState()).items.length, MAX_FAVORITE_WIDGETS);
   });
@@ -636,16 +636,16 @@ describe("widgetsService with weather metrics", () => {
 
   it("does not let favorite operations touch a metric", async () => {
     const { service } = await serviceWithMetrics();
-    await assert.rejects(service.deleteFavorite("weather:uv", COLS), /Favorite not found/);
-    await assert.rejects(service.updateFavorite("weather:uv", { label: "x" }, COLS), /Favorite not found/);
+    await assert.rejects(service.deleteFavorite("weather:uv", COLS), /Link not found/);
+    await assert.rejects(service.updateFavorite("weather:uv", { label: "x" }, COLS), /Link not found/);
   });
 
-  it("a metric id is not a gone link: Favorite not found for update/delete; a hidden metric cannot be moved (Widget not found)", async () => {
+  it("a metric id is not a gone link: Link not found for update/delete; a hidden metric cannot be moved (Tile not found)", async () => {
     const { service } = await serviceWithMetrics();
-    await assert.rejects(service.deleteFavorite("weather:uv", COLS), (error) => !(error instanceof LinkGoneError) && /Favorite not found/.test(error.message));
-    await assert.rejects(service.updateFavorite("weather:uv", { label: "x" }, COLS), (error) => !(error instanceof LinkGoneError) && /Favorite not found/.test(error.message));
+    await assert.rejects(service.deleteFavorite("weather:uv", COLS), (error) => !(error instanceof LinkGoneError) && /Link not found/.test(error.message));
+    await assert.rejects(service.updateFavorite("weather:uv", { label: "x" }, COLS), (error) => !(error instanceof LinkGoneError) && /Link not found/.test(error.message));
     await service.updateWeatherMetric("weather:uv", { enabled: false }, COLS);
-    await assert.rejects(service.moveWidget("weather:uv", { x: 0, y: 5 }, COLS), (error) => !(error instanceof LinkGoneError) && /Widget not found/.test(error.message));
+    await assert.rejects(service.moveWidget("weather:uv", { x: 0, y: 5 }, COLS), (error) => !(error instanceof LinkGoneError) && /Tile not found/.test(error.message));
     await assert.rejects(service.moveWidget("f0", { x: 99, y: 99 }, COLS), (error) => !(error instanceof LinkGoneError)); // an existing id keeps the old paths (here a placement refusal)
   });
 
@@ -1036,7 +1036,7 @@ describe("widgetsService link dialog validation (run 43)", async () => {
     it("the 200-links limit is checked first (before an invalid address)", async () => {
       const { service, store } = await createHarness();
       await seed(store, Array.from({ length: 200 }, (_, i) => favorite({ id: `f${i}`, url: `https://site${i}.example.com/`, domain: `site${i}.example.com`, label: `Site ${i}`, grid: g(i % 12, Math.floor(i / 12)) })));
-      await assert.rejects(service.addFavorite({ url: "not a url !!" }, COLS), (error) => error.message === "You can save up to 200 favorites" && error.field === undefined);
+      await assert.rejects(service.addFavorite({ url: "not a url !!" }, COLS), (error) => error.message === "You can save up to 200 links" && error.field === undefined);
     });
 
     it("an empty Name with a 300-character host stores a label of exactly 100 characters (the host cut)", async () => {
@@ -1157,6 +1157,181 @@ describe("widgetsService link dialog validation (run 43)", async () => {
     it("the colour error names backgroundColor", async () => {
       const { service } = await createHarness();
       await assert.rejects(service.addFavorite({ url: "example.com", backgroundColor: "red" }, COLS), failsWith("Use a hex color like #24292f", "backgroundColor"));
+    });
+  });
+});
+
+// Run 49 (docs/typography-copy.md decision 7, item 104, AS-TYP-07): a host the URL parser accepts but that cannot name a site is
+// rejected with the one existing message. Red until `normalizeFavoriteUrl` checks the parsed host; the rest of the tables are
+// regression guards that stay green (what a person really types must keep working).
+describe("widgetsService junk hosts (run 49, AS-TYP-07)", () => {
+  const invalidUrl = (error) => {
+    assert.equal(error.message, "Enter a valid URL");
+    assert.equal(error.field, "url");
+    return true;
+  };
+
+  describe("rejected: Enter a valid URL for the url field", () => {
+    const rejected = [
+      // an empty label, a label that begins or ends with "-", a label with no letter or digit
+      "http://a..b", "a..b", "example.com..", "http://-a.com", "http://a-.com", "http://a.-b", "http://.com", ".com", "http://..", "http://-", "http://_",
+      "http://-.com", "http://a.b-", "http://_.com", "http://a.__.com", "http://-a-.com", "http://a.b..",
+      // numbers the parser expands to an IPv4 address (the typed host differs from the parsed one)
+      "1", "127.1", "2130706433", "0x7f.0.0.1", "010.1.1.1", "1.2.3", "http://0300.0250.0.1/", "http://3232235521/", "http://192.168.1/", "http://0xC0A80001/",
+      // spellings the parser normalizes: leading zeros, a rooted address, percent-encoded and full-width digits
+      "192.168.001.1", "192.168.0.1.", "http://%31%32%37.0.0.1", "http://%31%32%37.0.0.1:8080/", "１２７.０.０.１",
+      // credentials do not hide a short form
+      "http://u:p@127.1/", "admin@127.1"
+    ];
+    for (const input of rejected) {
+      it(`rejects ${JSON.stringify(input)}`, () => {
+        assert.throws(() => normalizeFavoriteUrl(input), invalidUrl);
+      });
+    }
+  });
+
+  describe("accepted (the host is real, or an IPv4 address typed in full)", () => {
+    const accepted = [
+      ["localhost:3000", "https://localhost:3000/", "localhost"],
+      ["router:8080", "https://router:8080/", "router"],
+      ["nas:9000/share", "https://nas:9000/share", "nas"],
+      ["intranet/wiki", "https://intranet/wiki", "intranet"],
+      ["192.168.0.1", "https://192.168.0.1/", "192.168.0.1"],
+      ["192.168.0.1:8080/x", "https://192.168.0.1:8080/x", "192.168.0.1"],
+      ["[::1]:8080", "https://[::1]:8080/", "[::1]"],
+      ["http://[::1]/", "http://[::1]/", "[::1]"],
+      ["http://my_host.local", "http://my_host.local/", "my_host.local"],
+      ["http://_dmarc.example.com", "http://_dmarc.example.com/", "_dmarc.example.com"],
+      ["http://a_b", "http://a_b/", "a_b"],
+      ["example.com.", "https://example.com./", "example.com."],
+      ["a--b.com", "https://a--b.com/", "a--b.com"],
+      ["xn--80ak6aa92e.com", "https://xn--80ak6aa92e.com/", "xn--80ak6aa92e.com"],
+      ["пример.рф", "https://xn--e1afmkfd.xn--p1ai/", "xn--e1afmkfd.xn--p1ai"],
+      ["https://example.com/path?q=a+b", "https://example.com/path?q=a+b", "example.com"],
+      ["http://Example.COM", "http://example.com/", "example.com"],
+      ["http://1-2.example.com", "http://1-2.example.com/", "1-2.example.com"]
+    ];
+    for (const [input, url, domain] of accepted) {
+      it(`accepts ${JSON.stringify(input)}`, () => {
+        assert.deepEqual(normalizeFavoriteUrl(input), { url, domain });
+      });
+    }
+  });
+
+  describe("the typed host (decision 7): read by URL grammar before the parser normalizes anything", () => {
+    const passes = [
+      ["admin@192.168.0.1", "https://admin@192.168.0.1/"], // credentials without a scheme
+      ["http://u:p@192.168.0.1:8080/x", "http://u:p@192.168.0.1:8080/x"], // credentials and a port
+      ["http://a@b@192.168.0.1/", "http://a%40b@192.168.0.1/"], // several @: what follows the last one is the host
+      ["HTTP://192.168.0.1", "http://192.168.0.1/"], // the scheme in any case
+      ["HtTpS://192.168.0.1:8080", "https://192.168.0.1:8080/"],
+      ["http://192.168.0.1\\x", "http://192.168.0.1/x"], // a backslash ends the host
+      ["http://192.168.0.1?x=1", "http://192.168.0.1/?x=1"], // so do ? and #
+      ["http://192.168.0.1#top", "http://192.168.0.1/#top"],
+      ["192.168.0.1/path", "https://192.168.0.1/path"]
+    ];
+    for (const [input, url] of passes) {
+      it(`an IPv4 address typed in full passes: ${JSON.stringify(input)}`, () => {
+        assert.deepEqual(normalizeFavoriteUrl(input), { url, domain: "192.168.0.1" });
+      });
+    }
+    it("a trailing dot is allowed on a name (example.com.) but a rooted IP address is not something anyone types", () => {
+      assert.equal(normalizeFavoriteUrl("example.com.").domain, "example.com.");
+      assert.throws(() => normalizeFavoriteUrl("192.168.0.1."), invalidUrl);
+      assert.throws(() => normalizeFavoriteUrl("http://192.168.0.1./x"), invalidUrl);
+      assert.throws(() => normalizeFavoriteUrl("example.com.."), invalidUrl);
+    });
+    it("one underscore alone names nothing, an underscore inside a label is fine", () => {
+      assert.throws(() => normalizeFavoriteUrl("http://_"), invalidUrl);
+      assert.throws(() => normalizeFavoriteUrl("http://a._.b"), invalidUrl);
+      assert.equal(normalizeFavoriteUrl("http://_dmarc.example.com").domain, "_dmarc.example.com");
+    });
+  });
+
+  describe("what stays rejected as before", () => {
+    for (const input of ["http://a b", "999.1.1.1", "http://1.1.1.1.1", "localhost:99999", "http://bad!host.com"]) {
+      it(`${JSON.stringify(input)} still gives Enter a valid URL`, () => {
+        assert.throws(() => normalizeFavoriteUrl(input), invalidUrl);
+      });
+    }
+    it("the protocol wins over the host: ftp://-a.com is the protocol message", () => {
+      assert.throws(() => normalizeFavoriteUrl("ftp://-a.com"), (error) => error.message === "Only http and https URLs are supported" && error.field === "url");
+    });
+    it("the length wins over the host: a 2001-character junk host is 'too long'", () => {
+      assert.throws(() => normalizeFavoriteUrl(`http://-${"a".repeat(2000)}`), (error) => error.message === "That link is too long (up to 2000 characters)" && error.field === "url");
+    });
+  });
+
+  describe("one function for Add, Edit and the wizard starters", () => {
+    it("addFavorite refuses a junk host and writes nothing", async () => {
+      const { service, store } = await createHarness();
+      await assert.rejects(service.addFavorite({ url: "http://a..b" }, COLS), invalidUrl);
+      await assert.rejects(service.addFavorite({ url: "127.1" }, COLS), invalidUrl);
+      assert.deepEqual((await store.getState()).items, [], "nothing is written");
+    });
+
+    it("updateFavorite refuses a junk host on a good link and writes nothing", async () => {
+      const { service, store } = await createHarness();
+      await service.addFavorite({ url: "example.com", label: "Example" }, COLS);
+      const before = JSON.stringify((await store.getState()).items);
+      await assert.rejects(service.updateFavorite("fav-1", { url: "http://a..b" }, COLS), invalidUrl);
+      await assert.rejects(service.updateFavorite("fav-1", { url: "2130706433" }, COLS), invalidUrl);
+      assert.equal(JSON.stringify((await store.getState()).items), before, "nothing is written");
+    });
+
+    it("addFavorites (wizard starters) refuses a junk host like any other address", async () => {
+      const { service, store } = await createHarness();
+      await assert.rejects(service.addFavorites([{ url: "http://-a.com" }], COLS), invalidUrl);
+      assert.deepEqual((await store.getState()).items, []);
+    });
+
+    it("every starter link of the wizard passes the host rule", async () => {
+      const { ONBOARDING_STARTER_LINKS } = await import("../src/onboardingStarters.js");
+      for (const starter of ONBOARDING_STARTER_LINKS) {
+        assert.deepEqual(normalizeFavoriteUrl(starter.url), { url: starter.url, domain: new URL(starter.url).hostname }, starter.label);
+      }
+    });
+  });
+
+  describe("a stored link that fails the new rule (it can only be seeded; Accepted exception 8)", () => {
+    const seededHarness = async () => {
+      const harness = await createHarness();
+      await seed(harness.store, [favorite({ id: "old-junk", url: "http://a..b/", domain: "a..b", label: "a..b", grid: g(0, 0) })]);
+      return harness;
+    };
+
+    it("stays on the grid: a read keeps it untouched", async () => {
+      const { service } = await seededHarness();
+      const state = await service.getState();
+      assert.deepEqual(state.items.map((item) => [item.id, item.url, item.domain]), [["old-junk", "http://a..b/", "a..b"]]);
+    });
+
+    it("Edit -> Save unchanged (the url is always sent) reports Enter a valid URL and writes nothing", async () => {
+      const { service, store } = await seededHarness();
+      const before = JSON.stringify((await store.getState()).items);
+      await assert.rejects(service.updateFavorite("old-junk", { url: "http://a..b/", label: "a..b" }, COLS), invalidUrl);
+      assert.equal(JSON.stringify((await store.getState()).items), before);
+    });
+
+    it("typing a valid address fixes it", async () => {
+      const { service } = await seededHarness();
+      const state = await service.updateFavorite("old-junk", { url: "https://example.net/" }, COLS);
+      assert.deepEqual([state.items[0].url, state.items[0].domain], ["https://example.net/", "example.net"]);
+    });
+
+    it("an update that does not carry the url (a resize, a label) is not host-checked, and Delete works", async () => {
+      const { service } = await seededHarness();
+      const labelled = await service.updateFavorite("old-junk", { label: "Renamed" }, COLS);
+      assert.equal(labelled.items[0].label, "Renamed");
+      const deleted = await service.deleteFavorite("old-junk", COLS);
+      assert.deepEqual(deleted.items, []);
+    });
+
+    it("does not break a wizard write: the stored link is never validated, only the new starters are", async () => {
+      const { service, store } = await seededHarness();
+      const ids = await service.addFavorites([{ url: "https://github.com/", label: "GitHub" }], COLS);
+      assert.equal(ids.length, 1);
+      assert.deepEqual((await store.getState()).items.map((item) => item.url).sort(), ["http://a..b/", "https://github.com/"]);
     });
   });
 });
