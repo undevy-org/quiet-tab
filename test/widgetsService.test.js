@@ -830,7 +830,7 @@ describe("addFavorites island (docs/post-onboarding-grid.md)", () => {
 
   it("the cap error still wins and nothing is written", async () => {
     const { service, sets } = await harness(FRESH());
-    await assert.rejects(service.addFavorites(Array.from({ length: MAX_FAVORITE_WIDGETS + 1 }, (_, i) => starter(i + 1)), { columns: 12, island: { rows: 9 } }));
+    await assert.rejects(service.addFavorites(Array.from({ length: MAX_FAVORITE_WIDGETS + 1 }, (_, i) => starter(i + 1)), { columns: 12, island: { rows: 9 } }), /up to 200 links/);
     assert.equal(sets.length, 0);
   });
 
@@ -1171,21 +1171,27 @@ describe("widgetsService junk hosts (run 49, AS-TYP-07)", () => {
     return true;
   };
 
-  describe("rejected: Enter a valid URL for the url field", () => {
-    const rejected = [
-      // an empty label, a label that begins or ends with "-", a label with no letter or digit
-      "http://a..b", "a..b", "example.com..", "http://-a.com", "http://a-.com", "http://a.-b", "http://.com", ".com", "http://..", "http://-", "http://_",
-      "http://-.com", "http://a.b-", "http://_.com", "http://a.__.com", "http://-a-.com", "http://a.b..",
-      // numbers the parser expands to an IPv4 address (the typed host differs from the parsed one)
-      "1", "127.1", "2130706433", "0x7f.0.0.1", "010.1.1.1", "1.2.3", "http://0300.0250.0.1/", "http://3232235521/", "http://192.168.1/", "http://0xC0A80001/",
-      // spellings the parser normalizes: leading zeros, a rooted address, percent-encoded and full-width digits
-      "192.168.001.1", "192.168.0.1.", "http://%31%32%37.0.0.1", "http://%31%32%37.0.0.1:8080/", "１２７.０.０.１",
-      // credentials do not hide a short form
-      "http://u:p@127.1/", "admin@127.1"
-    ];
-    for (const input of rejected) {
-      it(`rejects ${JSON.stringify(input)}`, () => {
-        assert.throws(() => normalizeFavoriteUrl(input), invalidUrl);
+  describe("rejected: Enter a valid URL for the url field, by the rule that rejects it", () => {
+    const rules = {
+      "an empty label": ["http://a..b", "a..b", "example.com..", "http://.com", ".com", "http://..", "http://a.b.."],
+      "a label that begins or ends with a hyphen": ["http://-a.com", "http://a-.com", "http://a.-b", "http://-", "http://-.com", "http://a.b-", "http://-a-.com"],
+      "a label with no letter or digit": ["http://_", "http://_.com", "http://a.__.com"],
+      "a number the parser expands to an IPv4 address (the typed host differs from the parsed one)": [
+        "1", "127.1", "2130706433", "0x7f.0.0.1", "010.1.1.1", "1.2.3", "http://0300.0250.0.1/", "http://3232235521/", "http://192.168.1/", "http://0xC0A80001/",
+        "127.1:8080", "http://127.1:8080/x"
+      ],
+      "a spelling the parser normalizes (leading zeros, a rooted address, percent-encoded and full-width digits)": [
+        "192.168.001.1", "192.168.0.1.", "http://%31%32%37.0.0.1", "http://%31%32%37.0.0.1:8080/", "１２７.０.０.１"
+      ],
+      "a short form behind credentials (the host is what follows the last @ of the authority)": ["http://u:p@127.1/", "admin@127.1", "http://192.168.0.1:80@127.1/"]
+    };
+    for (const [rule, inputs] of Object.entries(rules)) {
+      describe(rule, () => {
+        for (const input of inputs) {
+          it(`rejects ${JSON.stringify(input)}`, () => {
+            assert.throws(() => normalizeFavoriteUrl(input), invalidUrl);
+          });
+        }
       });
     }
   });
@@ -1228,7 +1234,12 @@ describe("widgetsService junk hosts (run 49, AS-TYP-07)", () => {
       ["http://192.168.0.1\\x", "http://192.168.0.1/x"], // a backslash ends the host
       ["http://192.168.0.1?x=1", "http://192.168.0.1/?x=1"], // so do ? and #
       ["http://192.168.0.1#top", "http://192.168.0.1/#top"],
-      ["192.168.0.1/path", "https://192.168.0.1/path"]
+      ["192.168.0.1/path", "https://192.168.0.1/path"],
+      // the authority ends at the first / \ ? or #: an @ after it is part of the path, query or fragment, never credentials (the order of decision 7)
+      ["http://192.168.0.1/p@q", "http://192.168.0.1/p@q"],
+      ["192.168.0.1?e=a@b", "https://192.168.0.1/?e=a@b"],
+      ["http://192.168.0.1#u@v", "http://192.168.0.1/#u@v"],
+      ["http:192.168.0.1", "http://192.168.0.1/"] // a scheme without slashes
     ];
     for (const [input, url] of passes) {
       it(`an IPv4 address typed in full passes: ${JSON.stringify(input)}`, () => {

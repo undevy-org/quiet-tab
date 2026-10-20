@@ -435,7 +435,7 @@ describe("store messages say grid and links (run 49)", () => {
     await assert.rejects(() => store.setState({ version: 3, items: "bad", createdAt: NOW, updatedAt: NOW }), { message: "Invalid grid state" });
   });
 
-  it("none of the messages holds favorite, widget, desktop or bookmark, or a hyphen used as a dash", () => {
+  it("the unreadable-data and the newer-meta messages hold no favorite, widget, desktop or bookmark, and no hyphen used as a dash", () => {
     for (const text of [INVALID_WIDGETS_MESSAGE, NEWER_WIDGETS_MESSAGE]) {
       assert.doesNotMatch(text, /\b(?:favou?rite|widget|desktop|bookmark)s?\b/i, text);
       assert.doesNotMatch(text, / - /, text);

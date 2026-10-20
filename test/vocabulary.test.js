@@ -7,6 +7,10 @@
 // pass for the wrong reason. The tokenizer fails loudly instead of passing silently: a file that ends inside a string, a
 // template, a comment or a regular expression throws, a line break inside '…' or "…" throws, and the residual code of every
 // src/*.js file must hold no quote character. Fixtures run before the scan of src.
+//
+// Two scopes to know: the allowlist is global and keyed by the exact literal (a literal on the list is allowed in every file, not only in the
+// file where it was first found), and the hyphen guard (no " - " in any string) has no allowlist at all: a hyphen with a space on both
+// sides is never right in a visible text, and a selector or identifier does not need one.
 import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import { describe, it } from "node:test";
@@ -21,7 +25,7 @@ const isIdPart = (c) => /[A-Za-z0-9_$]/.test(c);
 
 // Returns { parts: [{ text, line }], residual }: the string parts (the literal parts of a template are separate parts, a `${…}`
 // is scanned again as code) as written in the source, and the code with comments, strings and regular expression bodies blanked.
-export function tokenize(src, name = "source") {
+function tokenize(src, name = "source") {
   const parts = [];
   let residual = "";
   let i = 0;
@@ -85,6 +89,7 @@ export function tokenize(src, name = "source") {
         flush();
         residual += "  ";
         i += 2;
+        prev = "start"; // a new expression: a `/` right after `${` starts a regular expression, whatever stood before the template
         scan(true);
         partLine = line;
         continue;
@@ -237,7 +242,7 @@ const BANNED = /\b(?:favou?rite|widget|desktop|bookmark)s?\b/gi;
 const SPACED_HYPHEN = " - ";
 
 // Every banned word of every string part with the line it is on (a template part can span lines).
-export function bannedHits(src, name = "source") {
+function bannedHits(src, name = "source") {
   const hits = [];
   for (const part of tokenize(src, name).parts) {
     for (const m of part.text.matchAll(BANNED)) {
@@ -267,7 +272,11 @@ describe("vocabulary guard: tokenizer fixtures (run before the scan of src)", ()
     { name: "after a division that follows ] and an identifier", src: "const q = a[0] / 2, s = \"o'k\", z = n / 3; const t = \"Desktop\";", parts: ["o'k", "Desktop"], found: ["Desktop"] },
     { name: "in a string with an escaped quote", src: 'const t = "say \\"favorite\\" now";', parts: ['say \\"favorite\\" now'], found: ['say \\"favorite\\" now'] },
     { name: "the same words in // and /* */ comments are not found (also after a URL string on the same line)", src: 'const u = "https://a.example/"; // favorite in a line comment\n/* widget in a block comment */ const k = 1; // don\'t', parts: ["https://a.example/"], found: [] },
-    { name: "an apostrophe in a comment does not start a string", src: "// don't\nconst t = \"Widget\";", parts: ["Widget"], found: ["Widget"] }
+    { name: "an apostrophe in a comment does not start a string", src: "// don't\nconst t = \"Widget\";", parts: ["Widget"], found: ["Widget"] },
+    { name: "a template nested in ${…}", src: "const t = `a ${ `b ${n} widget` } c`;", parts: ["a ", "b ", " widget", " c"], found: [" widget"] },
+    { name: "an object literal in ${…} (its braces are not the end of the expression)", src: 'const t = `x ${ f({ a: "favorite" }) } y`;', parts: ["x ", "favorite", " y"], found: ["favorite"] },
+    { name: "an escaped backtick and an escaped ${ stay inside the template literal", src: "const t = `a \\` widget \\${n} b`;", parts: ["a \\` widget \\${n} b"], found: ["a \\` widget \\${n} b"] },
+    { name: "a regular expression right after ${ of a tagged template (a new expression starts there)", src: 'const t = tag`a ${/"/.test(s)} widget`;', parts: ["a ", " widget"], found: [" widget"] }
   ];
   for (const f of fixtures) {
     it(f.name, () => {
@@ -324,22 +333,19 @@ const ALLOWED = {
   "lock name": ["quiet-tab:widgets-mutation"]
 };
 const ALLOWED_REASON = new Map();
-for (const [reason, literals] of Object.entries(ALLOWED)) {
-  for (const literal of literals) {
-    assert.equal(ALLOWED_REASON.has(literal), false, `allowlist: ${JSON.stringify(literal)} is listed twice`);
-    ALLOWED_REASON.set(literal, reason);
-  }
-}
+for (const [reason, literals] of Object.entries(ALLOWED)) for (const literal of literals) ALLOWED_REASON.set(literal, reason);
 
 const SRC_DIR = new URL("../src/", import.meta.url);
 async function srcJsFiles() {
-  const names = (await readdir(SRC_DIR)).filter((n) => n.endsWith(".js")).sort();
+  const entries = await readdir(SRC_DIR, { withFileTypes: true });
+  assert.deepEqual(entries.filter((e) => e.isDirectory()).map((e) => e.name), [], "src has no subfolder: the scan reads src/*.js only, a script in a subfolder would escape it");
+  const names = entries.filter((e) => e.isFile() && e.name.endsWith(".js")).map((e) => e.name).sort();
   assert.ok(names.length > 20, `src has its ${names.length} script files`);
   return Promise.all(names.map(async (name) => ({ name, text: await readFile(new URL(name, SRC_DIR), "utf8") })));
 }
 
 // Visible or announced text of an HTML file: its text nodes and the aria-label, title, alt and placeholder attributes.
-export function htmlTexts(html) {
+function htmlTexts(html) {
   const plain = html.replace(/<!--[\s\S]*?-->/g, "").replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, "");
   const attrs = [...plain.matchAll(/\b(?:aria-label|title|alt|placeholder)\s*=\s*(?:"([^"]*)"|'([^']*)')/gi)].map((m) => m[1] ?? m[2]);
   const nodes = plain.replace(/<[^>]*>/g, "\n").split("\n").map((t) => t.trim()).filter(Boolean);
@@ -371,10 +377,15 @@ describe("vocabulary guard: src (decision 4, AS-TYP-04, AS-TYP-05)", () => {
     assert.deepEqual(offenders, [], "a banned word in a string that is not on the allowlist (visible or announced text must say link, tile or grid)");
   });
 
+  it("the allowlist lists no literal twice (a literal has one reason)", () => {
+    const all = Object.values(ALLOWED).flat();
+    assert.deepEqual(all.filter((literal, i) => all.indexOf(literal) !== i), []);
+  });
+
   it("the allowlist holds no entry that no string of src uses any more", async () => {
     const seen = new Set();
     for (const { name, text } of await srcJsFiles()) for (const hit of bannedHits(text, name)) seen.add(hit.text);
-    assert.deepEqual([...ALLOWED_REASON.keys()].filter((literal) => !seen.has(literal)), []);
+    assert.deepEqual([...ALLOWED_REASON.keys()].filter((literal) => !seen.has(literal)), [], "allowlist entries that no string of src uses any more: remove them");
   });
 
   it("no string of src/*.js uses a hyphen with spaces on both sides as a dash (the dash is —)", async () => {
