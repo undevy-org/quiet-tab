@@ -177,6 +177,7 @@ function hideTooltipIfVisible() {
 
 function showTooltipFor(trigger) {
   if (desktopUi.editMode || dragSession) return; // tooltips are for normal mode only
+  // the text is the trigger's data-tooltip-label (a tile with no text node: the 1×1 city hint) or the [data-tooltip-text] child of a weather tile
   const text = trigger.dataset.tooltipLabel ?? trigger.querySelector("[data-tooltip-text]")?.textContent;
   if (!text) return;
   tooltipTrigger = trigger;
@@ -2152,8 +2153,8 @@ function createCityHintTile(cell, item) {
   if (cell.w === 2) button.textContent = "Set a city";
   else if (cell.h === 2) button.append(createIconNode("mapPin", { size: 18 }), createNode("span", "city-hint-tile__text", "Set a city"));
   else button.appendChild(createIconNode("mapPin"));
-  // The 1×1 tile shows only the pin, so the shared tooltip says what it is (docs/typography-copy.md decision 6). A separate statement after the chain
-  // above: the 2×1, 2×2 and 1×2 hints show their words and get no trigger. The label is a data attribute, not a child node: the tile has no text.
+  // The 1×1 tile shows only the pin, so the shared tooltip says what it is (docs/typography-copy.md decision 6). The label is a data attribute, not a
+  // child node: the tile has no text. Kept after the chain above, which stays one statement; the 2×1, 2×2 and 1×2 hints show their words and get no trigger.
   if (cell.w === 1 && cell.h === 1) {
     button.dataset.tooltipTrigger = "";
     button.dataset.tooltipLabel = "Set a city";
