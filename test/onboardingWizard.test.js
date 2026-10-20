@@ -44,7 +44,8 @@ describe("onboardingWizard helpers", () => {
     assert.equal(step2GuardActive(entered, 1300), false);
   });
 
-  it("maps add failures to batch vs limit copy (the texts of run 49: links, not favorites)", () => {
+  // run 49 (docs/typography-copy.md decision 4): the add failures the wizard maps now say links, not favorites; the mapping still keys on `up to 200`
+  it("maps add failures to batch vs limit copy", () => {
     const syncError =
       "Couldn't save this change to Chrome Sync — it may be full, offline, or temporarily unavailable. Try removing a few links or try again shortly.";
     assert.equal(onboardingFinishErrorForAddFailure(syncError), ONBOARDING_FINISH_ERRORS.batch);

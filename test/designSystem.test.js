@@ -117,18 +117,41 @@ describe("overlay control CSS (AS-DS-10)", () => {
 });
 
 // Run 49 (docs/typography-copy.md decisions 1 and 2, AS-TYP-01, AS-TYP-02): overlay text is 14 px at the default font size and
-// follows the browser's font size (rem); tiles and the cell stay in px.
+// follows the browser's font size (rem); tiles and the cell stay in px. The pins that `body` takes `var(--font-size-md)` and that `html` sets
+// no size live in test/newtabSource.test.js (one place, as the spec gives it); the `.segmented__option` min-height pins are the rewritten ones
+// of AS-DS-10 above.
 describe("typography tokens in rem and the 14 px body (run 49)", () => {
   const read = (name) => readFile(new URL(`../src/${name}`, import.meta.url), "utf8");
-  // declarations of `font-size` and of `--font-size-*` custom properties, with the text of the rule they sit in
-  const fontSizes = (css) => {
+  // Every declaration that sets a text size, in whatever form: `font-size`, a `--font-size-*` custom property, and the `font` shorthand
+  // (its size is the token before an optional /line-height). The last declaration of a rule may have no `;`.
+  const fontSizeDeclarations = (css) => {
     const plain = css.replace(/\/\*[\s\S]*?\*\//g, "");
     const out = [];
     for (const m of plain.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-      for (const d of m[2].matchAll(/(^|[;\s])(font-size|--font-size-[\w-]+)\s*:\s*([^;]+);/g)) out.push({ selector: m[1].trim().replace(/\s+/g, " "), property: d[2], value: d[3].trim() });
+      const selector = m[1].trim().replace(/\s+/g, " ");
+      for (const d of m[2].matchAll(/(?:^|[;\s])(font-size|--font-size-[\w-]+|font)\s*:\s*([^;]*?)\s*(?:;|$)/g)) out.push({ selector, property: d[1], value: d[2] });
     }
     return out;
   };
+  // `15px`, `15px !important`, `calc(15px + 0px)`, `600 15px/1.2 system-ui` all hold a px length
+  const usesPx = (value) => /\d\s*px\b/.test(value);
+
+  it("the px detector finds a size in every form it can be written in (so the tests below cannot be walked around)", () => {
+    const sample = [
+      ".last { color: red; font-size: 15px }", // no terminating semicolon
+      ".important { font-size: 15px !important; }",
+      ".calc { font-size: calc(15px + 0px); }",
+      ".shorthand { font: 600 15px/1.2 system-ui; }",
+      ".custom { --font-size-big: 21px; }",
+      ".rem { font-size: 0.9rem; }",
+      ".token { font-size: var(--font-size-md) }",
+      ".inherit { font: inherit; }",
+      "/* .comment { font-size: 99px; } */"
+    ].join("\n");
+    const found = fontSizeDeclarations(sample);
+    assert.deepEqual(found.filter((d) => usesPx(d.value)).map((d) => d.selector), [".last", ".important", ".calc", ".shorthand", ".custom"]);
+    assert.deepEqual(found.filter((d) => !usesPx(d.value)).map((d) => d.selector), [".rem", ".token", ".inherit"]);
+  });
 
   it("declares the four overlay sizes in rem: xs 0.75, sm 0.8125, md 0.875, title 1.125 (12, 13, 14 and 18 px at 16 px)", async () => {
     const css = await read("design-tokens.css");
@@ -139,16 +162,11 @@ describe("typography tokens in rem and the 14 px body (run 49)", () => {
     assert.doesNotMatch(css, /--font-size-(?:xs|sm|md|title):\s*[\d.]+px/);
   });
 
-  it("body takes the dialog body size (--font-size-md) instead of the browser's 75 % extension-page default", async () => {
-    const css = await read("newtab.css");
-    assert.match(css, /(?:^|\n)body \{[^}]*font-size:\s*var\(--font-size-md\);/);
-  });
-
-  it("no font-size in design-tokens.css, controls.css or surfaces.css is in px, except the weather tile tokens and the starter icon letter", async () => {
+  it("no font size in design-tokens.css, controls.css or surfaces.css is in px, except the weather tile tokens and the starter icon letter", async () => {
     const px = [];
     for (const file of ["design-tokens.css", "controls.css", "surfaces.css"]) {
-      for (const d of fontSizes(await read(file))) {
-        if (!/^[\d.]+px$/.test(d.value)) continue;
+      for (const d of fontSizeDeclarations(await read(file))) {
+        if (!usesPx(d.value)) continue;
         const weatherToken = file === "design-tokens.css" && /^--font-size-weather-/.test(d.property);
         const starterLetter = file === "surfaces.css" && d.selector === ".onboarding-wizard__starter-icon--letter";
         if (!weatherToken && !starterLetter) px.push(`${file}: ${d.selector} { ${d.property}: ${d.value} }`);
@@ -163,6 +181,16 @@ describe("typography tokens in rem and the 14 px body (run 49)", () => {
     assert.match(css, /\.city-field__hint \{[^}]*font-size:\s*var\(--font-size-xs\);/s);
   });
 
+  it("the tooltip, the page status chip and the page-level error text size themselves with tokens only, so they scale with the font (Ruling of decision 2)", async () => {
+    const rules = fontSizeDeclarations(await read("newtab.css")).filter((d) => d.property === "font-size");
+    const sizeOf = (selector) => rules.filter((d) => d.selector.split(",").map((x) => x.trim()).includes(selector));
+    for (const [selector, token] of [[".tooltip", "--font-size-sm"], [".desktop-status", "--font-size-md"], [".status", "--font-size-md"]]) {
+      const found = sizeOf(selector);
+      assert.ok(found.length > 0, `${selector} sets a font-size`);
+      for (const d of found) assert.equal(d.value, `var(${token})`, `${selector} font-size`);
+    }
+  });
+
   it("the starter icon letter stays in px (12 px in a fixed 22 px box) and so do the weather tile tokens", async () => {
     const surfaces = await read("surfaces.css");
     assert.match(surfaces, /\.onboarding-wizard__starter-icon--letter \{[^}]*font-size:\s*12px;/s);
@@ -174,7 +202,7 @@ describe("typography tokens in rem and the 14 px body (run 49)", () => {
 
   it("tile text keeps explicit px sizes in newtab.css (it never inherits the body size)", async () => {
     const css = await read("newtab.css");
-    const tile = fontSizes(css).filter((d) => d.property === "font-size" && /^[\d.]+px$/.test(d.value));
+    const tile = fontSizeDeclarations(css).filter((d) => d.property === "font-size" && usesPx(d.value));
     assert.ok(tile.length >= 10, `newtab.css still sizes tile text in px (${tile.length} declarations)`);
     assert.match(css, /\.favorite-letter[^{}]*\{[^}]*font-size:\s*15px;/s);
     assert.match(css, /\.city-hint-tile \{[^}]*font-size:\s*13px;/s);

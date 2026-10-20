@@ -835,6 +835,7 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
   it("pins the page shell: one desktop root, a polite live region and a hidden page-level alert line", async () => {
     const markup = await html();
     assert.match(markup, /<main class="desktop" id="favorites" aria-label="Grid" data-edit="false"><\/main>/);
+    assert.doesNotMatch(markup, /aria-label="Widgets"/, "the landmark is named Grid (docs/typography-copy.md decision 4; the only place this is pinned)");
     assert.match(markup, /<div class="sr-only" id="desktop-live" role="status" aria-live="polite"><\/div>/);
     assert.match(markup, /<div class="desktop-status" id="desktop-status" role="alert" hidden><\/div>/);
     assert.doesNotMatch(markup, /favorites-panel|favorites-bar|data-position/);
@@ -2878,27 +2879,12 @@ describe("drag scrolling source pins (run 47, docs/drag-scroll-target.md)", () =
 // 1×1 and 1×2 hint (one unbroken if / else if / else chain) stay as they are; the trigger is a separate statement after the chain.
 describe("typography and copy source pins (run 49)", () => {
   const read = (name) => readFile(new URL(`../src/${name}`, import.meta.url), "utf8");
-  const block = (css, header) => {
-    const start = css.indexOf(header);
-    assert.notEqual(start, -1, `${header} exists`);
-    return css.slice(start, css.indexOf("}", start) + 1);
-  };
 
-  it("the main landmark is named Grid, not Widgets (decision 4)", async () => {
-    const markup = await read("newtab.html");
-    assert.match(markup, /<main class="desktop" id="favorites" aria-label="Grid" data-edit="false"><\/main>/);
-    assert.doesNotMatch(markup, /aria-label="Widgets"/);
-  });
-
-  it("body takes the dialog body size, var(--font-size-md) (decision 1)", async () => {
+  it("body takes the dialog body size, var(--font-size-md), and html sets no size, so rem stays the browser's root size (decision 1)", async () => {
     const css = await read("newtab.css");
-    assert.match(css, /(?:^|\n)body \{[^}]*font-size:\s*var\(--font-size-md\);/);
-  });
-
-  it(".segmented__option has min-height and no standalone height, so a wrapped label grows its option (decision 3)", async () => {
-    const rule = block(await read("controls.css"), ".segmented__option {");
-    assert.match(rule, /(?<![-\w])min-height:\s*calc\(var\(--control-height\) - 2 \* var\(--control-border-width\)\);/);
-    assert.doesNotMatch(rule, /(?<![-\w])height:/);
+    // `}` before `body {`: the `html,\nbody { min-height }` block above it is not the rule
+    assert.match(css, /\}\s*body \{[^}]*font-size:\s*var\(--font-size-md\);/);
+    assert.doesNotMatch(css, /html[^{}]*\{[^}]*(?<![-\w])font-size/, "html keeps the browser's root size: rem stays 16 px at the default");
   });
 
   it("the row-stacking query is exactly `@media (max-width: 400px), (max-width: 25rem)`, once; the bare 400 px query is gone (S0-01, backlog 144 R3-03)", async () => {
@@ -2912,7 +2898,7 @@ describe("typography and copy source pins (run 49)", () => {
   });
 
   it("the 1×1 hint sets data-tooltip-trigger and data-tooltip-label \"Set a city\" in a separate statement after the chain, only for 1×1 (decision 6)", async () => {
-    const hint = topLevelFunction(await source(), "createCityHintTile");
+    const hint = stripComments(topLevelFunction(await source(), "createCityHintTile"));
     const chain = 'else button.appendChild(createIconNode("mapPin"));';
     const at = hint.indexOf(chain);
     assert.notEqual(at, -1, "the if / else if / else chain is still one unbroken statement");
@@ -2921,7 +2907,8 @@ describe("typography and copy source pins (run 49)", () => {
     assert.doesNotMatch(before, /tooltip/i, "neither the 2×1, 2×2 nor the 1×2 branch gets a trigger, and nothing in the chain does");
     const trigger = /(?:dataset\.tooltipTrigger = ""|setAttribute\("data-tooltip-trigger", ""\))/;
     const label = /(?:dataset\.tooltipLabel = "Set a city"|setAttribute\("data-tooltip-label", "Set a city"\))/;
-    const guarded = after.match(/if \(cell\.w === 1 && cell\.h === 1\) \{([^}]*)\}/);
+    // the guard may be written either way round; the block is the one statement after the chain
+    const guarded = after.match(/if \(\s*(?:cell\.w === 1 && cell\.h === 1|cell\.h === 1 && cell\.w === 1)\s*\)\s*\{([^}]*)\}/);
     assert.ok(guarded, "a separate if (cell.w === 1 && cell.h === 1) block follows the chain");
     assert.match(guarded[1], trigger);
     assert.match(guarded[1], label);
@@ -2929,7 +2916,7 @@ describe("typography and copy source pins (run 49)", () => {
   });
 
   it("the hint keeps its accessible name and gets no aria-describedby and no native title (decision 6)", async () => {
-    const hint = topLevelFunction(await source(), "createCityHintTile");
+    const hint = stripComments(topLevelFunction(await source(), "createCityHintTile"));
     assert.match(hint, /button\.setAttribute\("aria-label", "Set a city"\);/);
     assert.doesNotMatch(hint, /aria-describedby|setAttribute\("title"|\.title\s*=/);
     assert.doesNotMatch(hint, /data-tooltip-text|tooltipText/, "no text node is added: dg-21 asserts the 1×1 tile has no text");
@@ -2950,7 +2937,7 @@ describe("typography and copy source pins (run 49)", () => {
   });
 
   it("only the hint tile and showTooltipFor know the tooltip label: the weather tiles are unchanged (decision 6)", async () => {
-    let code = await source();
+    let code = stripComments(await source()); // a comment that names the label elsewhere is no use of it
     for (const name of ["createCityHintTile", "showTooltipFor"]) code = code.replace(topLevelFunction(code, name), "");
     assert.doesNotMatch(code, /tooltipLabel|data-tooltip-label/);
   });
