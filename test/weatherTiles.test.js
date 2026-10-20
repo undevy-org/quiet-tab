@@ -94,7 +94,7 @@ describe("describeWeatherMetric", () => {
     const m = describeWeatherMetric({ metricKey: "uv", result: stale, size: "square" });
     assert.equal(m.stale, true);
     assert.equal(m.primary, "3");
-    assert.match(m.description, /^Couldn't refresh - showing saved data\. Current UV index 3/);
+    assert.match(m.description, /^Couldn't refresh — showing saved data\. Current UV index 3/);
   });
 
   it("labels", () => {
@@ -145,7 +145,7 @@ describe("describeWeatherMetric", () => {
       assert.equal(s.tone, expectedTone[k]);
       assert.equal(s.primary, r.primary);
       assert.equal(s.secondary, r.secondary);
-      assert.equal(s.description, `Couldn't refresh - showing saved data. ${r.description}`);
+      assert.equal(s.description, `Couldn't refresh — showing saved data. ${r.description}`);
     }
   });
 
@@ -187,7 +187,7 @@ describe("describeWeatherMetric", () => {
         assert.equal(m.stale, true);
         assert.ok(m.description.startsWith("Trying again… "), m.description);
         assert.ok(!m.description.includes("Couldn't refresh"), m.description);
-        assert.equal(m.description, `Trying again… ${plain.description.replace("Couldn't refresh - showing saved data. ", "")}`);
+        assert.equal(m.description, `Trying again… ${plain.description.replace("Couldn't refresh — showing saved data. ", "")}`);
       }
     });
 
@@ -217,7 +217,7 @@ describe("describeWeatherMetric stale age (run 48)", () => {
   const NOW = 1_700_000_000_000;
   const HOUR = 60 * 60 * 1000;
   const staleAt = (ageMs) => ({ status: "stale", data: { ...data, fetchedAt: NOW - ageMs }, error: "offline" });
-  const PREFIX = "Couldn't refresh - showing saved data. ";
+  const PREFIX = "Couldn't refresh — showing saved data. ";
 
   it("puts the age sentence between the prefix and the values when now and fetchedAt are given", () => {
     const m = describeWeatherMetric({ metricKey: "temperature", result: staleAt(2 * HOUR), size: "square", now: NOW });
@@ -229,13 +229,13 @@ describe("describeWeatherMetric stale age (run 48)", () => {
   it("says the age on every metric", () => {
     for (const k of keys) {
       const m = describeWeatherMetric({ metricKey: k, result: staleAt(45 * 60 * 1000), size: "square", now: NOW });
-      assert.match(m.description, /^Couldn't refresh - showing saved data\. Updated 45 min ago\. \S/, k);
+      assert.match(m.description, /^Couldn't refresh — showing saved data\. Updated 45 min ago\. \S/, k);
     }
   });
 
   it("without now the description has no age sentence, as before", () => {
     const m = describeWeatherMetric({ metricKey: "uv", result: staleAt(2 * HOUR), size: "square" });
-    assert.match(m.description, /^Couldn't refresh - showing saved data\. Current UV index 3/);
+    assert.match(m.description, /^Couldn't refresh — showing saved data\. Current UV index 3/);
     assert.doesNotMatch(m.description, /Updated|ago/);
   });
 
@@ -243,7 +243,7 @@ describe("describeWeatherMetric stale age (run 48)", () => {
     for (const fetchedAt of [undefined, NaN, "x", Infinity]) {
       const result = { status: "stale", data: { ...data, fetchedAt }, error: "offline" };
       const m = describeWeatherMetric({ metricKey: "uv", result, size: "square", now: NOW });
-      assert.match(m.description, /^Couldn't refresh - showing saved data\. Current UV index 3/);
+      assert.match(m.description, /^Couldn't refresh — showing saved data\. Current UV index 3/);
     }
   });
 
@@ -255,5 +255,35 @@ describe("describeWeatherMetric stale age (run 48)", () => {
     assert.doesNotMatch(rdy.description, /Updated|ago|Couldn't refresh/);
     const err = describeWeatherMetric({ metricKey: "uv", result: failed, size: "square", now: NOW });
     assert.equal(err.description, "Weather unavailable: boom");
+  });
+});
+
+// Run 49 (docs/typography-copy.md decision 5): the dash of the stale description is an em dash with a space on both sides.
+describe("the stale description uses an em dash, not a hyphen (run 49)", () => {
+  const data = { temperature: 21, uvIndex: 3, uvIndexMax: 6, precipitationProbabilityMax: 10, temperatureTodayAt15: 24, temperatureYesterdayAt15: 22, precipitationStartHour: null, usAqi: 40, pm2_5: 9, fetchedAt: 1_700_000_000_000 - 2 * 3600 * 1000 };
+  const stale = { status: "stale", data, error: "offline" };
+
+  it("the prefix is `Couldn't refresh — showing saved data. ` on every metric, with and without the age sentence", () => {
+    for (const key of ["temperature", "precipitation", "airQuality", "uv"]) {
+      for (const now of [undefined, 1_700_000_000_000]) {
+        const m = describeWeatherMetric({ metricKey: key, result: stale, size: "square", now });
+        assert.ok(m.description.startsWith("Couldn't refresh — showing saved data. "), `${key}: ${m.description}`);
+        assert.doesNotMatch(m.description, /Couldn't refresh - /, "no hyphen used as a dash");
+      }
+    }
+  });
+
+  it("the description reads as the spec gives it: prefix, age, then the values (the em dash of the values is the existing one)", () => {
+    const m = describeWeatherMetric({ metricKey: "temperature", result: stale, size: "square", now: 1_700_000_000_000 });
+    assert.equal(m.description, "Couldn't refresh — showing saved data. Updated 2 h ago. Currently 21°. Today at 15:00 — 24°, yesterday at 15:00 — 22°.");
+  });
+
+  it("no description of any state holds a hyphen with spaces on both sides", () => {
+    for (const result of [stale, { status: "ready", data, error: null }, { status: "error", data: null, error: "boom" }]) {
+      for (const retry of [undefined, "retrying"]) {
+        const m = describeWeatherMetric({ metricKey: "temperature", result, size: "wide", retry, now: 1_700_000_000_000 });
+        assert.doesNotMatch(m.description, / - /, m.description);
+      }
+    }
   });
 });

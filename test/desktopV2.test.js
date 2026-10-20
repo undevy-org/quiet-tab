@@ -458,7 +458,7 @@ describe("widgetsService stores the centered frame (AS-CG-04, 05, 06, 12, 13)", 
     await area.set({ [WIDGETS_META_KEY]: { version: 2, order: ["a"], createdAt: NOW, updatedAt: NOW } });
     const before = await area.get(null);
     const service = createWidgetsService({ store: createWidgetsStore(area), now: () => NOW });
-    const message = { message: "Your saved widgets data could not be read, so changes are paused. Reload this tab; if this keeps happening, update Quiet Tab." };
+    const message = { message: "Your saved grid could not be read, so changes are paused. Reload this tab; if this keeps happening, update Quiet Tab." };
     await assert.rejects(service.addFavorite({ url: "https://c.example.com" }, C), message);
     await assert.rejects(service.moveWidget("a", { x: 3, y: 0 }, C), message);
     await assert.rejects(service.updateFavorite("a", { label: "x" }, C), message);
@@ -469,7 +469,7 @@ describe("widgetsService stores the centered frame (AS-CG-04, 05, 06, 12, 13)", 
 });
 
 describe("write guard: only a valid or missing meta may be written (final review I1)", () => {
-  const INVALID_MESSAGE = "Your saved widgets data could not be read, so changes are paused. Reload this tab; if this keeps happening, update Quiet Tab.";
+  const INVALID_MESSAGE = "Your saved grid could not be read, so changes are paused. Reload this tab; if this keeps happening, update Quiet Tab.";
   const v1Seed = {
     [WIDGETS_META_KEY]: { version: 1, order: ["a", "b"], columns: 6, position: "top", createdAt: NOW, updatedAt: NOW },
     [widgetItemStorageKey("a")]: fav("a", { tileSize: "square" }),

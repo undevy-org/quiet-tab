@@ -111,7 +111,7 @@ describe("widgetsStore", () => {
     const invalidState = { version: 3, items: "bad", createdAt: NOW, updatedAt: NOW };
 
     await assert.rejects(() => store.setState(invalidState), {
-      message: "Invalid widgets state"
+      message: "Invalid grid state"
     });
   });
 
@@ -396,5 +396,49 @@ describe("a v2 meta is never written over", () => {
     const before = await area.get(null);
     await assert.rejects(createWidgetsStore(area, { now: () => NOW }).setState(currentState([placed({ id: "z" })])), { message: INVALID_WIDGETS_MESSAGE });
     assert.deepEqual(await area.get(null), before);
+  });
+});
+
+// Run 49 (docs/typography-copy.md decision 4, AS-TYP-04): the store's messages and the shared newer-meta message say grid and
+// links. The unreadable-data message is unit only: an invalid meta draws an empty grid with no text, so the UI does not show it
+// until its reset flow (row Р51); `assertWritable` is where it surfaces.
+describe("store messages say grid and links (run 49)", () => {
+  const INVALID = "Your saved grid could not be read, so changes are paused. Reload this tab; if this keeps happening, update Quiet Tab.";
+  const NEWER = "Your saved grid was written by a newer version of Quiet Tab and can't be edited here. Update Quiet Tab to keep using it.";
+  const SYNC = "Couldn't save this change to Chrome Sync — it may be full, offline, or temporarily unavailable. Try removing a few links or try again shortly.";
+
+  it("the unreadable-data message is exactly the new text", () => {
+    assert.equal(INVALID_WIDGETS_MESSAGE, INVALID);
+  });
+
+  it("the newer-meta message is exactly the new text", () => {
+    assert.equal(NEWER_WIDGETS_MESSAGE, NEWER);
+  });
+
+  it("assertWritable on an unreadable meta (invalid, a v2, a v1) rejects with the new text", async () => {
+    for (const meta of [{ version: 3, order: "x" }, metaOf(["a"], { version: 2 }), { version: 1, order: ["a"], columns: 6, position: "top", createdAt: NOW, updatedAt: NOW }]) {
+      await assert.rejects(createWidgetsStore(createMemoryStorageArea({ [WIDGETS_META_KEY]: meta })).assertWritable(), { message: INVALID });
+    }
+  });
+
+  it("assertWritable on a newer meta rejects with the new text", async () => {
+    await assert.rejects(createWidgetsStore(createMemoryStorageArea({ [WIDGETS_META_KEY]: metaOf(["a"], { version: 4 }) })).assertWritable(), { message: NEWER });
+  });
+
+  it("a failed sync write says links, not favorites, and keeps its em dash", async () => {
+    const store = createWidgetsStore(createMemoryStorageArea({}, { quotaBytesPerItem: 50 }), { now: () => NOW });
+    await assert.rejects(() => store.setState(currentState([placed({ id: "fav-a", url: "https://a.example/", domain: "a.example" })])), { message: SYNC });
+  });
+
+  it("an invalid state on set says grid state", async () => {
+    const store = createWidgetsStore(createMemoryStorageArea(), { now: () => NOW });
+    await assert.rejects(() => store.setState({ version: 3, items: "bad", createdAt: NOW, updatedAt: NOW }), { message: "Invalid grid state" });
+  });
+
+  it("none of the messages holds favorite, widget, desktop or bookmark, or a hyphen used as a dash", () => {
+    for (const text of [INVALID_WIDGETS_MESSAGE, NEWER_WIDGETS_MESSAGE]) {
+      assert.doesNotMatch(text, /\b(?:favou?rite|widget|desktop|bookmark)s?\b/i, text);
+      assert.doesNotMatch(text, / - /, text);
+    }
   });
 });

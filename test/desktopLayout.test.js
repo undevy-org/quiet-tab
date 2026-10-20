@@ -1,5 +1,6 @@
 
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { describe, it } from "node:test";
 import {
   CHROME_IDS, canPlace, cellFromPoint, displayLayout, effectiveColumns, gridMetrics, isValidGrid,
@@ -773,5 +774,44 @@ describe("holdReleasable (+1 px absorbs fractions)", () => {
     assert.equal(releasable(0, undefined, 1384), false);
     assert.equal(releasable(0, 800, "1384"), false);
     assert.equal(engine.holdReleasable(), false);
+  });
+});
+
+// Run 49 (docs/typography-copy.md decision 4, AS-TYP-04): "Widget is wider than the grid" becomes "Tile is wider than the grid".
+// No test pinned this message before. A block can only be wider than the grid when `columns` is below the engine's own minimum
+// of 2, so the sites are reached by calling the engine with a single column. Three throw sites: `firstFree` (placeResized, and the
+// anchored repack of displayLayout), `nearestFree` (placeNew, and the unplaced items of displayLayout) and `nearestFreeAround`
+// (placeMissing with a first screen).
+describe("a tile wider than the grid says tile (run 49)", () => {
+  const MESSAGE = "Tile is wider than the grid";
+  const tooWide = (error) => error instanceof RangeError && error.message === MESSAGE;
+
+  it("placeNew (nearestFree): a 2-wide block in a 1-column grid", () => {
+    assert.throws(() => placeNew(new Map(), { w: 2, h: 1 }, 1), tooWide);
+    assert.deepEqual(placeNew(new Map(), { w: 1, h: 1 }, 1), g(0, 0), "a block that fits is placed");
+  });
+
+  it("placeResized (firstFree): a resize to 2 wide in a 1-column grid", () => {
+    const layout = new Map([["a", g(0, 0)]]);
+    assert.throws(() => placeResized(layout, "a", { w: 2, h: 1 }, 1), tooWide);
+    assert.deepEqual(placeResized(layout, "a", { w: 1, h: 2 }, 1), g(0, 0, 1, 2), "a resize that fits is placed");
+  });
+
+  it("displayLayout, anchored repack (firstFree): a stored 2-wide grid in 1 column", () => {
+    assert.throws(() => displayLayout([fav("a", g(0, 0, 2, 1))], 1), tooWide);
+  });
+
+  it("displayLayout, unplaced item (nearestFree): a legacy wide tile without a grid in 1 column", () => {
+    assert.throws(() => displayLayout([{ id: "a", type: "favorite", tileSize: "wide" }], 1), tooWide);
+  });
+
+  it("placeMissing never throws with the fixed default widths (the nearestFreeAround site is guarded by the six tiles' 8 of 12 columns)", () => {
+    assert.equal(placeMissing(["weather:temperature", "weather:precipitation", "weather:airQuality", "weather:uv", "chrome:settings", "chrome:add"], [], { rows: 4, columns: 14 }).size, 6);
+  });
+
+  it("the source has no other wording: three throw sites, all saying Tile, none saying Widget", async () => {
+    const src = await readFile(new URL("../src/desktopLayout.js", import.meta.url), "utf8");
+    assert.equal((src.match(/throw new RangeError\("Tile is wider than the grid"\)/g) ?? []).length, 3);
+    assert.doesNotMatch(src, /Widget is wider/);
   });
 });
