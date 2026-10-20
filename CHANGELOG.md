@@ -24,9 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   150 %) instead of being cut, and dialog rows stack (label above the control) up to 600 px wide at 150 % (400 px at the default size). The city modal and
   the first-run wizard are about 3 px taller at the default size (`docs/typography-copy.md` decisions 1-3, `docs/design-system.md`).
 - One vocabulary: a saved site is a link, a square of the grid is a tile and the whole board is the grid. The page landmark is named `Grid`
-  (not `Widgets`), and the messages that said "favorites" or "widgets" say links, tiles or the grid: `You can save up to 200 links`, `Link not found`,
-  `Tile not found`, `Chrome APIs for the grid are unavailable.`, and the three messages about saved data (a newer version, unreadable data,
-  a failed Sync write). The two texts that used a hyphen as a dash use an em dash: the ensure-failure chip (`Couldn't add the weather and settings
+  (not `Widgets`), and the messages that said "favorites" or "widgets" say links, tiles or the grid: `You can save up to 200 links`,
+  `Chrome APIs for the grid are unavailable.`, and the three messages about saved data (a newer version, unreadable data, a failed Sync write). The two texts that used a hyphen as a dash use an em dash: the ensure-failure chip (`Couldn't add the weather and settings
   tiles — Chrome Sync may be full or unavailable. …`) and a stale tile (`Couldn't refresh — showing saved data. …`). Stored data and code
   names do not change (`docs/typography-copy.md` decisions 4 and 5).
 - Link addresses: a host that cannot name a site is now refused with `Enter a valid URL` in Add link and Edit link: an empty
