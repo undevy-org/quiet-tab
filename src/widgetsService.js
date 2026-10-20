@@ -277,7 +277,7 @@ export class LinkGoneError extends Error {
 
 // The error for an update/delete of a favorite that is not there: gone (nobody has the id) or a wrong kind of item.
 function missingFavoriteError(items, id) {
-  return items.some((item) => item.id === id) ? new Error("Favorite not found") : new LinkGoneError(id);
+  return items.some((item) => item.id === id) ? new Error("Link not found") : new LinkGoneError(id);
 }
 
 function withGrid(items, id, grid) {
@@ -333,7 +333,7 @@ export function createWidgetsService({
         }
         const favoriteCount = base.items.filter((item) => item.type === "favorite").length;
         if (favoriteCount + pending.length > MAX_FAVORITE_WIDGETS) {
-          throw new Error(`You can save up to ${MAX_FAVORITE_WIDGETS} favorites`);
+          throw new Error(`You can save up to ${MAX_FAVORITE_WIDGETS} links`);
         }
         let items = base.items;
         let layout = displayLayout(items, columns);
@@ -380,7 +380,7 @@ export function createWidgetsService({
       return mutate(options, ({ base, columns, updatedAt }) => {
         const favoriteCount = base.items.filter((item) => item.type === "favorite").length;
         if (favoriteCount >= MAX_FAVORITE_WIDGETS) {
-          throw new Error(`You can save up to ${MAX_FAVORITE_WIDGETS} favorites`);
+          throw new Error(`You can save up to ${MAX_FAVORITE_WIDGETS} links`);
         }
 
         const normalizedUrl = normalizeFavoriteUrl(payload.url);
@@ -516,7 +516,7 @@ export function createWidgetsService({
         const current = layout.get(id);
         if (!current) {
           // Gone (no item has the id) is the stale-tab case; an existing item that is off the grid (a hidden metric) keeps the old text.
-          throw base.items.some((item) => item.id === id) ? new Error("Widget not found") : new LinkGoneError(id);
+          throw base.items.some((item) => item.id === id) ? new Error("Tile not found") : new LinkGoneError(id);
         }
         const next = { x: target?.x, y: target?.y, w: current.w, h: current.h };
         if (!isValidGrid(next) || !canPlace(layout, id, next, columns, sanitizeViewportRows(options?.viewportRows))) {

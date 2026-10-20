@@ -73,7 +73,7 @@ function mark(occupied, { x, y, w, h }) {
 
 // First free w×h block scanning row-major: row `startY` from column `startX`, every later row from column 0.
 function firstFree(occupied, w, h, columns, startY = 0, startX = 0) {
-  if (w > columns) throw new RangeError("Widget is wider than the grid");
+  if (w > columns) throw new RangeError("Tile is wider than the grid");
   for (let y = startY; ; y += 1) {
     for (let x = y === startY ? startX : 0; x + w <= columns; x += 1) {
       if (blockFree(occupied, x, y, w, h, columns)) return { x, y, w, h };
@@ -87,7 +87,7 @@ const clampStart = (x, w, columns) => Math.min(Math.max(0, x), Math.max(0, colum
 // New tile: the first row (from 0) that has a free w×h block; in it the block whose center is nearest to the center line
 // (`min |x + w/2 - columns/2|`, compared as integers), ties to the right (the larger x).
 function nearestFree(occupied, w, h, columns) {
-  if (w > columns) throw new RangeError("Widget is wider than the grid");
+  if (w > columns) throw new RangeError("Tile is wider than the grid");
   for (let y = 0; ; y += 1) {
     const spot = nearestInRow(occupied, w, h, columns, y);
     if (spot) return spot;
@@ -112,7 +112,7 @@ function nearestInRow(occupied, w, h, columns, y) {
 // Rows by distance from `target`: target, target - 1, target + 1, target - 2, ... (the nearer row above wins a tie, a row
 // below 0 is skipped). Unbounded downward, so the first row that has a free block always comes.
 function nearestFreeAround(occupied, w, h, columns, target) {
-  if (w > columns) throw new RangeError("Widget is wider than the grid");
+  if (w > columns) throw new RangeError("Tile is wider than the grid");
   for (let d = 0; ; d += 1) {
     for (const y of d === 0 ? [target] : [target - d, target + d]) {
       if (y < 0) continue;

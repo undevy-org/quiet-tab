@@ -191,7 +191,7 @@ the forecast arrives. A 2-wide tile shows the primary and secondary values, a
    wrapped by the service as kind `storage`: `Couldn't save your city. Try again in a moment.`
    The boot load runs under the same 15 s guard as the city change and the retry: a hung
    request ends in the retryable error tiles. A stale tile's tooltip and description say how
-   old the data is (`Couldn't refresh - showing saved data. Updated 2 h ago. ...`; relative,
+   old the data is (`Couldn't refresh — showing saved data. Updated 2 h ago. ...`; relative,
    computed at render, the tile face is unchanged). Before the cache is written, `initialize()`
    re-reads the stored city and skips the write when it is no longer the one the forecast was
    fetched for (no foreign cache). `docs/weather-reliability.md`.

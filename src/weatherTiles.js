@@ -16,7 +16,7 @@ const LABELS = {
   airQuality: "Air quality",
   uv: "UV index"
 };
-const STALE_PREFIX = "Couldn't refresh - showing saved data. ";
+const STALE_PREFIX = "Couldn't refresh — showing saved data. ";
 const TRYING_AGAIN = "Trying again…";
 
 function readyModel(metricKey, data, size) {

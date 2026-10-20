@@ -9,7 +9,7 @@ export function weatherMetricKey(id) {
   return id.slice("weather:".length);
 }
 export const NEWER_WIDGETS_MESSAGE =
-  "Your saved widgets were written by a newer version of Quiet Tab and can't be edited here. Update Quiet Tab to keep using them.";
+  "Your saved grid was written by a newer version of Quiet Tab and can't be edited here. Update Quiet Tab to keep using it.";
 export const MAX_FAVORITE_WIDGETS = 200;
 export const MAX_WEATHER_METRIC_WIDGETS = 4;
 export const MAX_CHROME_WIDGETS = 2;

@@ -74,7 +74,7 @@ const favoritesRoot = document.querySelector("#favorites");
 const desktopStatus = document.querySelector("#desktop-status");
 
 const ENSURE_FAILED_MESSAGE =
-  "Couldn't add the weather and settings tiles - Chrome Sync may be full or unavailable. Free up sync space, then reload this tab to try again.";
+  "Couldn't add the weather and settings tiles — Chrome Sync may be full or unavailable. Free up sync space, then reload this tab to try again.";
 
 const desktopLive = document.querySelector("#desktop-live");
 const DESKTOP_STATUS_MS = 8000;
@@ -2295,7 +2295,7 @@ function buildDialogContent(root, dialog) {
     }
     case "edit-link": {
       const item = itemById(dialog.id);
-      if (item?.type !== "favorite") throw new Error("Favorite not found");
+      if (item?.type !== "favorite") throw new Error("Link not found");
       title.textContent = "Edit link";
       const form = createFavoriteForm(item);
       form.addEventListener("submit", (event) => {
@@ -2318,7 +2318,7 @@ function buildDialogContent(root, dialog) {
     }
     case "confirm-delete": {
       const item = itemById(dialog.id);
-      if (item?.type !== "favorite") throw new Error("Favorite not found");
+      if (item?.type !== "favorite") throw new Error("Link not found");
       title.textContent = "Delete link?";
       const body = createNode("p", "desktop-dialog__body", "This removes the link from your grid.");
       body.id = "desktop-dialog-body";
@@ -3474,7 +3474,7 @@ function finishFavoritesAction(generation, applyResult) {
 if (favoritesRoot) {
   void (async () => {
     if (!widgetsService) {
-      favoritesError = "Chrome APIs for favorites are unavailable.";
+      favoritesError = "Chrome APIs for the grid are unavailable.";
       renderFavorites();
       return;
     }
