@@ -89,7 +89,7 @@ describe("overlay control CSS (AS-DS-10)", () => {
     // `height:` alone also matches inside `min-height:`, so the pins carry a left guard `(?<![-\w])`.
     assert.match(css, /(?<![-\w])min-height:\s*calc\(var\(--control-height\) - 2 \* var\(--control-border-width\)\)/);
     assert.match(css, /\.segmented__option \{[^}]*(?<![-\w])min-height:\s*calc\(var\(--control-height\) - 2 \* var\(--control-border-width\)\)/s);
-    assert.doesNotMatch(css, /\.segmented__option \{[^}]*(?<![-\w])height\s*:/s, ".segmented__option has no standalone height (neither height: 38px nor height: calc(...) beside the min-height)");
+    assert.doesNotMatch(css, /\.segmented__option \{[^}]*(?<![-\w])height\s*:/si, ".segmented__option has no standalone height (neither height: 38px nor height: calc(...) beside the min-height)");
     assert.doesNotMatch(css, /height:\s*34px/);
     assert.doesNotMatch(css, /min-height:\s*44px/);
     assert.doesNotMatch(css, /\.add-menu__item[^}]*min-height:\s*36px/);
