@@ -30,6 +30,7 @@ Both must pass before opening a pull request.
 ## Conventions
 
 - Render UI text only through DOM text nodes (`textContent`); never `innerHTML`.
+- Visible and announced text says link / tile / grid (never favorite, widget, desktop, bookmark) and uses "—" as a dash, not " - "; `test/vocabulary.test.js` fails on a new string that breaks this (identifiers go on its allowlist).
 - The persisted widgets schema is validated by `isWidgetsState`; the
   persisted weather schema is validated by `isWeatherLocation`/
   `isWeatherCache`. If you add a field, update the matching validator and

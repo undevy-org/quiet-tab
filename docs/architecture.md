@@ -191,7 +191,7 @@ the forecast arrives. A 2-wide tile shows the primary and secondary values, a
    wrapped by the service as kind `storage`: `Couldn't save your city. Try again in a moment.`
    The boot load runs under the same 15 s guard as the city change and the retry: a hung
    request ends in the retryable error tiles. A stale tile's tooltip and description say how
-   old the data is (`Couldn't refresh - showing saved data. Updated 2 h ago. ...`; relative,
+   old the data is (`Couldn't refresh — showing saved data. Updated 2 h ago. ...`; relative,
    computed at render, the tile face is unchanged). Before the cache is written, `initialize()`
    re-reads the stored city and skips the write when it is no longer the one the forecast was
    fetched for (no foreign cache). `docs/weather-reliability.md`.
@@ -369,11 +369,13 @@ Tiles take one of four footprints (1×1, 1×2, 2×1, 2×2; chrome tiles 1×1 onl
 ## Tooltips
 
 One `#tooltip` element (`role="tooltip"`, `position: fixed`) lives on `body`,
-outside every scrolling container, and is shared by the weather tiles. In normal
-mode only, it shows on pointer hover and on keyboard focus (`:focus-visible`),
-copies the text of the tile's hidden description node, and is placed by
-`placeTooltip`: above the tile when there is room, otherwise below, centered on
-the tile and clamped to an 8px margin inside the viewport. It hides on leave,
+outside every scrolling container, and is shared by the weather tiles and the
+1×1 "Set a city" hint. In normal mode only, it shows on pointer hover and on
+keyboard focus (`:focus-visible`), copies the text of the tile's hidden
+description node (`[data-tooltip-text]`) or, for the 1×1 hint, which has no text
+node, its `data-tooltip-label` (`docs/typography-copy.md` decision 6), and is
+placed by `placeTooltip`: above the tile when there is room, otherwise below,
+centered on the tile and clamped to an 8px margin inside the viewport. It hides on leave,
 blur, Escape, grid scroll (except the scroll caused by focusing a tile), wheel,
 touch scroll, window resize, entering edit mode or a drag, and every grid render.
 

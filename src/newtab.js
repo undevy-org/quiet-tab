@@ -74,7 +74,7 @@ const favoritesRoot = document.querySelector("#favorites");
 const desktopStatus = document.querySelector("#desktop-status");
 
 const ENSURE_FAILED_MESSAGE =
-  "Couldn't add the weather and settings tiles - Chrome Sync may be full or unavailable. Free up sync space, then reload this tab to try again.";
+  "Couldn't add the weather and settings tiles — Chrome Sync may be full or unavailable. Free up sync space, then reload this tab to try again.";
 
 const desktopLive = document.querySelector("#desktop-live");
 const DESKTOP_STATUS_MS = 8000;
@@ -177,7 +177,8 @@ function hideTooltipIfVisible() {
 
 function showTooltipFor(trigger) {
   if (desktopUi.editMode || dragSession) return; // tooltips are for normal mode only
-  const text = trigger.querySelector("[data-tooltip-text]")?.textContent;
+  // the text is the trigger's data-tooltip-label (a tile with no text node: the 1×1 city hint) or the [data-tooltip-text] child of a weather tile
+  const text = trigger.dataset.tooltipLabel ?? trigger.querySelector("[data-tooltip-text]")?.textContent;
   if (!text) return;
   tooltipTrigger = trigger;
   tooltipLayer.textContent = text;
@@ -2152,6 +2153,12 @@ function createCityHintTile(cell, item) {
   if (cell.w === 2) button.textContent = "Set a city";
   else if (cell.h === 2) button.append(createIconNode("mapPin", { size: 18 }), createNode("span", "city-hint-tile__text", "Set a city"));
   else button.appendChild(createIconNode("mapPin"));
+  // The 1×1 tile shows only the pin, so the shared tooltip says what it is (docs/typography-copy.md decision 6). The label is a data attribute, not a
+  // child node: the tile has no text. Kept after the chain above, which stays one statement; the 2×1, 2×2 and 1×2 hints show their words and get no trigger.
+  if (cell.w === 1 && cell.h === 1) {
+    button.dataset.tooltipTrigger = "";
+    button.dataset.tooltipLabel = "Set a city";
+  }
   return button;
 }
 
@@ -2295,7 +2302,7 @@ function buildDialogContent(root, dialog) {
     }
     case "edit-link": {
       const item = itemById(dialog.id);
-      if (item?.type !== "favorite") throw new Error("Favorite not found");
+      if (item?.type !== "favorite") throw new Error("Link not found");
       title.textContent = "Edit link";
       const form = createFavoriteForm(item);
       form.addEventListener("submit", (event) => {
@@ -2318,7 +2325,7 @@ function buildDialogContent(root, dialog) {
     }
     case "confirm-delete": {
       const item = itemById(dialog.id);
-      if (item?.type !== "favorite") throw new Error("Favorite not found");
+      if (item?.type !== "favorite") throw new Error("Link not found");
       title.textContent = "Delete link?";
       const body = createNode("p", "desktop-dialog__body", "This removes the link from your grid.");
       body.id = "desktop-dialog-body";
@@ -3474,7 +3481,7 @@ function finishFavoritesAction(generation, applyResult) {
 if (favoritesRoot) {
   void (async () => {
     if (!widgetsService) {
-      favoritesError = "Chrome APIs for favorites are unavailable.";
+      favoritesError = "Chrome APIs for the grid are unavailable.";
       renderFavorites();
       return;
     }

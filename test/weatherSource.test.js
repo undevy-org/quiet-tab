@@ -70,11 +70,11 @@ describe("newtab weather source", () => {
     assert.match(code, /if \(!cityName\) \{\s*cityModalError = "Enter a city name";/);
   });
 
-  it("has no weather panel markup, and labels the desktop root as widgets", async () => {
+  it("has no weather panel markup, and labels the desktop root as the grid", async () => {
     const markup = await html();
     assert.doesNotMatch(markup, /id="weather"/);
     assert.doesNotMatch(markup, /weather-panel/);
-    assert.match(markup, /<main class="desktop" id="favorites" aria-label="Widgets"/);
+    assert.match(markup, /<main class="desktop" id="favorites" aria-label="Grid"/);
     assert.doesNotMatch(markup, /favorites-panel/);
     assert.doesNotMatch(markup, /data-position/);
     assert.doesNotMatch(markup, /id="app"/);

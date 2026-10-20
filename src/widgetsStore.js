@@ -28,7 +28,7 @@ import { CHROME_IDS, isValidGrid, placeMissing } from "./desktopLayout.js";
 export const WIDGETS_META_KEY = "quietTabWidgetsMeta";
 // A meta from a newer version or an unreadable meta is never written over.
 export const INVALID_WIDGETS_MESSAGE =
-  "Your saved widgets data could not be read, so changes are paused. Reload this tab; if this keeps happening, update Quiet Tab.";
+  "Your saved grid could not be read, so changes are paused. Reload this tab; if this keeps happening, update Quiet Tab.";
 
 // One lock instance for the whole extension: every widgets mutation AND the layout self-heal
 // run through it, so two new-tab pages can never interleave read-modify-write cycles.
@@ -38,7 +38,7 @@ export const withWidgetsMutationLock = createMutationLock(WIDGETS_MUTATION_LOCK_
 // Any other version below it reads as `invalid` (the earlier layouts are no longer supported).
 const WIDGETS_VERSION = 3;
 const SYNC_WRITE_ERROR =
-  "Couldn't save this change to Chrome Sync — it may be full, offline, or temporarily unavailable. Try removing a few favorites or try again shortly.";
+  "Couldn't save this change to Chrome Sync — it may be full, offline, or temporarily unavailable. Try removing a few links or try again shortly.";
 
 export function widgetItemStorageKey(id) {
   return `quietTabWidget:${id}`;
@@ -277,7 +277,7 @@ export function createWidgetsStore(
 
     async setState(state) {
       if (!isWidgetsState(state)) {
-        throw new Error("Invalid widgets state");
+        throw new Error("Invalid grid state");
       }
       await assertWritable();
 

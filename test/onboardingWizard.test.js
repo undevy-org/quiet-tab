@@ -44,13 +44,21 @@ describe("onboardingWizard helpers", () => {
     assert.equal(step2GuardActive(entered, 1300), false);
   });
 
+  // run 49 (docs/typography-copy.md decision 4): the add failures the wizard maps now say links, not favorites; the mapping still keys on `up to 200`
   it("maps add failures to batch vs limit copy", () => {
     const syncError =
-      "Couldn't save this change to Chrome Sync — it may be full, offline, or temporarily unavailable. Try removing a few favorites or try again shortly.";
+      "Couldn't save this change to Chrome Sync — it may be full, offline, or temporarily unavailable. Try removing a few links or try again shortly.";
     assert.equal(onboardingFinishErrorForAddFailure(syncError), ONBOARDING_FINISH_ERRORS.batch);
     assert.equal(
-      onboardingFinishErrorForAddFailure(`You can save up to ${MAX_FAVORITE_WIDGETS} favorites`),
+      onboardingFinishErrorForAddFailure(`You can save up to ${MAX_FAVORITE_WIDGETS} links`),
       ONBOARDING_FINISH_ERRORS.limit
     );
+  });
+
+  it("the wizard's limit mapping matches `up to 200`, which the new wording keeps, and the copy shown is the existing one", () => {
+    assert.equal(ONBOARDING_FINISH_ERRORS.limit, "Too many links on your grid. Uncheck some starters.");
+    assert.equal(ONBOARDING_FINISH_ERRORS.batch, "Couldn't add links. Try again.");
+    assert.equal(onboardingFinishErrorForAddFailure("You can save up to 200 links"), ONBOARDING_FINISH_ERRORS.limit);
+    assert.equal(onboardingFinishErrorForAddFailure("Link not found"), ONBOARDING_FINISH_ERRORS.batch);
   });
 });

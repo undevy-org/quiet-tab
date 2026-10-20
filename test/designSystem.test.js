@@ -82,10 +82,14 @@ describe("newtab.css grid chrome tokens (AS-DS-17)", () => {
 
 describe("overlay control CSS (AS-DS-10)", () => {
   it("uses control-height tokens and forbids legacy magic heights in controls.css", async () => {
-    const css = await readFile(new URL("../src/controls.css", import.meta.url), "utf8");
+    // declarations only: a comment such as "min-height, not height: ..." must not trip the pins below
+    const css = (await readFile(new URL("../src/controls.css", import.meta.url), "utf8")).replace(/\/\*[\s\S]*?\*\//g, "");
     assert.match(css, /min-height:\s*var\(--control-height\)/);
-    assert.match(css, /height:\s*calc\(var\(--control-height\) - 2 \* var\(--control-border-width\)\)/);
-    assert.match(css, /\.segmented__option \{[^}]*height:\s*calc\(var\(--control-height\) - 2 \* var\(--control-border-width\)\)/s);
+    // run 49 (docs/typography-copy.md decision 3): the option grows with a wrapped label, so it has `min-height`, not `height`.
+    // `height:` alone also matches inside `min-height:`, so the pins carry a left guard `(?<![-\w])`.
+    assert.match(css, /(?<![-\w])min-height:\s*calc\(var\(--control-height\) - 2 \* var\(--control-border-width\)\)/);
+    assert.match(css, /\.segmented__option \{[^}]*(?<![-\w])min-height:\s*calc\(var\(--control-height\) - 2 \* var\(--control-border-width\)\)/s);
+    assert.doesNotMatch(css, /\.segmented__option \{[^}]*(?<![-\w])height\s*:/si, ".segmented__option has no standalone height (neither height: 38px nor height: calc(...) beside the min-height)");
     assert.doesNotMatch(css, /height:\s*34px/);
     assert.doesNotMatch(css, /min-height:\s*44px/);
     assert.doesNotMatch(css, /\.add-menu__item[^}]*min-height:\s*36px/);
@@ -110,5 +114,100 @@ describe("overlay control CSS (AS-DS-10)", () => {
     const css = await readFile(new URL("../src/surfaces.css", import.meta.url), "utf8");
     assert.match(css, /\.desktop-dialog__title\s*\{[^}]*margin:\s*0 0 var\(--title-margin-bottom\)/s);
     assert.match(css, /\.city-modal__title\s*\{[^}]*margin:\s*0 0 var\(--title-margin-bottom\)/s);
+  });
+});
+
+// Run 49 (docs/typography-copy.md decisions 1 and 2, AS-TYP-01, AS-TYP-02): overlay text is 14 px at the default font size and
+// follows the browser's font size (rem); tiles and the cell stay in px. The pins that `body` takes `var(--font-size-md)` and that `html` sets
+// no size live in test/newtabSource.test.js (one place, as the spec gives it); the `.segmented__option` min-height pins are the rewritten ones
+// of AS-DS-10 above.
+describe("typography tokens in rem and the 14 px body (run 49)", () => {
+  const read = (name) => readFile(new URL(`../src/${name}`, import.meta.url), "utf8");
+  // Every declaration that sets a text size, in whatever form: `font-size`, a `--font-size-*` custom property, and the `font` shorthand
+  // (its size is the token before an optional /line-height). The last declaration of a rule may have no `;`.
+  const fontSizeDeclarations = (css) => {
+    const plain = css.replace(/\/\*[\s\S]*?\*\//g, "");
+    const out = [];
+    for (const m of plain.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      const selector = m[1].trim().replace(/\s+/g, " ");
+      for (const d of m[2].matchAll(/(?:^|[;\s])(font-size|--font-size-[\w-]+|font)\s*:\s*([^;]*?)\s*(?:;|$)/gi)) out.push({ selector, property: d[1].toLowerCase(), value: d[2] });
+    }
+    return out;
+  };
+  // `15px`, `15px !important`, `calc(15px + 0px)`, `600 15px/1.2 system-ui` all hold a px length
+  const usesPx = (value) => /\d\s*px\b/i.test(value);
+
+  it("the px detector finds a size in every form it can be written in (so the tests below cannot be walked around)", () => {
+    const sample = [
+      ".last { color: red; font-size: 15px }", // no terminating semicolon
+      ".important { font-size: 15px !important; }",
+      ".calc { font-size: calc(15px + 0px); }",
+      ".shorthand { font: 600 15px/1.2 system-ui; }",
+      ".custom { --font-size-big: 21px; }",
+      ".upper { font-size: 15PX; }",
+      ".upperprop { FONT-SIZE: 15px; }", // CSS property names are case-insensitive
+      ".rem { font-size: 0.9rem; }",
+      ".token { font-size: var(--font-size-md) }",
+      ".inherit { font: inherit; }",
+      "/* .comment { font-size: 99px; } */"
+    ].join("\n");
+    const found = fontSizeDeclarations(sample);
+    assert.deepEqual(found.filter((d) => usesPx(d.value)).map((d) => d.selector), [".last", ".important", ".calc", ".shorthand", ".custom", ".upper", ".upperprop"]);
+    assert.deepEqual(found.filter((d) => !usesPx(d.value)).map((d) => d.selector), [".rem", ".token", ".inherit"]);
+  });
+
+  it("declares the four overlay sizes in rem: xs 0.75, sm 0.8125, md 0.875, title 1.125 (12, 13, 14 and 18 px at 16 px)", async () => {
+    const css = await read("design-tokens.css");
+    assert.match(css, /--font-size-xs:\s*0\.75rem;/);
+    assert.match(css, /--font-size-sm:\s*0\.8125rem;/);
+    assert.match(css, /--font-size-md:\s*0\.875rem;/);
+    assert.match(css, /--font-size-title:\s*1\.125rem;/);
+    assert.doesNotMatch(css, /--font-size-(?:xs|sm|md|title):\s*[\d.]+px/);
+  });
+
+  it("no font size in design-tokens.css, controls.css or surfaces.css is in px, except the weather tile tokens and the starter icon letter", async () => {
+    const px = [];
+    for (const file of ["design-tokens.css", "controls.css", "surfaces.css"]) {
+      for (const d of fontSizeDeclarations(await read(file))) {
+        if (!usesPx(d.value)) continue;
+        const weatherToken = file === "design-tokens.css" && /^--font-size-weather-/.test(d.property);
+        const starterLetter = file === "surfaces.css" && d.selector === ".onboarding-wizard__starter-icon--letter";
+        if (!weatherToken && !starterLetter) px.push(`${file}: ${d.selector} { ${d.property}: ${d.value} }`);
+      }
+    }
+    assert.deepEqual(px, [], "overlay text follows the browser font size");
+  });
+
+  it("the two literal sizes of surfaces.css use tokens: the starter label --font-size-sm, the city field hint --font-size-xs", async () => {
+    const css = await read("surfaces.css");
+    assert.match(css, /\.onboarding-wizard__starter-label \{[^}]*font-size:\s*var\(--font-size-sm\);/s);
+    assert.match(css, /\.city-field__hint \{[^}]*font-size:\s*var\(--font-size-xs\);/s);
+  });
+
+  it("the tooltip, the page status chip and the page-level error text size themselves with tokens only, so they scale with the font (Ruling of decision 2)", async () => {
+    const rules = fontSizeDeclarations(await read("newtab.css")).filter((d) => d.property === "font-size");
+    const sizeOf = (selector) => rules.filter((d) => d.selector.split(",").map((x) => x.trim()).includes(selector));
+    for (const [selector, token] of [[".tooltip", "--font-size-sm"], [".desktop-status", "--font-size-md"], [".status", "--font-size-md"]]) {
+      const found = sizeOf(selector);
+      assert.ok(found.length > 0, `${selector} sets a font-size`);
+      for (const d of found) assert.equal(d.value, `var(${token})`, `${selector} font-size`);
+    }
+  });
+
+  it("the starter icon letter stays in px (12 px in a fixed 22 px box) and so do the weather tile tokens", async () => {
+    const surfaces = await read("surfaces.css");
+    assert.match(surfaces, /\.onboarding-wizard__starter-icon--letter \{[^}]*font-size:\s*12px;/s);
+    const tokens = await read("design-tokens.css");
+    for (const name of ["primary-cell-64", "secondary-cell-64", "primary-cell-56", "secondary-cell-56"]) {
+      assert.match(tokens, new RegExp(`--font-size-weather-${name}:\\s*\\d+px;`), name);
+    }
+  });
+
+  it("tile text keeps explicit px sizes in newtab.css (it never inherits the body size)", async () => {
+    const css = await read("newtab.css");
+    const tile = fontSizeDeclarations(css).filter((d) => d.property === "font-size" && usesPx(d.value));
+    assert.ok(tile.length >= 10, `newtab.css still sizes tile text in px (${tile.length} declarations)`);
+    assert.match(css, /\.favorite-letter[^{}]*\{[^}]*font-size:\s*15px;/s);
+    assert.match(css, /\.city-hint-tile \{[^}]*font-size:\s*13px;/s);
   });
 });
