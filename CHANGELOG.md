@@ -18,6 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Typography: text in inputs, buttons, descriptions, the Add menu and the city suggestions is 14 px (it was 12 px, the browser's default for an
+  extension page); the dialogs, the first-run wizard, the city modal, the shared tooltip and the status chip are now sized in `rem` and follow Chrome's
+  "Font size" setting, while tile text, the cell and the control geometry stay in px. A segmented option grows with a wrapped label ("From site" at
+  150 %) instead of being cut, and dialog rows stack (label above the control) up to 600 px wide at 150 % (400 px at the default size). The city modal and
+  the first-run wizard are about 3 px taller at the default size (`docs/typography-copy.md` decisions 1-3, `docs/design-system.md`).
 - One vocabulary: a saved site is a link, a square of the grid is a tile and the whole board is the grid. The page landmark is named `Grid`
   (not `Widgets`), and the messages that said "favorites" or "widgets" say links, tiles or the grid: `You can save up to 200 links`, `Link not found`,
   `Tile not found`, `Chrome APIs for the grid are unavailable.`, and the three messages about saved data (a newer version, unreadable data,

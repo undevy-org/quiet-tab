@@ -82,14 +82,19 @@ separator uses `--color-border`.
 | Token | Value | Use |
 |-------|-------|-----|
 | `--font-family` | system UI stack | `body` (declared in Phase 1; `newtab.css` adopts it in Phase 2) |
-| `--font-size-body` | inherit (~16px UA) | Body text size on the new tab page |
+| `body` | `var(--font-size-md)` | Body text size on the new tab page: **14px** at the default font size. Chrome's own default for an extension page is 75 % of the default font size (12px at 16px), which is what inputs, buttons and descriptions inherited before |
 | `--line-height-page` | **1.45** | `body` in `newtab.css` (Phase 2); not the same as `--line-height-body` |
-| `--font-size-sm` | **13px** | Form row labels, segmented labels, tooltip |
-| `--font-size-md` | **14px** | Status, dialog body, page status line |
-| `--font-size-title` | **18px** | Modal titles |
+| `--font-size-xs` | **0.75rem** (12px) | City field hint (`Change`) |
+| `--font-size-sm` | **0.8125rem** (13px) | Form row labels, segmented labels, starter labels, tooltip |
+| `--font-size-md` | **0.875rem** (14px) | Body (inputs, buttons, descriptions, menu and suggestion rows), status, dialog body, page status line |
+| `--font-size-title` | **1.125rem** (18px) | Modal titles |
 | `--font-weight-control` | **600** | Buttons, checked segmented |
 | `--line-height-control` | **1.2** | Buttons |
 | `--line-height-body` | **1.4** | Status / error text (declared in Phase 1; `newtab.css` adopts it in Phase 2) |
+
+### Browser font size
+
+The four overlay sizes are in `rem`, so they follow Chrome's "Font size" setting (`html` sets no size, so `rem` is the browser's default font size, 16px unless changed). What scales: all text in dialogs, the first-run wizard, the city modal, the Add menu and the suggestion list, and also the shared tooltip, the page status chip and the page-level `.status` texts (they share the tokens). What does not: tile text (link label and host, letter, weather values, hint captions) and the glyph sizes, the cell and grid metrics (`--cell-size`, `--grid-gap`, `--grid-pad`), the starter icon letter (12px in a fixed 22px box), and the control geometry (40px controls, the 100px label column, the 420px dialog, the 36px icon button): text grows inside it, and where it does not fit the element grows (a segmented option has `min-height`, so a wrapped label such as "From site" makes its group taller) or the dialog scrolls (the sticky footer of `docs/layers-low-window.md`). Dialog rows stack (label above its control) in windows up to 400px at the default font size and up to 600px at 150 % (`@media (max-width: 400px), (max-width: 25rem)`: `rem` in a media query is the browser's default font size), so no segmented label is cut. The 451px block (narrow option padding, no wrapping, glyph unit 4px) is not touched. A browser font size below the default scales the overlay text down too. Spec `docs/typography-copy.md`.
 
 ## Layout and spacing
 
@@ -221,9 +226,9 @@ All heights are **border-box** (`box-sizing: border-box` globally).
 - Radiogroup pattern (Icon, Color, Size) — not a toggle switch
 - In forced colors the selected dialog segment is drawn with `forced-color-adjust: none`, `Highlight` and `HighlightText` (the soft fill and the inset ring do not survive; without the opt-out Chromium paints a Canvas backplate under the label). The Size segments carry a footprint shape glyph in `currentColor` (unit 5 px, unit 4 px up to 451 px windows).
 - Container: 1px `var(--color-border-control)` border (dividers between options keep the decorative `--border`), radius **8px**; **outer height 40px**
-- Option: `height: calc(var(--control-height) - 2 * var(--control-border-width))` → **38px**
+- Option: `min-height: calc(var(--control-height) - 2 * var(--control-border-width))` → **38px** at the default font size; a label that wraps at a larger browser font makes all options of the group (and the group) taller, nothing is cut by the group's `overflow: hidden`
 - Option padding `0 8px` (dialog up to 451 px wide windows: `0 5px`, `white-space: nowrap`)
-- Font **13px**; checked segment outside dialogs: primary fill, weight **600**
+- Font `--font-size-sm` (**13px** at the default font size); checked segment outside dialogs: primary fill, weight **600**
 - **Direction B (inside `.desktop-dialog`):** the checked segment uses the soft fill
   (`--soft-fill-strong`), `--text`, weight **600** and an inset 1px `--border-control`
   ring instead of the primary fill. Soft fill against the panel is 1.25:1 (accepted,
