@@ -1239,7 +1239,8 @@ describe("widgetsService junk hosts (run 49, AS-TYP-07)", () => {
       ["http://192.168.0.1/p@q", "http://192.168.0.1/p@q"],
       ["192.168.0.1?e=a@b", "https://192.168.0.1/?e=a@b"],
       ["http://192.168.0.1#u@v", "http://192.168.0.1/#u@v"],
-      ["http:192.168.0.1", "http://192.168.0.1/"] // a scheme without slashes
+      ["http:192.168.0.1", "http://192.168.0.1/"], // a scheme without slashes
+      ["http://192.168.0.1:/", "http://192.168.0.1/"] // an empty port is no part of the host
     ];
     for (const [input, url] of passes) {
       it(`an IPv4 address typed in full passes: ${JSON.stringify(input)}`, () => {

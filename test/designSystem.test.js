@@ -88,7 +88,7 @@ describe("overlay control CSS (AS-DS-10)", () => {
     // `height:` alone also matches inside `min-height:`, so the pins carry a left guard `(?<![-\w])`.
     assert.match(css, /(?<![-\w])min-height:\s*calc\(var\(--control-height\) - 2 \* var\(--control-border-width\)\)/);
     assert.match(css, /\.segmented__option \{[^}]*(?<![-\w])min-height:\s*calc\(var\(--control-height\) - 2 \* var\(--control-border-width\)\)/s);
-    assert.doesNotMatch(css, /\.segmented__option \{[^}]*(?<![-\w])height:\s*calc\(/s, ".segmented__option has no standalone height");
+    assert.doesNotMatch(css, /\.segmented__option \{[^}]*(?<![-\w])height:/s, ".segmented__option has no standalone height (neither height: 38px nor height: calc(...) beside the min-height)");
     assert.doesNotMatch(css, /height:\s*34px/);
     assert.doesNotMatch(css, /min-height:\s*44px/);
     assert.doesNotMatch(css, /\.add-menu__item[^}]*min-height:\s*36px/);
@@ -134,7 +134,7 @@ describe("typography tokens in rem and the 14 px body (run 49)", () => {
     return out;
   };
   // `15px`, `15px !important`, `calc(15px + 0px)`, `600 15px/1.2 system-ui` all hold a px length
-  const usesPx = (value) => /\d\s*px\b/.test(value);
+  const usesPx = (value) => /\d\s*px\b/i.test(value);
 
   it("the px detector finds a size in every form it can be written in (so the tests below cannot be walked around)", () => {
     const sample = [
@@ -143,13 +143,14 @@ describe("typography tokens in rem and the 14 px body (run 49)", () => {
       ".calc { font-size: calc(15px + 0px); }",
       ".shorthand { font: 600 15px/1.2 system-ui; }",
       ".custom { --font-size-big: 21px; }",
+      ".upper { font-size: 15PX; }",
       ".rem { font-size: 0.9rem; }",
       ".token { font-size: var(--font-size-md) }",
       ".inherit { font: inherit; }",
       "/* .comment { font-size: 99px; } */"
     ].join("\n");
     const found = fontSizeDeclarations(sample);
-    assert.deepEqual(found.filter((d) => usesPx(d.value)).map((d) => d.selector), [".last", ".important", ".calc", ".shorthand", ".custom"]);
+    assert.deepEqual(found.filter((d) => usesPx(d.value)).map((d) => d.selector), [".last", ".important", ".calc", ".shorthand", ".custom", ".upper"]);
     assert.deepEqual(found.filter((d) => !usesPx(d.value)).map((d) => d.selector), [".rem", ".token", ".inherit"]);
   });
 

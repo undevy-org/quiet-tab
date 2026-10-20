@@ -2881,7 +2881,7 @@ describe("typography and copy source pins (run 49)", () => {
   const read = (name) => readFile(new URL(`../src/${name}`, import.meta.url), "utf8");
 
   it("body takes the dialog body size, var(--font-size-md), and html sets no size, so rem stays the browser's root size (decision 1)", async () => {
-    const css = await read("newtab.css");
+    const css = (await read("newtab.css")).replace(/\/\*[\s\S]*?\*\//g, ""); // a comment between the blocks must not hide or fake a rule
     // `}` before `body {`: the `html,\nbody { min-height }` block above it is not the rule
     assert.match(css, /\}\s*body \{[^}]*font-size:\s*var\(--font-size-md\);/);
     assert.doesNotMatch(css, /html[^{}]*\{[^}]*(?<![-\w])font-size/, "html keeps the browser's root size: rem stays 16 px at the default");
