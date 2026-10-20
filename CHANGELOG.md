@@ -24,7 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a failed Sync write). The two texts that used a hyphen as a dash use an em dash: the ensure-failure chip (`Couldn't add the weather and settings
   tiles — Chrome Sync may be full or unavailable. …`) and a stale tile (`Couldn't refresh — showing saved data. …`). Stored data and code
   names do not change (`docs/typography-copy.md` decisions 4 and 5).
-- Link addresses: a host that cannot name a site is now refused with `Enter a valid URL` in Add link, Edit link and the first-run starters: an empty
+- Link addresses: a host that cannot name a site is now refused with `Enter a valid URL` in Add link and Edit link: an empty
   label (`a..b`, `.com`), a label that begins or ends with `-` or has no letter or digit (`-a.com`, `_`), and an IPv4 address the browser
   expands from a short form (`1`, `127.1`, `2130706433`, `0x7f.0.0.1`, `192.168.001.1`, `192.168.0.1.`); an address typed in full
   (`192.168.0.1`, also behind credentials, a port or a path) and every real name keep working. A link saved earlier stays on the grid and opens;
