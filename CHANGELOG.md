@@ -25,9 +25,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the first-run wizard are about 3 px taller at the default size (`docs/typography-copy.md` decisions 1-3, `docs/design-system.md`).
 - One vocabulary: a saved site is a link, a square of the grid is a tile and the whole board is the grid. The page landmark is named `Grid`
   (not `Widgets`), and the messages that said "favorites" or "widgets" say links, tiles or the grid: `You can save up to 200 links`,
-  `Chrome APIs for the grid are unavailable.`, and the three messages about saved data (a newer version, unreadable data, a failed Sync write). The two texts that used a hyphen as a dash use an em dash: the ensure-failure chip (`Couldn't add the weather and settings
+  `Chrome APIs for the grid are unavailable.`, and the three messages about saved data (a newer version, unreadable data, a failed Sync write).
+  The two texts that used a hyphen as a dash use an em dash: the ensure-failure chip (`Couldn't add the weather and settings
   tiles — Chrome Sync may be full or unavailable. …`) and a stale tile (`Couldn't refresh — showing saved data. …`). Stored data and code
   names do not change (`docs/typography-copy.md` decisions 4 and 5).
+- The 1×1 "Set a city" tile, which shows only a map pin, now names itself in the shared tooltip (`Set a city`) on hover and on keyboard focus in
+  normal mode; its accessible name is unchanged and it has no title. The wider and taller hints already show their words and get no tooltip
+  (`docs/typography-copy.md` decision 6).
 - Link addresses: a host that cannot name a site is now refused with `Enter a valid URL` in Add link and Edit link: an empty
   label (`a..b`, `.com`), a label that begins or ends with `-` or has no letter or digit (`-a.com`, `_`), and an IPv4 address the browser
   expands from a short form (`1`, `127.1`, `2130706433`, `0x7f.0.0.1`, `192.168.001.1`, `192.168.0.1.`); an address typed in full
