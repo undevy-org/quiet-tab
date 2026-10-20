@@ -650,7 +650,7 @@ Given/When/Then text, not file presence.
   same fit rules without a separate outer-height assert (shared segmented CSS).
 - Verified by: E2E `dg-39-dialog-narrow.mjs` (Add link segmented heights + `auditBox`
   on edit/weather/delete); `test/designSystem.test.js` asserts `.segmented__option`
-  calc height in `controls.css` (inner **38px** at default tokens; plan Task 3
+  calc `min-height` in `controls.css` (inner **38px** at default tokens; plan Task 3
   extension optional)
 
 ### AS-DS-8 Overlay keyboard and focus (unchanged behavior)
