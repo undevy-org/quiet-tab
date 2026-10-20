@@ -82,7 +82,8 @@ describe("newtab.css grid chrome tokens (AS-DS-17)", () => {
 
 describe("overlay control CSS (AS-DS-10)", () => {
   it("uses control-height tokens and forbids legacy magic heights in controls.css", async () => {
-    const css = await readFile(new URL("../src/controls.css", import.meta.url), "utf8");
+    // declarations only: a comment such as "min-height, not height: ..." must not trip the pins below
+    const css = (await readFile(new URL("../src/controls.css", import.meta.url), "utf8")).replace(/\/\*[\s\S]*?\*\//g, "");
     assert.match(css, /min-height:\s*var\(--control-height\)/);
     // run 49 (docs/typography-copy.md decision 3): the option grows with a wrapped label, so it has `min-height`, not `height`.
     // `height:` alone also matches inside `min-height:`, so the pins carry a left guard `(?<![-\w])`.

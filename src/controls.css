@@ -115,6 +115,7 @@
   align-items: center;
   justify-content: center;
   gap: var(--control-gap-icon);
+  /* min-height, not height: a label that wraps at a larger browser font grows the whole group instead of being clipped by .segmented's overflow: hidden (docs/typography-copy.md decision 3). */
   min-height: calc(var(--control-height) - 2 * var(--control-border-width));
   padding: 0 8px;
   border-right: var(--control-border-width) solid var(--border);
