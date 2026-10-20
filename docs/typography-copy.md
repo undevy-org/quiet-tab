@@ -2,7 +2,7 @@
 
 ## Status
 
-`draft` — revision 3 (2026-10-20, stage 2 round 2 of run 49: closes R2-01…R2-06 of the stage 3 report `reports/typography-copy-spec-review-2.md` and L0-11…L0-16, S0-01 of the spec gate `design-review/runs/2026-10-19-fdb66e8-spec-r2`; revision 2 closed R1-01…R1-12 of `reports/typography-copy-spec-review.md` and L0-01…L0-05, L0-07 of gate r1; by id in `## Review rounds`). Run №49 (`typography-copy`), row Р49 of the roadmap ("Типографика и тексты", marathon `kickoffs/marathon-45-51.md`). Backlog items 27, 35, 28, 36 and 104. Triage below is by reading `origin/main` at `a9b88be` (runs 45–48 merged) plus a live probe; the first step of the kickoff re-checks every item live on `origin/main` before stage 1.
+`implemented` — revision 3 (2026-10-20, stage 2 round 2 of run 49: closes R2-01…R2-06 of the stage 3 report `reports/typography-copy-spec-review-2.md` and L0-11…L0-16, S0-01 of the spec gate `design-review/runs/2026-10-19-fdb66e8-spec-r2`; revision 2 closed R1-01…R1-12 of `reports/typography-copy-spec-review.md` and L0-01…L0-05, L0-07 of gate r1; by id in `## Review rounds`). Run №49 (`typography-copy`), row Р49 of the roadmap ("Типографика и тексты", marathon `kickoffs/marathon-45-51.md`). Backlog items 27, 35, 28, 36 and 104. Triage below is by reading `origin/main` at `a9b88be` (runs 45–48 merged) plus a live probe; the first step of the kickoff re-checks every item live on `origin/main` before stage 1.
 
 **Data compatibility: not required** (no-users policy, `agent-config/CLAUDE.md`). Nothing stored changes: no key, no field. A stored link that fails the new host rule (it can only be seeded) stays on the grid and opens (Accepted exception 8).
 
