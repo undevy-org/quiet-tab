@@ -67,3 +67,30 @@ export function escapeLayer(
   if (status) return "status"; // the layout-failure chip (docs/stale-tab-closeout.md): nothing above it is open
   return null;
 }
+
+// ---- the grid re-read on a return of the tab (docs/tab-return-refresh.md decisions 5 and 6) ------------------------------------------------
+// The name of the first layer that owns the screen while it is up, or null: a drag (started, or settling after the drop), an open dialog,
+// the city modal, the first-run wizard, the Add menu, edit mode, a write in flight. The grid must not change under a layer. The order is the
+// order of the list; a drag and the Add menu exist only inside edit mode, so edit mode follows them. `flags` come from the DOM-owning caller.
+export function deskRefreshBlocker(state, { cityModal = false, onboardingWizard = false, busy = false, dragSettling = false } = {}) {
+  if (state.drag || dragSettling) return "drag";
+  if (state.dialog) return "dialog";
+  if (cityModal) return "cityModal";
+  if (onboardingWizard) return "onboardingWizard";
+  if (state.menu) return "menu";
+  if (state.editMode) return "editMode";
+  if (busy) return "busy";
+  return null;
+}
+
+// What a return does with the grid, in this order: "skip" (no state to refresh, or the grid is locked read-only), "pending" (the grid is
+// not drawn yet, or a layer is up: keep it for later), "again" (the state this tab shows is no longer the one the re-read started from: this
+// tab changed it while the read ran, so the read is older than the screen), "apply". `startedFrom` and `current` are the widgets state objects
+// compared by identity; at entry they are the same object, so an entry call never answers "again".
+export function deskRefreshDecision({ hasState, locked, drawn, blocker, startedFrom, current }) {
+  if (!hasState || locked) return "skip";
+  if (!drawn || blocker !== null) return "pending";
+  if (current !== startedFrom) return "again";
+  return "apply";
+}
+
