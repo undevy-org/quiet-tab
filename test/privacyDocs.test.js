@@ -39,7 +39,7 @@ describe("privacy documentation (AS-UL-22)", () => {
     // every way a weather request leaves is named: the return (with its 30 minute condition), online (while the tab is visible), the retry press,
     // and the two that always were
     assert.match(section, /A weather request happens only in these cases:/i);
-    assert.match(section, /when a new tab opens with a stale cache and a chosen city/i);
+    assert.match(section, /when a new tab opens with a chosen city and no saved weather for it from the last 30 minutes/i);
     assert.match(section, /come back to a tab/i);
     assert.match(section, /30 minutes old or more/i);
     assert.match(section, /network is back while the tab is visible/i);
