@@ -61,10 +61,17 @@ locally, just without cross-device propagation.
 
 ## Background Activity
 
-There is no background polling and no scheduled network activity. A weather
-request happens only when a new tab opens with a stale cache and a chosen city, or
-when you explicitly change the city. A Nominatim request happens only when you
-activate **use your location** and the browser returns a position.
+There is no background polling and no scheduled network activity: nothing is
+polled or repeated on a timer, and once a tab has loaded, a hidden tab starts no
+request. A weather request happens only in these cases: when a new tab opens
+with a stale cache and a chosen city; when you come back to a tab that is
+already open and its weather failed to load or is 30 minutes old or more; when
+the browser reports that the network is back while the tab is visible and its
+weather is in that state; when you press a weather tile to try again; or when
+you explicitly change the city. These requests go to the same Open-Meteo
+endpoints listed under Data Sent, for the city you chose, and send nothing
+new. A Nominatim request happens only when you activate **use your location**
+and the browser returns a position.
 
 Removing the extension through the browser's extension manager removes its
 local extension storage according to the browser's normal extension-data
