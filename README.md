@@ -98,10 +98,10 @@ src/newtab.js          Renders the desktop grid, dialogs, tooltip layer and city
 src/desktop*.js        Grid engine and pure UI state (edit mode, dialogs, drag)
 src/widgets*.js        Widgets persistence, service, shared constants, tooltip placement
 src/favorite*.js       Favorites UI state, icon/color logic
-src/weather*.js        Weather persistence, service, API client, presentation
+src/weather*.js        Weather persistence, service, API client, presentation, shared constants
 src/icons.js           Vendored SVG icon set
 src/mutationLock.js    Serializes concurrent storage writes
-src/storeUtils.js      Shared storage-validation helpers
+src/storeUtils.js      Shared storage-validation and value-comparison helpers
 test/                  node:test suite mirroring src/
 docs/                  Architecture and privacy documentation
 ```

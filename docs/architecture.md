@@ -17,7 +17,7 @@ forecast cache and a per-device "city prompt dismissed" flag persist to
 | --- | --- |
 | `src/newtab.js` | Renders the desktop grid (links, weather tiles, the "Set a city" hint tile, the Settings and Add tiles), edit mode (jiggle, − badges, pointer drag with drop highlight and autoscroll), the desktop dialogs (add link, edit link without a Delete button, delete confirm, hide-weather confirm, weather edit), the Add menu, the page status line, the shared tooltip layer and the city modal, and wires them to the services. The only file that touches the DOM. |
 | `src/desktopLayout.js` | Pure grid engine: grid metrics and the (always even) column count for a viewport width, grid validation (`isValidGrid` with a signed `x`), the stored/displayed frame (`originColumn`, `toStored`, `toDisplayed`), the displayed layout (`displayLayout`, a stateless anchored repack of the stored grids for the current column count), placement rules (`canPlace`, `placeResized`, `placeNew` nearest to the center, `cellFromPoint`), the default block (`placeMissing`, with the vertical centering of its first placement: `centeredDefaultRow`, `defaultBlockRows`). |
-| `src/desktopUiState.js` | Pure UI state for edit mode, the Add menu, the open dialog and an active drag, and the Escape layering (`escapeLayer`). |
+| `src/desktopUiState.js` | Pure UI state for edit mode, the Add menu, the open dialog and an active drag, the Escape layering (`escapeLayer`) and the tab-return re-read rules (`deskRefreshBlocker`: which layer is up; `deskRefreshDecision`: skip, pending, again or apply). |
 | `src/widgetsStore.js` | Validates, reads, and writes persisted widgets state (links, weather metrics and chrome tiles, each with a `grid`), sharded across `chrome.storage.sync` keys; reads are lenient about a missing or malformed `grid`. Also holds `ensureWidgetsLayout` (defaults and self-heal), `inspectWidgetsMeta` (`missing|valid|newer|invalid`; a v1/v2 meta is `invalid`) and the write guard (`assertWritable`) that refuses `newer` and `invalid` metas (only `valid` and `missing` are writable). |
 | `src/widgetsService.js` | Add/update/delete for links, `updateWeatherMetric` (size, shown/hidden) and `moveWidget` (drop at a cell, `PlacementError` when the block is taken). Every mutation takes the current column count, runs under the mutation lock, checks `assertWritable` first, applies the action to the displayed layout of fresh storage and persists the displayed grid of every widget. |
 | `src/widgetsShared.js` | Shared widget constants (types, weather metric ids, caps, lock name, newer-version message). |
@@ -34,12 +34,13 @@ forecast cache and a per-device "city prompt dismissed" flag persist to
 | `src/onboardingWizard.js` / `src/onboardingStore.js` | First-run two-step wizard (city, then starter links) and the `quietTabOnboardingWizardComplete` local flag. |
 | `src/onboardingLayout.js` | Pure: the island table per starter-link count (k = 0…8), `isFreshDesk(items)` and `islandPlacements({ k, linkIds, rows, columns })` for wizard Finish. |
 | `src/weatherService.js` | Serves a fresh cached forecast or fetches and caches a new one; resolves a typed city name to a location. |
+| `src/weatherShared.js` | Shared weather constants (the 30 minute cache rule, `WEATHER_CACHE_TTL_MS`). |
 | `src/weatherPresentation.js` | Formats readings and picks each tile's color tone. |
 | `src/weatherTiles.js` | Pure presentation of one weather tile (label, primary and secondary text, tone, description) for the loading, ready, stale and error states; for error and stale it also carries the retry phase (`ready`, `retrying`, `cooldown`) and the busy text. |
-| `src/weatherUiState.js` | Pure state for the city modal (closed, or open in first-run or change mode), its live suggestion list, and the weather retry sub-state (attempt in flight, earliest next attempt, outcome of a result). |
+| `src/weatherUiState.js` | Pure state for the city modal (closed, or open in first-run or change mode), its live suggestion list, the weather retry sub-state (attempt in flight, earliest next attempt, outcome of a result), and `weatherRefreshDue` (when a returning tab refreshes the weather). |
 | `src/icons.js` | Vendored, static SVG icon set. |
 | `src/mutationLock.js` | Serializes mutations with the Web Locks API, with a promise-chain fallback. |
-| `src/storeUtils.js` | Shared validation and cloning helpers. |
+| `src/storeUtils.js` | Shared validation, cloning and value-equality (`isSameValue`) helpers. |
 
 ## Widgets Storage
 
@@ -119,7 +120,7 @@ key hasn't propagated from another device yet by filtering it out; the next writ
 drops that id from `order` (and removes its key), so an item that arrives after that
 write is no longer listed. There
 is no `storage.onChanged` listener: a tab that is open while another writes shows
-stale data until its own next action or reload.
+stale data until its own next action, until it is shown again (see Concurrency) or until a reload.
 
 **Bootstrap.** Before the first read, `newtab.js` reads the raw meta
 (`inspectWidgetsMeta`: `missing|valid|newer|invalid`) and then runs, under the same
@@ -215,9 +216,10 @@ the forecast arrives. A 2-wide tile shows the primary and secondary values, a
 
 An error or stale tile in normal mode is one native button, `Retry <Metric>`. Pressing it runs
 ONE attempt for every tile, through `weatherService.initialize()` (with the run-48 cache guard): it re-reads the
-city, serves a cache that another tab refreshed in the meantime (no request, the only cross-tab
-effect; there is no `onChanged` listener) or fetches again. There is no way to refresh a fresh
-tile. `retryWeather()` in `newtab.js` wraps the call in the same 15 s `withTimeout` as a city
+city, serves a cache that another tab refreshed in the meantime (no request: a cross-tab effect;
+there is no `onChanged` listener) or fetches again. There is no way to force a refresh of a fresh
+tile; a tile whose data has become 30 minutes old is refreshed when the tab is shown again (next
+subsection). `retryWeather()` in `newtab.js` wraps the call in the same 15 s `withTimeout` as a city
 change; a thrown or timed-out attempt never replaces the tiles' result and its late answer is
 dropped by a token. The generation rule is the one of boot and city change: a successful city
 change bumps the token and the generation and resets the retry state, so a late result cannot
@@ -228,6 +230,16 @@ existing nodes in place, without a re-render. A failure shows the result's user-
 `#desktop-live`), a success announces `Weather updated`. If the city was removed elsewhere
 (`no-location`) the hint tile replaces the metric tiles and takes focus. Nothing is stored for
 retry; a retry only writes the cache that `initialize()` already writes.
+
+### Refresh on return
+
+When a tab becomes visible again (`visibilitychange` to `visible`), and when the browser reports `online` while the tab is
+visible, `newtab.js` starts the same attempt as a retry press if the shown weather is due: an error, a stale result, or a
+`ready` result whose data is 30 minutes old or more (`weatherRefreshDue`; the 30 minutes is `WEATHER_CACHE_TTL_MS` in
+`weatherShared.js`). Nothing is polled or repeated on a timer, and once a tab has loaded, a hidden tab starts no attempt. A
+return does not try while `navigator.onLine` is `false`; an `online` event ignores the 3 s pause after a failed attempt; an
+attempt in flight blocks both. The automatic attempt is silent: it never writes `#desktop-status` and never calls
+`announce`, and a `ready` tile shows no busy state. `docs/tab-return-refresh.md`.
 
 ### Onboarding wizard (first run) and city modal (change mode)
 
@@ -387,7 +399,7 @@ with the Web Locks API using one extension-wide lock name. A promise-chain
 fallback provides deterministic behavior in environments without Web Locks
 and in Node.js tests.
 
-An open tab never listens to storage changes. When its next mutation (Save, Delete, a drop) targets a link that another tab deleted, the service throws `LinkGoneError`; `runDesktopMutation` then re-reads storage without writing, redraws from it, closes the dialog, focuses the neighbouring tile and shows the message in the alert status (`recoverFromGoneLink`). If that re-read finds no Settings tile (another tab cleared the whole storage), the recovery heals the desk with `ensureWidgetsLayout` for the first screen of that moment, reads the state again and focuses Settings; a failing heal leaves the grid as it is until a reload (`docs/stale-tab-empty-state.md`). Since run 30 one helper (`healClearedDesk`) serves every write: a missing weather metric id also raises `LinkGoneError`, a state returned by any mutation without a Settings tile (Add link into a cleared storage) is healed, the heal always re-reads, a successful heal says `Your layout was reset in another tab.`, and a failed one shows a persistent message, leaves edit mode and focuses `#favorites` (`docs/stale-tab-recovery-followups.md`). The failure chip carries a Reload button and Escape (the lowest `escapeLayer` layer, `status`) dismisses it, the reset notice uses the neutral `desktop-status--info` tone, the first-run wizard heals after writing its starter links, and a heal drops a weather city the storage no longer has (`docs/stale-tab-closeout.md`).
+An open tab never listens to storage changes; it re-reads the grid once when it is shown again (`refreshDeskOnReturn`, `docs/tab-return-refresh.md`): the raw meta is inspected (a `newer` or `invalid` one leaves the tab as it is), `getState()` is read, and the pure `deskRefreshDecision` says what to do with the result: show it (an equal state draws nothing, a state without Settings is healed by `healClearedDesk` under the busy lock); drop it and wait while a layer is up (an open dialog, edit mode with a drag or the Add menu, the city modal, the first-run wizard, a write in flight) or before the first render, the postponed re-read then starting one animation frame after the last layer is gone; or, when this tab's own state changed during the read, drop it and read once more. When its next mutation (Save, Delete, a drop) targets a link that another tab deleted, the service throws `LinkGoneError`; `runDesktopMutation` then re-reads storage without writing, redraws from it, closes the dialog, focuses the neighbouring tile and shows the message in the alert status (`recoverFromGoneLink`). If that re-read finds no Settings tile (another tab cleared the whole storage), the recovery heals the desk with `ensureWidgetsLayout` for the first screen of that moment, reads the state again and focuses Settings; a failing heal leaves the grid as it is until a reload (`docs/stale-tab-empty-state.md`). Since run 30 one helper (`healClearedDesk`) serves every write: a missing weather metric id also raises `LinkGoneError`, a state returned by any mutation without a Settings tile (Add link into a cleared storage) is healed, the heal always re-reads, a successful heal says `Your layout was reset in another tab.`, and a failed one shows a persistent message, leaves edit mode and focuses `#favorites` (`docs/stale-tab-recovery-followups.md`). The failure chip carries a Reload button and Escape (the lowest `escapeLayer` layer, `status`) dismisses it, the reset notice uses the neutral `desktop-status--info` tone, the first-run wizard heals after writing its starter links, and a heal drops a weather city the storage no longer has (`docs/stale-tab-closeout.md`).
 
 ## Stylesheets (new tab)
 

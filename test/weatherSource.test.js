@@ -380,14 +380,16 @@ describe("newtab weather retry source (AS-WR-13)", () => {
     const handler = retry.slice(retry.indexOf("catch (error)"), retry.indexOf("catch (error)") + 400);
     assert.ok(retry.includes("catch (error)"));
     assert.doesNotMatch(handler.split("}")[0], /weatherResult =/);
-    assert.match(retry, /weatherResult\?\.status === "stale"/);
+    // run 50 (decision 3): a failed read never downgrades a tile that still has data (a stale one as before, now also a ready one)
+    assert.match(retry, /const downgrade = failed && result\?\.status === "error" && weatherResult\?\.data;/);
   });
 
   it("the gone outcome clears a non-persist status line and the cooldown timer", async () => {
     const code = await source();
     const retry = fn(code, "retryWeather");
     const gone = retry.slice(retry.indexOf('outcome === "gone"'), retry.indexOf("const failed ="));
-    assert.match(gone, /clearTimeout\(weatherRetryTimer\);\s*if \(!desktopStatusPersistent\) showDesktopStatus\(""\);/);
+    // run 50: only the manual path clears the status line; the automatic one never touches it (companion pin below)
+    assert.match(gone, /clearTimeout\(weatherRetryTimer\);\s*if \(!automatic && !desktopStatusPersistent\) showDesktopStatus\(""\);/);
   });
 
   it("the cooldown end updates nodes in place and never re-renders", async () => {
@@ -428,5 +430,99 @@ describe("newtab weather retry source (AS-WR-13)", () => {
     assert.match(body, /if \(result\.location\) \{[\s\S]*weatherLocation = result\.location;[\s\S]*weatherLocationError = "";[\s\S]*\}/);
     assert.match(code, /const CITY_REQUEST_TIMEOUT_MS = 15000;/);
     assert.match(code, /retry: weatherRetryPhase\(weatherUi, Date\.now\(\)\), now: editing \? undefined : Date\.now\(\) \}\)/);
+  });
+});
+
+describe("newtab weather on return (run 50, docs/tab-return-refresh.md, AS-TRR-01..06)", () => {
+  const fn = (code, name) => {
+    const start = code.search(new RegExp(`^(?:async )?function ${name}\\(`, "m"));
+    assert.ok(start > -1, name);
+    return code.slice(start, code.indexOf("\n}\n", start));
+  };
+  // The text of a function without its manual-only parts: every `if (!automatic) { ... }` block (brace matched) and every one-line
+  // `if (!automatic && ...) showDesktopStatus("");`.
+  const withoutManualParts = (text) => {
+    let out = text.replace(/if \(!automatic && [^\n;]*\) showDesktopStatus\(""\);/g, "");
+    for (let at = out.indexOf("if (!automatic) {"); at > -1; at = out.indexOf("if (!automatic) {")) {
+      let depth = 0;
+      let i = out.indexOf("{", at);
+      for (; i < out.length; i += 1) {
+        if (out[i] === "{") depth += 1;
+        else if (out[i] === "}" && --depth === 0) break;
+      }
+      out = out.slice(0, at) + out.slice(i + 1);
+    }
+    return out;
+  };
+
+  it("retryWeather takes the options object; the manual call site stays void retryWeather();", async () => {
+    const code = await source();
+    assert.match(code, /async function retryWeather\(\{ automatic = false, ignorePause = false \} = \{\}\) \{/);
+    assert.match(code, /action === "retry-weather"\) \{\s*void retryWeather\(\);/);
+    assert.equal(code.match(/\bvoid retryWeather\(/g).length, 3, "the click branch and the two automatic calls start an attempt, nothing else does");
+  });
+
+  it("the gate of an automatic attempt is weatherRefreshDue on the shown result, the manual one stays error or stale", async () => {
+    const retry = fn(await source(), "retryWeather");
+    assert.match(retry, /const shown = effectiveWeatherResult\(\);/);
+    assert.match(retry, /const due = automatic \? weatherRefreshDue\(shown, Date\.now\(\)\) : shown\?\.status === "error" \|\| shown\?\.status === "stale";\s*if \(!due\) return;/);
+    assert.match(retry, /const started = startWeatherRetry\(weatherUi, Date\.now\(\), \{ ignorePause \}\);/);
+    assert.ok(retry.indexOf("weatherRefreshDue(") < retry.indexOf("startWeatherRetry("), "the due test comes before the in-flight guard");
+  });
+
+  it("the automatic attempt never writes the status line and never announces: those calls sit in !automatic branches only", async () => {
+    const retry = fn(await source(), "retryWeather");
+    assert.ok(retry.includes("showDesktopStatus(") && retry.includes("announce("), "the manual path still reports");
+    const rest = withoutManualParts(retry);
+    assert.doesNotMatch(rest, /showDesktopStatus\(/);
+    assert.doesNotMatch(rest, /announce\(/);
+    assert.match(retry, /announce\("Weather updated"\)/);
+  });
+
+  it("an attempt whose shown result is ready does not render at its start (it has no retry control to show)", async () => {
+    const retry = fn(await source(), "retryWeather");
+    const beforeAwait = retry.slice(0, retry.indexOf("await withTimeout("));
+    assert.match(beforeAwait, /const silentStart = automatic && shown\?\.status === "ready";/);
+    assert.match(beforeAwait, /if \(!silentStart\) renderFavorites\(\);/);
+    assert.equal(beforeAwait.match(/renderFavorites\(\)/g).length, 1, "that is the only render before the await");
+    assert.match(retry, /if \(!silentStart \|\| replaced\) renderFavorites\(\);/, "at the end it renders only when something changed");
+  });
+
+  it("a thrown or timed-out attempt on a ready tile changes nothing: the result is replaced only by the service's own answer", async () => {
+    const retry = fn(await source(), "retryWeather");
+    assert.match(retry, /const replaced = Boolean\(result\) && !downgrade;/);
+    assert.match(retry, /if \(replaced\) \{\s*weatherResult = result;/);
+  });
+
+  it("the gone outcome moves focus to the hint only if it was on a weather tile when the attempt started (read before the first render)", async () => {
+    const retry = fn(await source(), "retryWeather");
+    const capture = retry.indexOf("const focusWasOnWeatherTile =");
+    assert.ok(capture > -1 && capture < retry.indexOf("renderFavorites()"), "read before the first render");
+    assert.match(retry, /const focusWasOnWeatherTile = automatic && document\.activeElement instanceof Element && document\.activeElement\.closest\("\.weather-tile"\) !== null;/);
+    assert.match(retry, /if \(\(!automatic \|\| focusWasOnWeatherTile\) && \(!active \|\| active === document\.body\)\) favoritesRoot\?\.querySelector\(HINT_TILE_SELECTOR\)\?\.focus\(\);/);
+  });
+
+  it("a failed automatic attempt starts the usual pause: the same finish and the same end-of-pause timer, outside the manual branches", async () => {
+    const retry = fn(await source(), "retryWeather");
+    const rest = withoutManualParts(retry);
+    // as whole statements on their own lines: an unbraced `if (!automatic) …` in front of either would not be removed above and must not pass
+    assert.match(rest, /^  weatherUi = finishWeatherRetry\(weatherUi, Date\.now\(\), !failed\);$/m);
+    assert.match(rest, /^    weatherRetryTimer = setTimeout\(endWeatherRetryCooldown, Math\.max\(0, weatherUi\.retry\.availableAt - Date\.now\(\)\) \+ 10\);$/m);
+  });
+
+  it("the pause timer of a failed attempt is shared with the manual path (no new timer)", async () => {
+    const retry = fn(await source(), "retryWeather");
+    assert.equal(retry.match(/setTimeout\(/g).length, 1);
+    assert.match(retry, /weatherRetryTimer = setTimeout\(endWeatherRetryCooldown,/);
+  });
+
+  it("WEATHER_CACHE_TTL_MS has one definition, in weatherShared.js, imported by the service and the pure UI state", async () => {
+    const dir = new URL("../src/", import.meta.url);
+    const [shared, service, uiState] = await Promise.all(["weatherShared.js", "weatherService.js", "weatherUiState.js"].map((n) => readFile(new URL(n, dir), "utf8")));
+    assert.match(shared, /export const WEATHER_CACHE_TTL_MS = 30 \* 60 \* 1000;/);
+    assert.doesNotMatch(service, /const WEATHER_CACHE_TTL_MS/);
+    assert.match(service, /import \{ WEATHER_CACHE_TTL_MS \} from "\.\/weatherShared\.js";/);
+    assert.match(uiState, /import \{ WEATHER_CACHE_TTL_MS \} from "\.\/weatherShared\.js";/);
+    assert.doesNotMatch(uiState, /weatherService\.js|weatherApi\.js/, "the pure UI state does not pull in the service or the HTTP client");
   });
 });

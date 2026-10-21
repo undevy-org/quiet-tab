@@ -263,7 +263,7 @@ The executor greps `.private/e2e/scenarios/` and updates (never weakens) before 
 - A very fast second `announce` replaces a pending one; the earlier text is never spoken.
 - The wizard path keeps persist-then-fetch, so a forecast that finishes after the 15 s timeout may still persist the wizard's city (unchanged behaviour).
 - A timeout that fires while `setLocation` or `setCache` is already running does not cancel that write; the stale check is made after the fetch and before the location write.
-- Save without a change no longer re-requests the forecast; Retry is the only way to re-request when the tiles show errors (consequence of the owner's decision 2).
+- Save without a change no longer re-requests the forecast; Retry is the only way to re-request when the tiles show errors (consequence of the owner's decision 2). Since run 50 a return of the tab and `online` also re-request when the data is due (`docs/tab-return-refresh.md`).
 - The status line is spoken by the sr-only `role="status"` span; screen readers that also read the focused disabled-looking link may say it twice (the link keeps focus by the owner's decision).
 - The post-close guard now also blocks the focus move of a `mousedown` in its window on any element, including a deliberate press on another control within 300 ms of a modal closing (the click is already swallowed, so the press had no effect anyway).
 

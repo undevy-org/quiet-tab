@@ -4,6 +4,8 @@
 
 `implemented` — closes backlog 66 and 67 (found by the final design review of run 27, both older than run 27). **Data compatibility: not required** (no-users policy, `agent-config/CLAUDE.md`); storage shape unchanged.
 
+> **Changed by run 50** (`docs/tab-return-refresh.md`): live sync (`chrome.storage.onChanged`) stays a Non-goal, but a tab that is shown again re-reads the grid once, heals a cleared storage through the same `healClearedDesk`, and leaves a `newer` or `invalid` meta alone.
+
 ## Intake log
 
 | Date | Raw note (owner) | Verdict | Reference |

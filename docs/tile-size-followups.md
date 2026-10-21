@@ -4,6 +4,8 @@
 
 `implemented` — closes the open Minors 63 and 64 and every "not verified" item of `docs/tile-size-1x2.md` (run 24): the Size segments do not show which number is the width, text on rain-toned and other toned weather tiles fails WCAG contrast, dark theme and forced colors were never checked on 1×2 surfaces, two open tabs were never exercised, and the layout engine has no unit tests for a 1-wide, 2-high tile at the edges. Backlog 65 (checkpoint Minors L2-01, L2-02) is **closed as an accepted design decision** of the owner-approved mockup, as the Intake log row and the Accepted exceptions state it, not as a code change. Follow-up to `docs/tile-size-1x2.md` (`implemented`).
 
+> **Changed by run 50** (`docs/tab-return-refresh.md`): live sync (`chrome.storage.onChanged`) stays a Non-goal, but a tab that is shown again re-reads the grid once, heals a cleared storage through the same `healClearedDesk`, and leaves a `newer` or `invalid` meta alone.
+
 **Data compatibility: not required** (no-users policy, `agent-config/CLAUDE.md`); storage shape unchanged.
 
 ## Intake log
@@ -62,7 +64,7 @@ Full UI pipeline (`quiet-tab-pipeline`): spec review and spec gate → plan in n
 ## Accepted exceptions
 
 - In forced colors the UA replaces tile backgrounds and tone colors; only the items of decision 6 are required.
-- An open tab stays stale until its next mutation or reload; a stale tab editing the same tile overwrites it (last write wins, decision 7).
+- An open tab stays stale until its next mutation, its next return to the tab (`docs/tab-return-refresh.md`) or reload; a stale tab editing the same tile overwrites it (last write wins, decision 7).
 - With `prefers-reduced-motion`, a stale tile in the busy state dims its values (primary, secondary) to opacity 0.7 (`docs/weather-tile-retry.md`, existing transient state); the contrast matrix of AS-TSF-03 measures the resting states only.
 - The 1×1 shape glyph at unit 4 (4×4 with a 1 px border at device pixel ratio 1) reads as a small ring, not a square (checkpoint L1-01 / V2-02); the sizes are fixed by decisions 1 and 3.
 - In the Icon row of the same dialog the free room at 401 px is 1 px (measured, checkpoint V2R2-01): the label does not clip and that row is not changed by this run except for the narrower padding.

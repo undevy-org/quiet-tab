@@ -23,11 +23,14 @@ import {
   escapeLayer,
   exitEditMode,
   closeMenu,
+  deskRefreshBlocker,
+  deskRefreshDecision,
   openDialog,
   openMenu,
   startDrag,
   updateDrag
 } from "./desktopUiState.js";
+import { isSameValue } from "./storeUtils.js";
 import { createWidgetsService } from "./widgetsService.js";
 import {
   WIDGETS_META_KEY,
@@ -67,6 +70,7 @@ import {
   resetWeatherRetry,
   showSuggestions,
   startWeatherRetry,
+  weatherRefreshDue,
   weatherRetryOutcome,
   weatherRetryPhase
 } from "./weatherUiState.js";
@@ -288,6 +292,12 @@ let desktopUi = createDesktopUiState();
 let favoritesError = "";
 let favoritesBusy = false;
 let favoritesGeneration = 0;
+// The grid re-read on a return of the tab (docs/tab-return-refresh.md decision 5): a return that came while a layer was up (kept for the first
+// moment after the last layer), a re-read in flight and one queued behind it, and the one animation frame that starts the pending one.
+let deskRefreshPending = false;
+let deskRefreshRunning = false;
+let deskRefreshQueued = false;
+let deskRefreshFrame = 0;
 // Selectors to try, in order, once the next non-busy render has finished, so keyboard focus
 // never falls back to <body> after a re-render replaced the control that had it.
 let pendingFocus = null;
@@ -1542,6 +1552,7 @@ function hideCityModal() {
   }
   cityModalOpener = null;
   cityModalHintMetricId = null;
+  scheduleDeferredDeskRefresh();
 }
 
 // Success of a change-mode city request: the caller, not hideCityModal, picks the focus target and speaks.
@@ -1920,6 +1931,7 @@ function hideOnboardingWizard({ completed = false } = {}) {
     pendingFocus.preventScroll = true;
     applyPendingFocus();
   }
+  scheduleDeferredDeskRefresh();
 }
 
 // The heal of a cleared storage that Finish performed (kept until the wizard closes: the first Finish may stop on the completion flag).
@@ -2491,6 +2503,7 @@ function closeDesktopDialog({ restoreFocusTo = desktopDialogOpener, reveal = fal
   desktopUi = closeDialog(desktopUi);
   desktopDialogOpener = null;
   if (restoreFocusTo) focusWidgetTarget([restoreFocusTo, fallback].flat(), { preventScroll: true, reveal });
+  scheduleDeferredDeskRefresh();
 }
 
 // Focuses the first present, enabled target: a widget id string (its tile) or { id, badge } (the tile or its − badge).
@@ -2927,6 +2940,117 @@ async function runDesktopMutation(action, { dialogRoot = null, renderPending = t
 
 const SETTINGS_TILE_SELECTOR = '[data-widget-id="chrome:settings"]';
 const SETTINGS_TILE_ID = "chrome:settings";
+
+// ---- the grid re-read on a return of the tab (docs/tab-return-refresh.md decisions 5 to 7) ------------------------------------------
+// The one pure decision (desktopUiState.deskRefreshDecision) for the state this tab shows now: skip, pending, again or apply.
+function currentDeskDecision(startedFrom) {
+  return deskRefreshDecision({
+    hasState: Boolean(widgetsService) && widgetsState !== null,
+    locked: widgetsNewer,
+    drawn: renderedColumns > 0,
+    blocker: deskRefreshBlocker(desktopUi, { cityModal: Boolean(cityModalRoot), onboardingWizard: Boolean(onboardingWizardRoot), busy: favoritesBusy, dragSettling }),
+    startedFrom,
+    current: widgetsState
+  });
+}
+
+// Reads the widgets state from storage again and shows it, unless a layer is up (then it waits, see scheduleDeferredDeskRefresh). One re-read
+// at a time; a return that comes while one runs makes exactly one more after it. The reads take no lock and no timer; a failed read of any kind
+// (a rejection, or a synchronous throw of a lost extension context) ends it silently; a `newer` or `invalid` meta is left alone; an equal state
+// draws nothing; a state without Settings (another tab cleared the storage) is healed under the busy lock, which is the only write it makes.
+async function refreshDeskOnReturn() {
+  const startedFrom = widgetsState;
+  const entry = currentDeskDecision(startedFrom);
+  if (entry === "skip") return;
+  if (entry === "pending") {
+    deskRefreshPending = true;
+    return;
+  }
+  if (deskRefreshRunning) {
+    deskRefreshQueued = true;
+    return;
+  }
+  deskRefreshRunning = true;
+  deskRefreshPending = false; // the start consumes the pending flag; the decision after the reads may set it again
+  try {
+    let rawMeta;
+    try {
+      rawMeta = await syncStorageArea.get(WIDGETS_META_KEY);
+    } catch {
+      return;
+    }
+    const kind = inspectWidgetsMeta(rawMeta);
+    if (kind === "newer" || kind === "invalid") return;
+    let fresh;
+    try {
+      fresh = await widgetsService.getState();
+    } catch {
+      return;
+    }
+    // A layer that the user opened during a slow read wins, and a state that this tab changed meanwhile is newer than the read: either way the
+    // result is thrown away (nothing was written, so nothing is lost).
+    const next = currentDeskDecision(startedFrom);
+    if (next === "pending") {
+      deskRefreshPending = true;
+      return;
+    }
+    if (next === "again") {
+      deskRefreshQueued = true;
+      return;
+    }
+    if (next !== "apply") return;
+    if (fresh.items.some((item) => item.id === SETTINGS_TILE_ID)) applyReadDesk(fresh);
+    else await healReadDesk(fresh);
+  } finally {
+    deskRefreshRunning = false;
+    const queued = deskRefreshQueued;
+    deskRefreshQueued = false;
+    if (queued) void refreshDeskOnReturn();
+  }
+}
+
+// A healthy state, synchronously (nothing may change between the decision and the render): equal means nothing happens, no DOM change at all;
+// a different one is the one render of the stored grids for the window's size now. If focus was on a tile that the new state no longer has, it
+// goes to its neighbour by the rule of a deleted tile, read from the old DOM before the render, without scrolling; focus anywhere else stays.
+function applyReadDesk(fresh) {
+  if (isSameValue(fresh, widgetsState)) return;
+  const focused = focusedWidgetId();
+  const neighbours = focused && !focused.badge ? neighborTargets(focused.id) : null;
+  widgetsState = fresh;
+  renderFavorites();
+  if (neighbours && (!document.activeElement || document.activeElement === document.body)) focusWidgetTarget(neighbours, { preventScroll: true });
+}
+
+// A state without Settings: the heal of recoverFromGoneLink, under the busy lock, started only after the decision said apply. The messages are
+// the two that exist (the neutral reset notice, the persistent failed-heal chip). A tile that had focus is gone with the cleared storage: focus
+// goes to Settings, forced (a neighbour list read from the old DOM would find a just-created tile first).
+async function healReadDesk(state) {
+  const focused = focusedWidgetId();
+  const generation = startFavoritesAction({ render: false });
+  const outcome = await healClearedDesk(state);
+  if (outcome.failed) leaveEditModeAfterFailedHeal();
+  finishFavoritesAction(generation, () => {
+    widgetsState = outcome.state;
+  });
+  if (outcome.failed) {
+    showLayoutRestoreFailure();
+    return;
+  }
+  if (focused) focusWidgetTarget([SETTINGS_TILE_ID], { preventScroll: true });
+  if (outcome.healed) showDesktopStatus(LAYOUT_RESET_MESSAGE, { tone: "info" });
+}
+
+// A return that came while a layer was up is kept; the end of the last layer (a render, or a close that renders nothing) calls this, and one
+// animation frame later, if the tab is visible, the pending re-read starts through the common entry (which looks at the layers again). A render
+// or a close with nothing pending costs nothing; a hidden tab keeps the flag for the next return.
+function scheduleDeferredDeskRefresh() {
+  if (!deskRefreshPending || deskRefreshFrame) return;
+  deskRefreshFrame = requestAnimationFrame(() => {
+    deskRefreshFrame = 0;
+    if (!deskRefreshPending || document.visibilityState !== "visible") return;
+    void refreshDeskOnReturn();
+  });
+}
 
 function viewportWidth() {
   return document.documentElement.clientWidth;
@@ -3455,6 +3579,7 @@ function setEditMode(on) {
 function renderFavorites() {
   renderDesktop();
   applyPendingFocus();
+  scheduleDeferredDeskRefresh();
 }
 function setFavoritesBusy(nextBusy) {
   favoritesBusy = nextBusy;
@@ -3636,6 +3761,10 @@ if (favoritesRoot) {
     cancelDrag();
     suppressDragClick = false;
   });
+  // A tab shown again refreshes due weather (retryWeather, automatic) and re-reads the grid (refreshDeskOnReturn); `online` refreshes the
+  // weather only; registered once, no timers.
+  document.addEventListener("visibilitychange", onTabVisibilityChange);
+  window.addEventListener("online", onBrowserOnline);
   // Every new press starts clean, so a flag stranded by a lost release can never swallow the next click.
   window.addEventListener(
     "pointerdown",
@@ -3764,22 +3893,33 @@ async function startWeather() {
   renderFavorites();
 }
 
-// Retry from an error or stale tile (normal mode): ONE attempt for every tile, through the unchanged service
-// (`initialize()` re-reads the city, serves a cache another tab refreshed, or fetches). Presses are ignored while it runs
-// and for 3 s after it failed (weatherUiState). The same 15 s guard as a city change; the late answer of a timed-out
-// attempt is dropped by the token. A thrown or timed-out attempt never replaces the tiles' result.
-async function retryWeather() {
+// One attempt for every tile, through the unchanged service (`initialize()` re-reads the city, serves a cache another tab refreshed,
+// or fetches). Two ways in. Manual: a press on an error or stale tile (normal mode), `retryWeather()`. Automatic
+// (docs/tab-return-refresh.md): the tab became visible again or the browser reported `online`; it starts only if the shown weather is
+// due (`weatherRefreshDue`: an error, a stale result, or a ready one 30 minutes old or more) and `ignorePause` lets `online` start inside
+// the 3 s pause. Both share the in-flight guard and the pause (weatherUiState), so they can never run in parallel. The same 15 s guard as
+// a city change. A thrown or timed-out attempt never replaces the tiles' result. The call to the service is not cancellable: the answer of
+// a timed-out attempt may still arrive and write the cache (docs/tab-return-refresh.md, Accepted exception 17), and the tiles do not change
+// then; the token only drops the answer of an attempt that a newer attempt, a city change or a heal has superseded. The automatic attempt
+// is silent: it never writes the status line, never announces, and a ready tile (which has no retry control, so no busy state) is not
+// rendered at its start.
+async function retryWeather({ automatic = false, ignorePause = false } = {}) {
   if (!weatherService) return;
   const shown = effectiveWeatherResult();
-  if (shown?.status !== "error" && shown?.status !== "stale") return;
-  const started = startWeatherRetry(weatherUi, Date.now());
+  const due = automatic ? weatherRefreshDue(shown, Date.now()) : shown?.status === "error" || shown?.status === "stale";
+  if (!due) return;
+  const started = startWeatherRetry(weatherUi, Date.now(), { ignorePause });
   if (started === weatherUi) return;
+  // Automatic only; read before the first render (a render recreates the tile): where the focus is as the attempt starts decides whether
+  // the `gone` outcome moves it to the hint tile.
+  const focusWasOnWeatherTile = automatic && document.activeElement instanceof Element && document.activeElement.closest(".weather-tile") !== null;
   weatherUi = started;
   clearTimeout(weatherRetryTimer);
   const token = ++weatherRetryToken;
   weatherGeneration += 1; // supersedes a boot load that is still in flight (a failed city read leaves one running)
   const generation = weatherGeneration;
-  renderFavorites();
+  const silentStart = automatic && shown?.status === "ready";
+  if (!silentStart) renderFavorites();
 
   let result = null;
   let outcome;
@@ -3799,18 +3939,20 @@ async function retryWeather() {
     weatherLocation = null;
     weatherLocationError = "";
     clearTimeout(weatherRetryTimer);
-    if (!desktopStatusPersistent) showDesktopStatus(""); // a failure text of an earlier attempt would now contradict the hint tile
+    if (!automatic && !desktopStatusPersistent) showDesktopStatus(""); // a failure text of an earlier attempt would now contradict the hint tile
     renderFavorites();
     const active = document.activeElement;
-    if (!active || active === document.body) favoritesRoot?.querySelector(HINT_TILE_SELECTOR)?.focus();
+    if ((!automatic || focusWasOnWeatherTile) && (!active || active === document.body)) favoritesRoot?.querySelector(HINT_TILE_SELECTOR)?.focus();
     return;
   }
 
   const failed = typeof outcome === "object";
   weatherUi = finishWeatherRetry(weatherUi, Date.now(), !failed);
-  // The service's own answer replaces the result, except that a failed read never downgrades a tile that still has data.
-  const downgrade = failed && result?.status === "error" && weatherResult?.status === "stale";
-  if (result && !downgrade) {
+  // The service's own answer replaces the result, except that a failed read never downgrades a tile that still has data
+  // (a stale one, or a ready one that an automatic attempt could not refresh).
+  const downgrade = failed && result?.status === "error" && weatherResult?.data;
+  const replaced = Boolean(result) && !downgrade;
+  if (replaced) {
     weatherResult = result;
     if (result.location) {
       weatherLocation = result.location;
@@ -3818,21 +3960,38 @@ async function retryWeather() {
     }
   }
   if (!failed) weatherLocationError = "";
-  renderFavorites();
+  if (!silentStart || replaced) renderFavorites(); // a ready tile that an attempt did not change is not redrawn
 
   if (failed) {
-    if (desktopStatusPersistent) {
-      announce(outcome.failed); // the ensure message keeps the status line; the failure is spoken once
-    } else {
-      showDesktopStatus(""); // clear first so an identical text is announced again
-      showDesktopStatus(outcome.failed);
+    if (!automatic) {
+      if (desktopStatusPersistent) {
+        announce(outcome.failed); // the ensure message keeps the status line; the failure is spoken once
+      } else {
+        showDesktopStatus(""); // clear first so an identical text is announced again
+        showDesktopStatus(outcome.failed);
+      }
     }
     clearTimeout(weatherRetryTimer);
     weatherRetryTimer = setTimeout(endWeatherRetryCooldown, Math.max(0, weatherUi.retry.availableAt - Date.now()) + 10);
-  } else {
+  } else if (!automatic) {
     if (!desktopStatusPersistent) showDesktopStatus(""); // an earlier failure text would now contradict the tiles
     announce("Weather updated");
   }
+}
+
+// The two triggers of an automatic attempt (docs/tab-return-refresh.md decisions 1 and 4). Both return at once unless the tab is visible:
+// a change to hidden does nothing, and a hidden tab starts no request. A return does not try while the browser says it is offline (the
+// `online` event comes later); `online` ignores the 3 s pause after a failed attempt (the network has just come back). The visibility is
+// read only from document.visibilityState; there are no timers. A return also starts the grid re-read (decisions 5 to 7).
+function onTabVisibilityChange() {
+  if (document.visibilityState !== "visible") return;
+  if (navigator.onLine !== false) void retryWeather({ automatic: true });
+  void refreshDeskOnReturn();
+}
+
+function onBrowserOnline() {
+  if (document.visibilityState !== "visible") return;
+  void retryWeather({ automatic: true, ignorePause: true });
 }
 
 // The end of the pause is silent: the existing retry nodes are updated in place (no re-render, so the focused node

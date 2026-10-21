@@ -6,6 +6,8 @@
 
 **Amended by `docs/layers-low-window.md` (run 46):** the failure chip (`#desktop-status`, including the neutral reset message and the Reload button) is no longer painted while a modal layer is in the DOM (a desktop dialog, the city modal, the wizard); it stays in the accessibility tree and keeps its box, and while it exists the page keeps a bottom reserve (`--status-reserve`) so the last row and a focused tile clear it. The texts, the Escape layer `status` and the heal flow of this spec are unchanged.
 
+> **Changed by run 50** (`docs/tab-return-refresh.md`): live sync (`chrome.storage.onChanged`) stays a Non-goal, but a tab that is shown again re-reads the grid once, heals a cleared storage through the same `healClearedDesk`, and leaves a `newer` or `invalid` meta alone.
+
 ## Intake log
 
 | Date | Raw note (owner) | Verdict | Reference |

@@ -5,8 +5,7 @@ import {
   geocodeCity as defaultGeocodeCity,
   weatherErrorMessage
 } from "./weatherApi.js";
-
-const WEATHER_CACHE_TTL_MS = 30 * 60 * 1000;
+import { WEATHER_CACHE_TTL_MS } from "./weatherShared.js";
 
 function isCacheFresh(cache, location, now) {
   return (

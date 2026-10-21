@@ -57,6 +57,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Returning to the tab: the weather and the grid catch up. When a tab becomes visible again, a weather tile that failed to load, is stale, or whose data is
+  30 minutes old or more is refreshed by itself, and again when the network comes back (nothing is polled or repeated on a timer, once a tab has loaded a
+  hidden tab starts nothing, the weather refresh announces nothing); the grid is read again from storage, so links added, moved or removed in another tab appear,
+  a cleared storage is restored (with the notice "Your layout was reset in another tab."), and nothing is redrawn when nothing changed. While a dialog, edit mode,
+  a drag, the city modal or the first-run wizard is open, the grid waits until it is closed (`docs/tab-return-refresh.md`, `docs/privacy.md`). E2E
+  `dg-90-tab-return-refresh.mjs`.
 - Size segments show the footprint as a small outline rectangle (width × height) before 1×1 / 1×2 / 2×1 / 2×2, and each Size radio has an accessible name that starts with the visible label (`1×2, 1 wide, 2 high`); the selected dialog segment keeps its mark in forced colors (`forced-color-adjust: none`, `Highlight`). E2E `dg-66-tile-size-followups.mjs` covers the glyphs, the tone contrast table, dark theme, forced colors and two open tabs; unit tests cover 1×2 tiles at the edges of the layout engine (docs/tile-size-followups.md).
 - Fourth tile size 1×2 (tall) for links, weather tiles and the city hint: Size control 1×1 / 1×2 / 2×1 / 2×2; a 1×2 link shows icon, label and host; a 1×2 weather tile stacks glyph, value and city (docs/tile-size-1x2.md).
 - **Use your location** in the first-run wizard (step 1) and the change-mode city modal: tap the link to
