@@ -442,7 +442,7 @@ describe("newtab weather on return (run 50, docs/tab-return-refresh.md, AS-TRR-0
   // The text of a function without its manual-only parts: every `if (!automatic) { ... }` block (brace matched) and every one-line
   // `if (!automatic && ...) showDesktopStatus("");`.
   const withoutManualParts = (text) => {
-    let out = text.replace(/if \(!automatic && [^\n]*showDesktopStatus\(""\);/g, "");
+    let out = text.replace(/if \(!automatic && [^\n;]*\) showDesktopStatus\(""\);/g, "");
     for (let at = out.indexOf("if (!automatic) {"); at > -1; at = out.indexOf("if (!automatic) {")) {
       let depth = 0;
       let i = out.indexOf("{", at);
@@ -465,7 +465,7 @@ describe("newtab weather on return (run 50, docs/tab-return-refresh.md, AS-TRR-0
   it("the gate of an automatic attempt is weatherRefreshDue on the shown result, the manual one stays error or stale", async () => {
     const retry = fn(await source(), "retryWeather");
     assert.match(retry, /const shown = effectiveWeatherResult\(\);/);
-    assert.match(retry, /if \(automatic \? !weatherRefreshDue\(shown, Date\.now\(\)\) : shown\?\.status !== "error" && shown\?\.status !== "stale"\) return;/);
+    assert.match(retry, /const due = automatic \? weatherRefreshDue\(shown, Date\.now\(\)\) : shown\?\.status === "error" \|\| shown\?\.status === "stale";\s*if \(!due\) return;/);
     assert.match(retry, /const started = startWeatherRetry\(weatherUi, Date\.now\(\), \{ ignorePause \}\);/);
     assert.ok(retry.indexOf("weatherRefreshDue(") < retry.indexOf("startWeatherRetry("), "the due test comes before the in-flight guard");
   });
@@ -498,8 +498,16 @@ describe("newtab weather on return (run 50, docs/tab-return-refresh.md, AS-TRR-0
     const retry = fn(await source(), "retryWeather");
     const capture = retry.indexOf("const focusWasOnWeatherTile =");
     assert.ok(capture > -1 && capture < retry.indexOf("renderFavorites()"), "read before the first render");
-    assert.match(retry, /document\.activeElement\.closest\("\.weather-tile"\)/);
-    assert.match(retry, /if \(automatic \? focusWasOnWeatherTile : !active \|\| active === document\.body\) favoritesRoot\?\.querySelector\(HINT_TILE_SELECTOR\)\?\.focus\(\);/);
+    assert.match(retry, /const focusWasOnWeatherTile = automatic && document\.activeElement instanceof Element && document\.activeElement\.closest\("\.weather-tile"\) !== null;/);
+    assert.match(retry, /if \(\(!automatic \|\| focusWasOnWeatherTile\) && \(!active \|\| active === document\.body\)\) favoritesRoot\?\.querySelector\(HINT_TILE_SELECTOR\)\?\.focus\(\);/);
+  });
+
+  it("a failed automatic attempt starts the usual pause: the same finish and the same end-of-pause timer, outside the manual branches", async () => {
+    const retry = fn(await source(), "retryWeather");
+    const rest = withoutManualParts(retry);
+    // as whole statements on their own lines: an unbraced `if (!automatic) …` in front of either would not be removed above and must not pass
+    assert.match(rest, /^  weatherUi = finishWeatherRetry\(weatherUi, Date\.now\(\), !failed\);$/m);
+    assert.match(rest, /^    weatherRetryTimer = setTimeout\(endWeatherRetryCooldown, Math\.max\(0, weatherUi\.retry\.availableAt - Date\.now\(\)\) \+ 10\);$/m);
   });
 
   it("the pause timer of a failed attempt is shared with the manual path (no new timer)", async () => {

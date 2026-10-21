@@ -46,7 +46,8 @@ export function cityModalMode(state) {
 }
 
 // ---- weather tile retry (error and stale tiles) ----------------------------------------------------------
-// One attempt for all tiles; presses are ignored while it runs and for 3 s after it failed.
+// One attempt for all tiles; presses are ignored while it runs and for 3 s after it failed. A press, a return of the tab and an `online`
+// event share this one in-flight guard (docs/tab-return-refresh.md); `online` alone may start inside the 3 s pause (`ignorePause`).
 
 export const WEATHER_RETRY_COOLDOWN_MS = 3000;
 const GENERIC_RETRY_FAILURE = "Couldn't load weather. Try again in a moment.";

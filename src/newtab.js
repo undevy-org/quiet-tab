@@ -3773,18 +3773,21 @@ async function startWeather() {
 // (docs/tab-return-refresh.md): the tab became visible again or the browser reported `online`; it starts only if the shown weather is
 // due (`weatherRefreshDue`: an error, a stale result, or a ready one 30 minutes old or more) and `ignorePause` lets `online` start inside
 // the 3 s pause. Both share the in-flight guard and the pause (weatherUiState), so they can never run in parallel. The same 15 s guard as
-// a city change; the late answer of a timed-out attempt is dropped by the token. A thrown or timed-out attempt never replaces the
-// tiles' result. The automatic attempt is silent: it never writes the status line, never announces, and a ready tile (which has no retry
-// control, so no busy state) is not rendered at its start.
+// a city change. A thrown or timed-out attempt never replaces the tiles' result. The call to the service is not cancellable: the answer of
+// a timed-out attempt may still arrive and write the cache (docs/tab-return-refresh.md, Accepted exception 17), and the tiles do not change
+// then; the token only drops the answer of an attempt that a newer attempt, a city change or a heal has superseded. The automatic attempt
+// is silent: it never writes the status line, never announces, and a ready tile (which has no retry control, so no busy state) is not
+// rendered at its start.
 async function retryWeather({ automatic = false, ignorePause = false } = {}) {
   if (!weatherService) return;
   const shown = effectiveWeatherResult();
-  if (automatic ? !weatherRefreshDue(shown, Date.now()) : shown?.status !== "error" && shown?.status !== "stale") return;
+  const due = automatic ? weatherRefreshDue(shown, Date.now()) : shown?.status === "error" || shown?.status === "stale";
+  if (!due) return;
   const started = startWeatherRetry(weatherUi, Date.now(), { ignorePause });
   if (started === weatherUi) return;
-  // Read before the first render (a render recreates the tile): where the focus is as the attempt starts decides, for an automatic
-  // attempt, whether the `gone` outcome moves it to the hint tile.
-  const focusWasOnWeatherTile = document.activeElement instanceof Element && document.activeElement.closest(".weather-tile") !== null;
+  // Automatic only; read before the first render (a render recreates the tile): where the focus is as the attempt starts decides whether
+  // the `gone` outcome moves it to the hint tile.
+  const focusWasOnWeatherTile = automatic && document.activeElement instanceof Element && document.activeElement.closest(".weather-tile") !== null;
   weatherUi = started;
   clearTimeout(weatherRetryTimer);
   const token = ++weatherRetryToken;
@@ -3814,7 +3817,7 @@ async function retryWeather({ automatic = false, ignorePause = false } = {}) {
     if (!automatic && !desktopStatusPersistent) showDesktopStatus(""); // a failure text of an earlier attempt would now contradict the hint tile
     renderFavorites();
     const active = document.activeElement;
-    if (automatic ? focusWasOnWeatherTile : !active || active === document.body) favoritesRoot?.querySelector(HINT_TILE_SELECTOR)?.focus();
+    if ((!automatic || focusWasOnWeatherTile) && (!active || active === document.body)) favoritesRoot?.querySelector(HINT_TILE_SELECTOR)?.focus();
     return;
   }
 
