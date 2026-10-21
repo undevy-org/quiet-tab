@@ -2982,6 +2982,31 @@ describe("grid re-read on return source pins (run 50, docs/tab-return-refresh.md
   const strippedFn = async (name) => topLevelFunction(stripComments(await source()), name);
   const REREAD = ["currentDeskDecision", "refreshDeskOnReturn", "applyReadDesk", "healReadDesk", "scheduleDeferredDeskRefresh"];
 
+  // The block that opens at the `{` at index `open`, up to its matching `}` (the text of strings is skipped, so a brace in a string does not count).
+  function blockAt(code, open) {
+    assert.equal(code[open], "{", "the block opens at a brace");
+    let depth = 0;
+    for (let i = open; i < code.length; i += 1) {
+      const c = code[i];
+      if (c === '"' || c === "'" || c === "`") {
+        i += 1;
+        while (i < code.length && code[i] !== c) i += code[i] === "\\" ? 2 : 1;
+      } else if (c === "{") depth += 1;
+      else if (c === "}") {
+        depth -= 1;
+        if (depth === 0) return code.slice(open, i + 1);
+      }
+    }
+    return assert.fail("the block is balanced");
+  }
+
+  // The `finally` block of refreshDeskOnReturn: from its `{` to the matching `}`, not the rest of the function after it.
+  const finallyBlock = (re) => {
+    const at = re.indexOf("} finally {");
+    assert.notEqual(at, -1, "the function has a finally");
+    return blockAt(re, at + "} finally ".length);
+  };
+
   it("the decision is one pure function called through one helper: skip, pending, again or apply", async () => {
     const code = stripComments(await source());
     const helper = topLevelFunction(code, "currentDeskDecision");
@@ -3029,7 +3054,7 @@ describe("grid re-read on return source pins (run 50, docs/tab-return-refresh.md
     for (const m of sets) assert.match(re.slice(Math.max(0, m.index - 60), m.index), /=== "pending"\) \{\s*$/, "only under a pending decision");
     assert.equal(re.split("deskRefreshPending = false;").length - 1, 1, "cleared once, where a re-read starts");
     assert.ok(re.indexOf("deskRefreshPending = false;") > re.indexOf("deskRefreshRunning = true;"), "the start consumes it");
-    const fin = re.slice(re.indexOf("} finally {"));
+    const fin = finallyBlock(re);
     assert.match(fin, /deskRefreshRunning = false;/);
     assert.match(fin, /deskRefreshQueued = false;/);
     assert.equal(re.split("deskRefreshRunning = false;").length - 1, 1, "running is cleared in the finally only");
@@ -3046,7 +3071,7 @@ describe("grid re-read on return source pins (run 50, docs/tab-return-refresh.md
     assert.match(before, /if \(deskRefreshRunning\) \{\s*deskRefreshQueued = true;\s*return;\s*\}/);
     assert.equal(before.includes("finally"), false);
     assert.equal(re.slice(running).split("finally").length - 1, 1, "one finally, the one of the call that started");
-    assert.match(re.slice(re.indexOf("} finally {")), /if \(queued\) void refreshDeskOnReturn\(\);/, "one queued re-read starts after it, through the entry");
+    assert.match(finallyBlock(re), /if \(queued\) void refreshDeskOnReturn\(\);/, "one queued re-read starts after it, through the entry");
   });
 
   it("an again result queues the re-read, a pending one sets the flag: the result of an older read is thrown away", async () => {
@@ -3081,7 +3106,7 @@ describe("grid re-read on return source pins (run 50, docs/tab-return-refresh.md
     assert.ok(start > -1 && start < call && call < leave && leave < finish, "locked, healed, layers left, then the one render");
     assert.match(heal, /widgetsState = outcome\.state;/);
     assert.match(heal, /if \(outcome\.failed\) \{\s*showLayoutRestoreFailure\(\);\s*return;\s*\}/);
-    assert.match(heal, /focusWidgetTarget\(\[SETTINGS_TILE_ID\], \{ preventScroll: true \}\)/);
+    assert.match(heal, /if \(focused\) focusWidgetTarget\(\[SETTINGS_TILE_ID\], \{ preventScroll: true \}\);/, "focus moves to Settings only if a tile had it");
     assert.match(heal, /showDesktopStatus\(LAYOUT_RESET_MESSAGE, \{ tone: "info" \}\)/);
     assert.ok(finish < heal.indexOf("focusWidgetTarget("), "focus after the render");
   });
@@ -3091,7 +3116,14 @@ describe("grid re-read on return source pins (run 50, docs/tab-return-refresh.md
     assert.match(apply, /const focused = focusedWidgetId\(\);/);
     assert.match(apply, /const neighbours = focused && !focused\.badge \? neighborTargets\(focused\.id\) : null;/);
     assert.ok(apply.indexOf("neighborTargets(") < apply.indexOf("renderFavorites()"), "read before the render");
-    assert.match(apply, /focusWidgetTarget\(neighbours, \{ preventScroll: true \}\)/);
+    assert.match(apply, /if \(neighbours && \(!document\.activeElement \|\| document\.activeElement === document\.body\)\) focusWidgetTarget\(neighbours, \{ preventScroll: true \}\);/, "focus moves only if it was lost with the tile");
+  });
+
+  it("the re-read is silent and starts no timer: no announce, no status line, no setTimeout/setInterval (the heal may show its two messages)", async () => {
+    for (const name of ["refreshDeskOnReturn", "applyReadDesk", "currentDeskDecision", "scheduleDeferredDeskRefresh"]) {
+      assert.doesNotMatch(await strippedFn(name), /announce\(|showDesktopStatus\(|setTimeout\(|setInterval\(/, name);
+    }
+    assert.doesNotMatch(await strippedFn("healReadDesk"), /announce\(|setTimeout\(|setInterval\(/, "healReadDesk");
   });
 
   it("the re-read never calls firstScreen() itself, never writes by itself and listens to no storage change", async () => {
