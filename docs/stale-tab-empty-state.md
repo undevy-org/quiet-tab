@@ -6,6 +6,8 @@
 
 > **Changed by run 30** (`docs/stale-tab-recovery-followups.md`, `implemented`): the heal now always re-reads (also when `changed` is `false`, decision 1 and the Known gap below), runs for Hide, restore, Edit weather Save and Add link too (decision 5 below), a successful heal says `Your layout was reset in another tab.` (AS-STE-01…03, 07, 08), and a failed heal shows the persistent message `Couldn't restore your layout. Reload this tab.`, leaves edit mode and focuses `#favorites` instead of `body` (decision 3, Accepted exceptions, AS-STE-05, AS-STE-09, Review focus). The text below is the run 29 record; where it says otherwise, run 30 wins.
 
+> **Changed by run 50** (`docs/tab-return-refresh.md`): live sync (`chrome.storage.onChanged`) stays a Non-goal, but a tab that is shown again re-reads the grid once, heals a cleared storage through the same `healClearedDesk`, and leaves a `newer` or `invalid` meta alone.
+
 ## Intake log
 
 | Date | Raw note (owner) | Verdict | Reference |

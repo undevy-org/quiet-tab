@@ -6,6 +6,8 @@
 
 (миграция удалена в прогоне №40, docs/remove-migrations.md): decisions 7 and 8, `migrateWidgetsToV3`, `centerShift` and the v1/v2 readers below describe code that no longer exists; kept as history.
 
+> **Changed by run 50** (`docs/tab-return-refresh.md`): live sync (`chrome.storage.onChanged`) stays a Non-goal, but a tab that is shown again re-reads the grid once, heals a cleared storage through the same `healClearedDesk`, and leaves a `newer` or `invalid` meta alone.
+
 Decision: **do it**. Owner request 2026-10-06 (local session): the grid starts from the center of the screen by default; the starting tiles sit in the center and new cells appear from the center towards the edges. Owner answers to the UX questions (2026-10-06):
 
 - center **horizontally only**; rows still start at the top and grow down;

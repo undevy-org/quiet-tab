@@ -4,6 +4,8 @@
 
 `implemented` — revision 3 (2026-10-19, stage 2 of run 48 after the second review pass; revisions 1 and 2 earlier). Run №48 (`weather-reliability`), row Р48 of the roadmap ("Погода: надёжность", marathon `kickoffs/marathon-45-51.md`). Backlog items 10, 14, 16, 111, 112. Triage below is by reading `origin/main` at `e1e85eb` (runs 45–47 merged); the first step of the kickoff re-checks every item live on `origin/main` before stage 1.
 
+> **Changed by run 50** (`docs/tab-return-refresh.md`): the Non-goal "Re-fetching on tab visibility or `online`" is done. Accepted exception 1 (the age sentence is not refreshed while the tab stays open) now reads: it is recomputed by every render, including the render of a refresh on return. Accepted exception 8 now reads "until its next mutation, its next return when the weather is due, or reload".
+
 **Data compatibility: not required** (no-users policy, `agent-config/CLAUDE.md`). No key or field changes; the cache and the city are written exactly as today.
 
 Related: `docs/weather-tile-retry.md` (the retry tile, `retryWeather`, `withTimeout`, generation and token rules), `docs/city-modal-focus-copy.md` (persist-after-forecast, `changeCity`), `docs/network-error.md` (classified error texts), `src/newtab.js` (`startWeather`, `retryWeather`, `changeCity`, `withTimeout`, `weatherLocationError`), `src/weatherService.js` (`initialize`, `persistAfterForecast`, `persistAndFetch`, `fetchAndCache`), `src/weatherApi.js` (`ERROR_MESSAGES`, `weatherErrorMessage`), `src/weatherTiles.js` (`describeWeatherMetric`, `STALE_PREFIX`), `src/weatherPresentation.js`.

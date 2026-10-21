@@ -4,6 +4,8 @@
 
 `implemented` (spec gate and final design review passed; merged in `b0da6ef`)
 
+> **Changed by run 50** (`docs/tab-return-refresh.md`): the Non-goals "retry on `online`/`visibilitychange`/focus" and "`navigator.onLine` detection" are done for a return of the tab and for `online`: the same attempt now starts by itself when the weather is an error, is stale or is 30 minutes old or more (nothing is polled or repeated on a timer, a visible tab only, silent, no try while `navigator.onLine` is `false`, `online` ignores the 3 s pause). Timers, backoff, notifications, a force refresh and `chrome.storage.onChanged` stay Non-goals; "cross-tab live updates" stay a Non-goal except that a tab shown again re-reads the grid. AS-WR-12 ("tab B stays in its error state until its own press") holds for a tab that is not shown again.
+
 Decision: **do it, differently from the backlog wording**. Backlog item 7 ("retry on the weather tile; large; new state in `weatherUiState.js` and `weatherTiles.js`") was checked against the code and measured. It is feasible without a new architecture: the retry action already exists in the service (`weatherService.initialize()` reads the location, serves a fresh cache or fetches in parallel, falls back to a stale cache) and the page already re-renders from one `weatherResult`. What is missing is only a control, a state for it and a guard. "Large" is therefore wrong for the code and right for the surface (a tile that is read-only today becomes a control in two states, and every state needs names, focus, motion and contrast). The part of the intake that is **not** done is listed under Non-goals (timers, backoff, `online` events, notifications, refreshing a *fresh* tile).
 
 ## Intake log
