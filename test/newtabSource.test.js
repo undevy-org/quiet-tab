@@ -2942,3 +2942,38 @@ describe("typography and copy source pins (run 49)", () => {
     assert.doesNotMatch(code, /tooltipLabel|data-tooltip-label/);
   });
 });
+
+describe("tab return listeners (run 50, docs/tab-return-refresh.md decision 1)", () => {
+  it("exactly one visibilitychange and one online listener in src/, both in newtab.js, registered once", async () => {
+    const files = await allSrc();
+    const count = (re) => files.filter(({ name }) => name.endsWith(".js")).map(({ name, text }) => [name, (stripComments(text).match(re) ?? []).length]).filter(([, n]) => n > 0);
+    assert.deepEqual(count(/addEventListener\("visibilitychange"/g), [["newtab.js", 1]]);
+    assert.deepEqual(count(/addEventListener\("online"/g), [["newtab.js", 1]]);
+    const code = stripComments(await source());
+    assert.match(code, /document\.addEventListener\("visibilitychange", onTabVisibilityChange\);/);
+    assert.match(code, /window\.addEventListener\("online", onBrowserOnline\);/);
+  });
+
+  it("no timers, no storage listener, no pageshow or focus trigger, and the visibility is read only from document.visibilityState", async () => {
+    for (const { name, text } of await allSrc()) {
+      if (!name.endsWith(".js")) continue;
+      const code = stripComments(text);
+      assert.doesNotMatch(code, /setInterval\(/, name);
+      assert.doesNotMatch(code, /onChanged/, name);
+      assert.doesNotMatch(code, /"pageshow"/, name);
+      assert.doesNotMatch(code, /addEventListener\("focus"/, name);
+      assert.doesNotMatch(code, /document\.hidden/, name);
+    }
+  });
+
+  it("both handlers return at once unless document.visibilityState is visible; a return does not try offline, online ignores the pause", async () => {
+    const code = stripComments(await source());
+    const tab = topLevelFunction(code, "onTabVisibilityChange");
+    const online = topLevelFunction(code, "onBrowserOnline");
+    assert.match(tab, /if \(document\.visibilityState !== "visible"\) return;/);
+    assert.match(online, /if \(document\.visibilityState !== "visible"\) return;/);
+    assert.match(tab, /if \(navigator\.onLine !== false\) void retryWeather\(\{ automatic: true \}\);/);
+    assert.match(online, /void retryWeather\(\{ automatic: true, ignorePause: true \}\);/);
+    assert.doesNotMatch(online, /navigator\.onLine/);
+  });
+});

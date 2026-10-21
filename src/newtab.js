@@ -67,6 +67,7 @@ import {
   resetWeatherRetry,
   showSuggestions,
   startWeatherRetry,
+  weatherRefreshDue,
   weatherRetryOutcome,
   weatherRetryPhase
 } from "./weatherUiState.js";
@@ -3636,6 +3637,9 @@ if (favoritesRoot) {
     cancelDrag();
     suppressDragClick = false;
   });
+  // A tab shown again and the network coming back refresh due weather (retryWeather, automatic); registered once, no timers.
+  document.addEventListener("visibilitychange", onTabVisibilityChange);
+  window.addEventListener("online", onBrowserOnline);
   // Every new press starts clean, so a flag stranded by a lost release can never swallow the next click.
   window.addEventListener(
     "pointerdown",
@@ -3764,22 +3768,30 @@ async function startWeather() {
   renderFavorites();
 }
 
-// Retry from an error or stale tile (normal mode): ONE attempt for every tile, through the unchanged service
-// (`initialize()` re-reads the city, serves a cache another tab refreshed, or fetches). Presses are ignored while it runs
-// and for 3 s after it failed (weatherUiState). The same 15 s guard as a city change; the late answer of a timed-out
-// attempt is dropped by the token. A thrown or timed-out attempt never replaces the tiles' result.
-async function retryWeather() {
+// One attempt for every tile, through the unchanged service (`initialize()` re-reads the city, serves a cache another tab refreshed,
+// or fetches). Two ways in. Manual: a press on an error or stale tile (normal mode), `retryWeather()`. Automatic
+// (docs/tab-return-refresh.md): the tab became visible again or the browser reported `online`; it starts only if the shown weather is
+// due (`weatherRefreshDue`: an error, a stale result, or a ready one 30 minutes old or more) and `ignorePause` lets `online` start inside
+// the 3 s pause. Both share the in-flight guard and the pause (weatherUiState), so they can never run in parallel. The same 15 s guard as
+// a city change; the late answer of a timed-out attempt is dropped by the token. A thrown or timed-out attempt never replaces the
+// tiles' result. The automatic attempt is silent: it never writes the status line, never announces, and a ready tile (which has no retry
+// control, so no busy state) is not rendered at its start.
+async function retryWeather({ automatic = false, ignorePause = false } = {}) {
   if (!weatherService) return;
   const shown = effectiveWeatherResult();
-  if (shown?.status !== "error" && shown?.status !== "stale") return;
-  const started = startWeatherRetry(weatherUi, Date.now());
+  if (automatic ? !weatherRefreshDue(shown, Date.now()) : shown?.status !== "error" && shown?.status !== "stale") return;
+  const started = startWeatherRetry(weatherUi, Date.now(), { ignorePause });
   if (started === weatherUi) return;
+  // Read before the first render (a render recreates the tile): where the focus is as the attempt starts decides, for an automatic
+  // attempt, whether the `gone` outcome moves it to the hint tile.
+  const focusWasOnWeatherTile = document.activeElement instanceof Element && document.activeElement.closest(".weather-tile") !== null;
   weatherUi = started;
   clearTimeout(weatherRetryTimer);
   const token = ++weatherRetryToken;
   weatherGeneration += 1; // supersedes a boot load that is still in flight (a failed city read leaves one running)
   const generation = weatherGeneration;
-  renderFavorites();
+  const silentStart = automatic && shown?.status === "ready";
+  if (!silentStart) renderFavorites();
 
   let result = null;
   let outcome;
@@ -3799,18 +3811,20 @@ async function retryWeather() {
     weatherLocation = null;
     weatherLocationError = "";
     clearTimeout(weatherRetryTimer);
-    if (!desktopStatusPersistent) showDesktopStatus(""); // a failure text of an earlier attempt would now contradict the hint tile
+    if (!automatic && !desktopStatusPersistent) showDesktopStatus(""); // a failure text of an earlier attempt would now contradict the hint tile
     renderFavorites();
     const active = document.activeElement;
-    if (!active || active === document.body) favoritesRoot?.querySelector(HINT_TILE_SELECTOR)?.focus();
+    if (automatic ? focusWasOnWeatherTile : !active || active === document.body) favoritesRoot?.querySelector(HINT_TILE_SELECTOR)?.focus();
     return;
   }
 
   const failed = typeof outcome === "object";
   weatherUi = finishWeatherRetry(weatherUi, Date.now(), !failed);
-  // The service's own answer replaces the result, except that a failed read never downgrades a tile that still has data.
-  const downgrade = failed && result?.status === "error" && weatherResult?.status === "stale";
-  if (result && !downgrade) {
+  // The service's own answer replaces the result, except that a failed read never downgrades a tile that still has data
+  // (a stale one, or a ready one that an automatic attempt could not refresh).
+  const downgrade = failed && result?.status === "error" && weatherResult?.data;
+  const replaced = Boolean(result) && !downgrade;
+  if (replaced) {
     weatherResult = result;
     if (result.location) {
       weatherLocation = result.location;
@@ -3818,21 +3832,37 @@ async function retryWeather() {
     }
   }
   if (!failed) weatherLocationError = "";
-  renderFavorites();
+  if (!silentStart || replaced) renderFavorites(); // a ready tile that an attempt did not change is not redrawn
 
   if (failed) {
-    if (desktopStatusPersistent) {
-      announce(outcome.failed); // the ensure message keeps the status line; the failure is spoken once
-    } else {
-      showDesktopStatus(""); // clear first so an identical text is announced again
-      showDesktopStatus(outcome.failed);
+    if (!automatic) {
+      if (desktopStatusPersistent) {
+        announce(outcome.failed); // the ensure message keeps the status line; the failure is spoken once
+      } else {
+        showDesktopStatus(""); // clear first so an identical text is announced again
+        showDesktopStatus(outcome.failed);
+      }
     }
     clearTimeout(weatherRetryTimer);
     weatherRetryTimer = setTimeout(endWeatherRetryCooldown, Math.max(0, weatherUi.retry.availableAt - Date.now()) + 10);
-  } else {
+  } else if (!automatic) {
     if (!desktopStatusPersistent) showDesktopStatus(""); // an earlier failure text would now contradict the tiles
     announce("Weather updated");
   }
+}
+
+// The two triggers of an automatic attempt (docs/tab-return-refresh.md decisions 1 and 4). Both return at once unless the tab is visible:
+// a change to hidden does nothing, and a hidden tab starts no request. A return does not try while the browser says it is offline (the
+// `online` event comes later); `online` ignores the 3 s pause after a failed attempt (the network has just come back). The visibility is
+// read only from document.visibilityState; there are no timers.
+function onTabVisibilityChange() {
+  if (document.visibilityState !== "visible") return;
+  if (navigator.onLine !== false) void retryWeather({ automatic: true });
+}
+
+function onBrowserOnline() {
+  if (document.visibilityState !== "visible") return;
+  void retryWeather({ automatic: true, ignorePause: true });
 }
 
 // The end of the pause is silent: the existing retry nodes are updated in place (no re-render, so the focused node
