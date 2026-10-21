@@ -23,11 +23,14 @@ import {
   escapeLayer,
   exitEditMode,
   closeMenu,
+  deskRefreshBlocker,
+  deskRefreshDecision,
   openDialog,
   openMenu,
   startDrag,
   updateDrag
 } from "./desktopUiState.js";
+import { isSameValue } from "./storeUtils.js";
 import { createWidgetsService } from "./widgetsService.js";
 import {
   WIDGETS_META_KEY,
@@ -289,6 +292,12 @@ let desktopUi = createDesktopUiState();
 let favoritesError = "";
 let favoritesBusy = false;
 let favoritesGeneration = 0;
+// The grid re-read on a return of the tab (docs/tab-return-refresh.md decision 5): a return that came while a layer was up (kept for the first
+// moment after the last layer), a re-read in flight and one queued behind it, and the one animation frame that starts the pending one.
+let deskRefreshPending = false;
+let deskRefreshRunning = false;
+let deskRefreshQueued = false;
+let deskRefreshFrame = 0;
 // Selectors to try, in order, once the next non-busy render has finished, so keyboard focus
 // never falls back to <body> after a re-render replaced the control that had it.
 let pendingFocus = null;
@@ -1543,6 +1552,7 @@ function hideCityModal() {
   }
   cityModalOpener = null;
   cityModalHintMetricId = null;
+  scheduleDeferredDeskRefresh();
 }
 
 // Success of a change-mode city request: the caller, not hideCityModal, picks the focus target and speaks.
@@ -1921,6 +1931,7 @@ function hideOnboardingWizard({ completed = false } = {}) {
     pendingFocus.preventScroll = true;
     applyPendingFocus();
   }
+  scheduleDeferredDeskRefresh();
 }
 
 // The heal of a cleared storage that Finish performed (kept until the wizard closes: the first Finish may stop on the completion flag).
@@ -2492,6 +2503,7 @@ function closeDesktopDialog({ restoreFocusTo = desktopDialogOpener, reveal = fal
   desktopUi = closeDialog(desktopUi);
   desktopDialogOpener = null;
   if (restoreFocusTo) focusWidgetTarget([restoreFocusTo, fallback].flat(), { preventScroll: true, reveal });
+  scheduleDeferredDeskRefresh();
 }
 
 // Focuses the first present, enabled target: a widget id string (its tile) or { id, badge } (the tile or its − badge).
@@ -3456,6 +3468,7 @@ function setEditMode(on) {
 function renderFavorites() {
   renderDesktop();
   applyPendingFocus();
+  scheduleDeferredDeskRefresh();
 }
 function setFavoritesBusy(nextBusy) {
   favoritesBusy = nextBusy;
@@ -3861,11 +3874,123 @@ async function retryWeather({ automatic = false, ignorePause = false } = {}) {
 function onTabVisibilityChange() {
   if (document.visibilityState !== "visible") return;
   if (navigator.onLine !== false) void retryWeather({ automatic: true });
+  void refreshDeskOnReturn();
 }
 
 function onBrowserOnline() {
   if (document.visibilityState !== "visible") return;
   void retryWeather({ automatic: true, ignorePause: true });
+}
+
+// ---- the grid re-read on a return of the tab (docs/tab-return-refresh.md decisions 5 to 7) ------------------------------------------
+// The one pure decision (desktopUiState.deskRefreshDecision) for the state this tab shows now: skip, pending, again or apply.
+function currentDeskDecision(startedFrom) {
+  return deskRefreshDecision({
+    hasState: Boolean(widgetsService) && widgetsState !== null,
+    locked: widgetsNewer,
+    drawn: renderedColumns > 0,
+    blocker: deskRefreshBlocker(desktopUi, { cityModal: Boolean(cityModalRoot), onboardingWizard: Boolean(onboardingWizardRoot), busy: favoritesBusy, dragSettling }),
+    startedFrom,
+    current: widgetsState
+  });
+}
+
+// Reads the widgets state from storage again and shows it, unless a layer is up (then it waits, see scheduleDeferredDeskRefresh). One re-read
+// at a time; a return that comes while one runs makes exactly one more after it. The reads take no lock and no timer; a failed read of any kind
+// (a rejection, or a synchronous throw of a lost extension context) ends it silently; a `newer` or `invalid` meta is left alone; an equal state
+// draws nothing; a state without Settings (another tab cleared the storage) is healed under the busy lock, which is the only write it makes.
+async function refreshDeskOnReturn() {
+  const startedFrom = widgetsState;
+  const entry = currentDeskDecision(startedFrom);
+  if (entry === "skip") return;
+  if (entry === "pending") {
+    deskRefreshPending = true;
+    return;
+  }
+  if (deskRefreshRunning) {
+    deskRefreshQueued = true;
+    return;
+  }
+  deskRefreshRunning = true;
+  deskRefreshPending = false; // the start consumes the pending flag; the decision after the reads may set it again
+  try {
+    let rawMeta;
+    try {
+      rawMeta = await syncStorageArea.get(WIDGETS_META_KEY);
+    } catch {
+      return;
+    }
+    const kind = inspectWidgetsMeta(rawMeta);
+    if (kind === "newer" || kind === "invalid") return;
+    let fresh;
+    try {
+      fresh = await widgetsService.getState();
+    } catch {
+      return;
+    }
+    // A layer that the user opened during a slow read wins, and a state that this tab changed meanwhile is newer than the read: either way the
+    // result is thrown away (nothing was written, so nothing is lost).
+    const next = currentDeskDecision(startedFrom);
+    if (next === "pending") {
+      deskRefreshPending = true;
+      return;
+    }
+    if (next === "again") {
+      deskRefreshQueued = true;
+      return;
+    }
+    if (next !== "apply") return;
+    if (fresh.items.some((item) => item.id === SETTINGS_TILE_ID)) applyReadDesk(fresh);
+    else await healReadDesk(fresh);
+  } finally {
+    deskRefreshRunning = false;
+    const queued = deskRefreshQueued;
+    deskRefreshQueued = false;
+    if (queued) void refreshDeskOnReturn();
+  }
+}
+
+// A healthy state, synchronously (nothing may change between the decision and the render): equal means nothing happens, no DOM change at all;
+// a different one is the one render of the stored grids for the window's size now. If focus was on a tile that the new state no longer has, it
+// goes to its neighbour by the rule of a deleted tile, read from the old DOM before the render, without scrolling; focus anywhere else stays.
+function applyReadDesk(fresh) {
+  if (isSameValue(fresh, widgetsState)) return;
+  const focused = focusedWidgetId();
+  const neighbours = focused && !focused.badge ? neighborTargets(focused.id) : null;
+  widgetsState = fresh;
+  renderFavorites();
+  if (neighbours && (!document.activeElement || document.activeElement === document.body)) focusWidgetTarget(neighbours, { preventScroll: true });
+}
+
+// A state without Settings: the heal of recoverFromGoneLink, under the busy lock, started only after the decision said apply. The messages are
+// the two that exist (the neutral reset notice, the persistent failed-heal chip). A tile that had focus is gone with the cleared storage: focus
+// goes to Settings, forced (a neighbour list read from the old DOM would find a just-created tile first).
+async function healReadDesk(state) {
+  const focused = focusedWidgetId();
+  const generation = startFavoritesAction({ render: false });
+  const outcome = await healClearedDesk(state);
+  if (outcome.failed) leaveEditModeAfterFailedHeal();
+  finishFavoritesAction(generation, () => {
+    widgetsState = outcome.state;
+  });
+  if (outcome.failed) {
+    showLayoutRestoreFailure();
+    return;
+  }
+  if (focused) focusWidgetTarget([SETTINGS_TILE_ID], { preventScroll: true });
+  if (outcome.healed) showDesktopStatus(LAYOUT_RESET_MESSAGE, { tone: "info" });
+}
+
+// A return that came while a layer was up is kept; the end of the last layer (a render, or a close that renders nothing) calls this, and one
+// animation frame later, if the tab is visible, the pending re-read starts through the common entry (which looks at the layers again). A render
+// or a close with nothing pending costs nothing; a hidden tab keeps the flag for the next return.
+function scheduleDeferredDeskRefresh() {
+  if (!deskRefreshPending || deskRefreshFrame) return;
+  deskRefreshFrame = requestAnimationFrame(() => {
+    deskRefreshFrame = 0;
+    if (!deskRefreshPending || document.visibilityState !== "visible") return;
+    void refreshDeskOnReturn();
+  });
 }
 
 // The end of the pause is silent: the existing retry nodes are updated in place (no re-render, so the focused node

@@ -146,7 +146,7 @@ describe("newtab favorites source", () => {
 
   it("drives the desktop UI from the pure desktopUiState module, not a mode string", async () => {
     const code = await source();
-    assert.match(code, /import \{\s*closeDialog,\s*createDesktopUiState,\s*endDrag,\s*enterEditMode,\s*escapeLayer,\s*exitEditMode,\s*closeMenu,\s*openDialog,\s*openMenu,\s*startDrag,\s*updateDrag\s*\} from "\.\/desktopUiState\.js";/);
+    assert.match(code, /import \{\s*closeDialog,\s*createDesktopUiState,\s*endDrag,\s*enterEditMode,\s*escapeLayer,\s*exitEditMode,\s*closeMenu,\s*deskRefreshBlocker,\s*deskRefreshDecision,\s*openDialog,\s*openMenu,\s*startDrag,\s*updateDrag\s*\} from "\.\/desktopUiState\.js";/); // run 50: the two re-read functions join the list
     assert.match(code, /let desktopUi = createDesktopUiState\(\);/);
     assert.doesNotMatch(code, /favoritesMode/);
     assert.doesNotMatch(code, /favoritesUiState\.js/);
@@ -2975,5 +2975,162 @@ describe("tab return listeners (run 50, docs/tab-return-refresh.md decision 1)",
     assert.match(tab, /if \(navigator\.onLine !== false\) void retryWeather\(\{ automatic: true \}\);/);
     assert.match(online, /void retryWeather\(\{ automatic: true, ignorePause: true \}\);/);
     assert.doesNotMatch(online, /navigator\.onLine/);
+  });
+});
+
+describe("grid re-read on return source pins (run 50, docs/tab-return-refresh.md decisions 5 to 7)", () => {
+  const strippedFn = async (name) => topLevelFunction(stripComments(await source()), name);
+  const REREAD = ["currentDeskDecision", "refreshDeskOnReturn", "applyReadDesk", "healReadDesk", "scheduleDeferredDeskRefresh"];
+
+  it("the decision is one pure function called through one helper: skip, pending, again or apply", async () => {
+    const code = stripComments(await source());
+    const helper = topLevelFunction(code, "currentDeskDecision");
+    assert.match(helper, /return deskRefreshDecision\(\{/);
+    assert.match(helper, /hasState: Boolean\(widgetsService\) && widgetsState !== null,/);
+    assert.match(helper, /locked: widgetsNewer,/);
+    assert.match(helper, /drawn: renderedColumns > 0,/);
+    assert.match(helper, /blocker: deskRefreshBlocker\(desktopUi, \{ cityModal: Boolean\(cityModalRoot\), onboardingWizard: Boolean\(onboardingWizardRoot\), busy: favoritesBusy, dragSettling \}\),/);
+    assert.match(helper, /startedFrom,/);
+    assert.match(helper, /current: widgetsState/);
+    assert.match(code, /import \{ isSameValue \} from "\.\/storeUtils\.js";/);
+  });
+
+  it("refreshDeskOnReturn captures startedFrom before its first await, decides at entry and again after the reads", async () => {
+    const re = await strippedFn("refreshDeskOnReturn");
+    const captured = re.indexOf("const startedFrom = widgetsState;");
+    assert.ok(captured > -1 && captured < re.indexOf("await "), "startedFrom is captured before the first await");
+    const calls = [...re.matchAll(/currentDeskDecision\(startedFrom\)/g)].map((m) => m.index);
+    assert.equal(calls.length, 2, "at entry and after the reads");
+    assert.ok(calls[0] < re.indexOf("await "), "the first decision is before any await");
+    assert.ok(calls[1] > re.indexOf("await widgetsService.getState()"), "the second decision is after the reads");
+  });
+
+  it("the raw meta is inspected before getState(); a newer or invalid meta stops the re-read with nothing written, drawn or said", async () => {
+    const re = await strippedFn("refreshDeskOnReturn");
+    const raw = re.indexOf("await syncStorageArea.get(WIDGETS_META_KEY)");
+    const kind = re.indexOf("inspectWidgetsMeta(rawMeta)");
+    const state = re.indexOf("widgetsService.getState()");
+    assert.ok(raw > -1 && kind > raw && state > kind, "meta read, inspected, then getState()");
+    assert.match(re, /if \(kind === "newer" \|\| kind === "invalid"\) return;/);
+    assert.ok(re.indexOf('if (kind === "newer"') < state, "the stop comes before getState()");
+  });
+
+  it("a failed read ends silently: each read is in its own try, the catch returns and says nothing", async () => {
+    const re = await strippedFn("refreshDeskOnReturn");
+    assert.match(re, /try \{\s*rawMeta = await syncStorageArea\.get\(WIDGETS_META_KEY\);\s*\} catch \{\s*return;\s*\}/);
+    assert.match(re, /try \{\s*fresh = await widgetsService\.getState\(\);\s*\} catch \{\s*return;\s*\}/);
+    assert.doesNotMatch(re, /showDesktopStatus\(|announce\(|showLayoutRestoreFailure\(/);
+  });
+
+  it("the flags: pending is set only where the decision says pending and consumed by the start; running and queued are cleared in a finally", async () => {
+    const re = await strippedFn("refreshDeskOnReturn");
+    const sets = [...re.matchAll(/deskRefreshPending = true;/g)];
+    assert.equal(sets.length, 2, "at entry and after the reads");
+    for (const m of sets) assert.match(re.slice(Math.max(0, m.index - 60), m.index), /=== "pending"\) \{\s*$/, "only under a pending decision");
+    assert.equal(re.split("deskRefreshPending = false;").length - 1, 1, "cleared once, where a re-read starts");
+    assert.ok(re.indexOf("deskRefreshPending = false;") > re.indexOf("deskRefreshRunning = true;"), "the start consumes it");
+    const fin = re.slice(re.indexOf("} finally {"));
+    assert.match(fin, /deskRefreshRunning = false;/);
+    assert.match(fin, /deskRefreshQueued = false;/);
+    assert.equal(re.split("deskRefreshRunning = false;").length - 1, 1, "running is cleared in the finally only");
+    assert.equal(re.split("deskRefreshQueued = false;").length - 1, 1, "queued is cleared in the finally only");
+  });
+
+  it("only the call that set running clears it: the entry stops (skip, pending, a queued call) come before the try", async () => {
+    const re = await strippedFn("refreshDeskOnReturn");
+    const running = re.indexOf("deskRefreshRunning = true;");
+    const tryAt = re.indexOf("try {", running);
+    assert.ok(running > -1 && tryAt > running, "running is set, then the try opens");
+    const before = re.slice(0, running);
+    assert.match(before, /if \(entry === "skip"\) return;/);
+    assert.match(before, /if \(deskRefreshRunning\) \{\s*deskRefreshQueued = true;\s*return;\s*\}/);
+    assert.equal(before.includes("finally"), false);
+    assert.equal(re.slice(running).split("finally").length - 1, 1, "one finally, the one of the call that started");
+    assert.match(re.slice(re.indexOf("} finally {")), /if \(queued\) void refreshDeskOnReturn\(\);/, "one queued re-read starts after it, through the entry");
+  });
+
+  it("an again result queues the re-read, a pending one sets the flag: the result of an older read is thrown away", async () => {
+    const re = await strippedFn("refreshDeskOnReturn");
+    assert.match(re, /if \(next === "again"\) \{\s*deskRefreshQueued = true;\s*return;\s*\}/);
+    assert.match(re, /if \(next === "pending"\) \{\s*deskRefreshPending = true;\s*return;\s*\}/);
+    assert.match(re, /if \(next !== "apply"\) return;/);
+  });
+
+  it("no await between the apply decision and the render of a healthy state; the heal runs only after it, once", async () => {
+    const re = await strippedFn("refreshDeskOnReturn");
+    const second = re.lastIndexOf("currentDeskDecision(startedFrom)");
+    const healthy = re.indexOf("applyReadDesk(fresh)");
+    const heal = re.indexOf("await healReadDesk(fresh)");
+    assert.ok(second > -1 && healthy > second && heal > healthy, "decision, then the healthy apply, then the heal");
+    assert.equal(re.slice(second, healthy).includes("await"), false, "no await between the apply decision and the apply of a healthy state");
+    assert.equal(re.split("healReadDesk(").length - 1, 1, "one heal call");
+    const apply = await strippedFn("applyReadDesk");
+    assert.equal(apply.includes("await"), false);
+    assert.match(apply, /if \(isSameValue\(fresh, widgetsState\)\) return;/);
+    assert.ok(apply.indexOf("isSameValue(") < apply.indexOf("renderFavorites()"), "an equal state returns before any render");
+    assert.match(apply, /widgetsState = fresh;\s*renderFavorites\(\);/);
+  });
+
+  it("the heal is the existing helper, under the busy lock, after the decision; focus goes to Settings; the messages are the existing two", async () => {
+    const heal = await strippedFn("healReadDesk");
+    assert.equal(heal.split("healClearedDesk(").length - 1, 1);
+    const start = heal.indexOf("startFavoritesAction({ render: false })");
+    const call = heal.indexOf("healClearedDesk(");
+    const leave = heal.indexOf("leaveEditModeAfterFailedHeal()");
+    const finish = heal.indexOf("finishFavoritesAction(generation");
+    assert.ok(start > -1 && start < call && call < leave && leave < finish, "locked, healed, layers left, then the one render");
+    assert.match(heal, /widgetsState = outcome\.state;/);
+    assert.match(heal, /if \(outcome\.failed\) \{\s*showLayoutRestoreFailure\(\);\s*return;\s*\}/);
+    assert.match(heal, /focusWidgetTarget\(\[SETTINGS_TILE_ID\], \{ preventScroll: true \}\)/);
+    assert.match(heal, /showDesktopStatus\(LAYOUT_RESET_MESSAGE, \{ tone: "info" \}\)/);
+    assert.ok(finish < heal.indexOf("focusWidgetTarget("), "focus after the render");
+  });
+
+  it("focus after an apply that removed the focused tile: the neighbour by the deleted-tile rule, read from the old DOM, without scrolling", async () => {
+    const apply = await strippedFn("applyReadDesk");
+    assert.match(apply, /const focused = focusedWidgetId\(\);/);
+    assert.match(apply, /const neighbours = focused && !focused\.badge \? neighborTargets\(focused\.id\) : null;/);
+    assert.ok(apply.indexOf("neighborTargets(") < apply.indexOf("renderFavorites()"), "read before the render");
+    assert.match(apply, /focusWidgetTarget\(neighbours, \{ preventScroll: true \}\)/);
+  });
+
+  it("the re-read never calls firstScreen() itself, never writes by itself and listens to no storage change", async () => {
+    for (const name of ["refreshDeskOnReturn", "applyReadDesk", "healReadDesk", "currentDeskDecision"]) {
+      const text = await strippedFn(name);
+      assert.doesNotMatch(text, /firstScreen\(/, name);
+      assert.doesNotMatch(text, /ensureWidgetsLayout\(|updateFavorite\(|addFavorite\(|deleteFavorite\(|moveWidget\(|setState\(|storage\.sync\.set|syncStorageArea\.set/, name);
+    }
+  });
+
+  it("scheduleDeferredDeskRefresh plans one frame at most, only for a standing flag; the frame looks at the flag and at the visibility", async () => {
+    const sch = await strippedFn("scheduleDeferredDeskRefresh");
+    assert.match(sch, /if \(!deskRefreshPending \|\| deskRefreshFrame\) return;/);
+    assert.equal(sch.split("requestAnimationFrame(").length - 1, 1);
+    assert.match(sch, /deskRefreshFrame = requestAnimationFrame\(\(\) => \{\s*deskRefreshFrame = 0;\s*if \(!deskRefreshPending \|\| document\.visibilityState !== "visible"\) return;\s*void refreshDeskOnReturn\(\);\s*\}\);/);
+    assert.ok(sch.indexOf("if (!deskRefreshPending || deskRefreshFrame) return;") < sch.indexOf("requestAnimationFrame("), "returns at once when nothing is pending");
+  });
+
+  it("scheduleDeferredDeskRefresh is called from renderFavorites and from the three closes that render nothing", async () => {
+    const code = stripComments(await source());
+    for (const name of ["renderFavorites", "closeDesktopDialog", "hideCityModal", "hideOnboardingWizard"]) {
+      assert.equal(topLevelFunction(code, name).split("scheduleDeferredDeskRefresh();").length - 1, 1, name);
+    }
+    assert.equal(code.split("scheduleDeferredDeskRefresh(").length - 1, 5, "the definition and those four calls, nowhere else");
+  });
+
+  it("the tab handler starts the weather attempt and the grid re-read; the hidden tab does neither", async () => {
+    const tab = topLevelFunction(stripComments(await source()), "onTabVisibilityChange");
+    assert.ok(tab.indexOf('document.visibilityState !== "visible"') < tab.indexOf("void refreshDeskOnReturn();"));
+    assert.match(tab, /void refreshDeskOnReturn\(\);/);
+    assert.equal(topLevelFunction(stripComments(await source()), "onBrowserOnline").includes("refreshDeskOnReturn"), false, "online refreshes the weather only");
+  });
+
+  it("the new functions exist and nothing else in src/ names them", async () => {
+    const code = stripComments(await source());
+    for (const name of REREAD) topLevelFunction(code, name);
+    for (const { name, text } of await allSrc()) {
+      if (name === "newtab.js" || !name.endsWith(".js")) continue;
+      assert.doesNotMatch(stripComments(text), /refreshDeskOnReturn|scheduleDeferredDeskRefresh/, name);
+    }
   });
 });
