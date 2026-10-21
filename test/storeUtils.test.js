@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { describe, it } from "node:test";
 import { isSameValue } from "../src/storeUtils.js";
 
@@ -111,6 +112,91 @@ describe("isSameValue (the semantics of a JSON round trip)", () => {
     assert.equal(isSameValue(cycle, cycle), false);
     assert.equal(isSameValue({ n: 1n }, { n: 1n }), false);
     assert.equal(isSameValue({ n: 1n }, { n: 1 }), false);
+  });
+
+  it("a function or a symbol at the top level is undefined (JSON drops it), so it equals undefined and nothing else", () => {
+    assert.equal(isSameValue(() => 1, undefined), true);
+    assert.equal(isSameValue(Symbol("s"), undefined), true);
+    assert.equal(isSameValue(() => 1, null), false);
+    assert.equal(isSameValue(Symbol("s"), {}), false);
+    assert.equal(isSameValue({ f: () => 1 }, {}), true, "inside an object it is dropped");
+    assert.equal(isSameValue([() => 1], [null]), true, "inside an array it is null");
+  });
+
+  it("a nesting so deep that the comparison itself overflows the stack never throws, and two such nestings that differ are not the same", () => {
+    const nest = (levels, leaf = 1) => {
+      let value = leaf;
+      for (let i = 0; i < levels; i += 1) value = [value];
+      return value;
+    };
+    // The depth at which JSON or the comparison runs out of stack differs between engines and with the state of the JIT, so a series of
+    // depths from shallow to far past the limit (6000 levels is past JSON itself on Node 20) is tried; none of them may throw, and a
+    // different leaf is never the same, however it ends. What equal nestings answer past the limit is not pinned: it depends on the engine.
+    for (let levels = 1000; levels <= 9000; levels += 250) {
+      assert.doesNotThrow(() => isSameValue(nest(levels), nest(levels)), `${levels} levels`);
+      assert.equal(isSameValue(nest(levels, 1), nest(levels, 2)), false, `${levels} levels with a different leaf`);
+    }
+    assert.equal(isSameValue(nest(9000), nest(1)), false);
+    assert.equal(isSameValue(nest(2), nest(2)), true, "a shallow nesting is still compared");
+    assert.equal(isSameValue(nest(2, 1), nest(2, 2)), false);
+  });
+
+  it("when the stack runs out inside the comparison itself (not in JSON), it still does not throw and says not the same", () => {
+    // Runs in a fresh process: whether the stack runs out first in JSON or in the comparison depends on how warm the JIT is, and the other
+    // cases of this file have already warmed it. The function is serialized, so it uses nothing from this file.
+    const sweep = async (moduleUrl) => {
+      const { isSameValue } = await import(moduleUrl);
+      const nest = (levels) => {
+        let value = 1;
+        for (let i = 0; i < levels; i += 1) value = [value];
+        return value;
+      };
+      const a = nest(300);
+      const b = nest(300);
+      const room = (frames) => (frames === 0 ? 0 : 1 + room(frames - 1)); // throws a RangeError when `frames` frames do not fit
+      let escaped = 0; // errors that came out of isSameValue
+      let gaveUp = 0; // equal values answered "not the same": the stack ran out inside the call and it was caught
+      let enough = 0; // equal values answered "the same": the stack had room
+      // Overflow the stack on purpose, then unwind it one frame at a time: the catch of each frame runs with a little more room than the one
+      // before, so one of them runs isSameValue with just too little room for the recursion of the comparison, wherever it is cut off. A call
+      // that cannot even start (no room for a few hundred frames) is not counted: only an error that escapes from inside the call is.
+      const unwind = (depth) => {
+        try {
+          unwind(depth + 1);
+        } catch (error) {
+          let started = true;
+          try {
+            room(300);
+          } catch {
+            started = false;
+          }
+          if (started && enough === 0) {
+            try {
+              if (isSameValue(a, b)) enough += 1;
+              else gaveUp += 1;
+            } catch {
+              escaped += 1;
+            }
+          }
+          throw error;
+        }
+      };
+      try {
+        unwind(0);
+      } catch {
+        // the overflow that was provoked
+      }
+      console.log(JSON.stringify({ escaped, gaveUp, enough }));
+    };
+    const env = { ...process.env };
+    delete env.NODE_TEST_CONTEXT;
+    const url = new URL("../src/storeUtils.js", import.meta.url).href;
+    const run = spawnSync(process.execPath, ["--input-type=module", "-e", `(${sweep.toString()})(${JSON.stringify(url)});`], { encoding: "utf8", env });
+    assert.equal(run.status, 0, run.stderr);
+    const seen = JSON.parse(run.stdout.trim().split("\n").at(-1));
+    assert.equal(seen.escaped, 0, "no error escapes from isSameValue");
+    assert.ok(seen.gaveUp > 0, "the sweep reached the point where the comparison runs out of stack");
+    assert.ok(seen.enough > 0, "and past it, where the same values are the same");
   });
 
   it("does not change its inputs", () => {
