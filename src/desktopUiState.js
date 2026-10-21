@@ -71,7 +71,8 @@ export function escapeLayer(
 // ---- the grid re-read on a return of the tab (docs/tab-return-refresh.md decisions 5 and 6) ------------------------------------------------
 // The name of the first layer that owns the screen while it is up, or null: a drag (started, or settling after the drop), an open dialog,
 // the city modal, the first-run wizard, the Add menu, edit mode, a write in flight. The grid must not change under a layer. The order is the
-// order of the list; a drag and the Add menu exist only inside edit mode, so edit mode follows them. `flags` come from the DOM-owning caller.
+// order of the list; a drag and the Add menu exist only inside edit mode, so edit mode follows them. `state` is the desktop UI state; the
+// options (`cityModal`, `onboardingWizard`, `busy`, `dragSettling`) are booleans that the DOM-owning caller (`newtab.js`) reads.
 export function deskRefreshBlocker(state, { cityModal = false, onboardingWizard = false, busy = false, dragSettling = false } = {}) {
   if (state.drag || dragSettling) return "drag";
   if (state.dialog) return "dialog";
@@ -93,4 +94,3 @@ export function deskRefreshDecision({ hasState, locked, drawn, blocker, startedF
   if (current !== startedFrom) return "again";
   return "apply";
 }
-

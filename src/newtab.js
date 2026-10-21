@@ -3650,7 +3650,8 @@ if (favoritesRoot) {
     cancelDrag();
     suppressDragClick = false;
   });
-  // A tab shown again and the network coming back refresh due weather (retryWeather, automatic); registered once, no timers.
+  // A tab shown again refreshes due weather (retryWeather, automatic) and re-reads the grid (refreshDeskOnReturn); `online` refreshes the
+  // weather only; registered once, no timers.
   document.addEventListener("visibilitychange", onTabVisibilityChange);
   window.addEventListener("online", onBrowserOnline);
   // Every new press starts clean, so a flag stranded by a lost release can never swallow the next click.
@@ -3870,7 +3871,7 @@ async function retryWeather({ automatic = false, ignorePause = false } = {}) {
 // The two triggers of an automatic attempt (docs/tab-return-refresh.md decisions 1 and 4). Both return at once unless the tab is visible:
 // a change to hidden does nothing, and a hidden tab starts no request. A return does not try while the browser says it is offline (the
 // `online` event comes later); `online` ignores the 3 s pause after a failed attempt (the network has just come back). The visibility is
-// read only from document.visibilityState; there are no timers.
+// read only from document.visibilityState; there are no timers. A return also starts the grid re-read (decisions 5 to 7).
 function onTabVisibilityChange() {
   if (document.visibilityState !== "visible") return;
   if (navigator.onLine !== false) void retryWeather({ automatic: true });

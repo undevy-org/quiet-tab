@@ -47,4 +47,3 @@ function sameJson(a, b) {
   const keys = Object.keys(a);
   return keys.length === Object.keys(b).length && keys.every((key) => Object.hasOwn(b, key) && sameJson(a[key], b[key]));
 }
-
