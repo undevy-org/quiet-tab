@@ -146,17 +146,21 @@ describe("isSameValue (the semantics of a JSON round trip)", () => {
     // cases of this file have already warmed it. The function is serialized, so it uses nothing from this file.
     const sweep = async (moduleUrl) => {
       const { isSameValue } = await import(moduleUrl);
-      const nest = (levels) => {
-        let value = 1;
+      const nest = (levels, leaf = 1) => {
+        let value = leaf;
         for (let i = 0; i < levels; i += 1) value = [value];
         return value;
       };
       const a = nest(300);
       const b = nest(300);
+      const c = nest(300, 2); // differs from a at the leaf only
+      isSameValue(a, b); // compiled before the stack is nearly full, so a call that cannot start is not mistaken for an escape
+      isSameValue(a, c);
       const room = (frames) => (frames === 0 ? 0 : 1 + room(frames - 1)); // throws a RangeError when `frames` frames do not fit
-      let escaped = 0; // errors that came out of isSameValue
-      let gaveUp = 0; // equal values answered "not the same": the stack ran out inside the call and it was caught
+      let lastEscape = null; // the last error that came out of isSameValue
+      let gaveUp = 0; // equal values answered "not the same": the stack ran out in JSON or in the comparison and it was caught
       let enough = 0; // equal values answered "the same": the stack had room
+      let wrong = 0; // values that differ answered "the same"
       // Overflow the stack on purpose, then unwind it one frame at a time: the catch of each frame runs with a little more room than the one
       // before, so one of them runs isSameValue with just too little room for the recursion of the comparison, wherever it is cut off. A call
       // that cannot even start (no room for a few hundred frames) is not counted: only an error that escapes from inside the call is.
@@ -172,10 +176,12 @@ describe("isSameValue (the semantics of a JSON round trip)", () => {
           }
           if (started && enough === 0) {
             try {
-              if (isSameValue(a, b)) enough += 1;
+              const same = isSameValue(a, b);
+              if (isSameValue(a, c)) wrong += 1; // never the same, whatever the stack allows
+              if (same) enough += 1;
               else gaveUp += 1;
-            } catch {
-              escaped += 1;
+            } catch (e) {
+              lastEscape = e;
             }
           }
           throw error;
@@ -186,16 +192,19 @@ describe("isSameValue (the semantics of a JSON round trip)", () => {
       } catch {
         // the overflow that was provoked
       }
-      console.log(JSON.stringify({ escaped, gaveUp, enough }));
+      // An error counts as an escape only if the stack overflowed inside the call (its trace names the comparison or JSON), not at its entry.
+      const escaped = lastEscape !== null && /sameJson|toJson|isSameValue/.test(String(lastEscape.stack)) ? 1 : 0;
+      console.log(JSON.stringify({ escaped, gaveUp, enough, wrong, lastEscape: lastEscape === null ? null : String(lastEscape.stack).split("\n").slice(0, 3) }));
     };
     const env = { ...process.env };
     delete env.NODE_TEST_CONTEXT;
     const url = new URL("../src/storeUtils.js", import.meta.url).href;
-    const run = spawnSync(process.execPath, ["--input-type=module", "-e", `(${sweep.toString()})(${JSON.stringify(url)});`], { encoding: "utf8", env });
+    const run = spawnSync(process.execPath, ["--input-type=module", "-e", `(${sweep.toString()})(${JSON.stringify(url)});`], { encoding: "utf8", env, timeout: 20000 });
     assert.equal(run.status, 0, run.stderr);
     const seen = JSON.parse(run.stdout.trim().split("\n").at(-1));
-    assert.equal(seen.escaped, 0, "no error escapes from isSameValue");
-    assert.ok(seen.gaveUp > 0, "the sweep reached the point where the comparison runs out of stack");
+    assert.equal(seen.escaped, 0, `no error escapes from isSameValue: ${JSON.stringify(seen.lastEscape)}`);
+    assert.equal(seen.wrong, 0, "values that differ are never answered the same, even when the stack runs out inside the call");
+    assert.ok(seen.gaveUp > 0, "the sweep reached a call that gave up for lack of stack (in JSON or in the comparison) and answered not the same");
     assert.ok(seen.enough > 0, "and past it, where the same values are the same");
   });
 
