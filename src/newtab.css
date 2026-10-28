@@ -283,6 +283,29 @@ body:has(.desktop-dialog, .city-modal) #desktop-status {
   outline-color: transparent; /* one ring, as in the dialogs (transparent still shows as a system outline in forced colors) */
 }
 
+/* The screen for an unreadable grid (docs/unreadable-grid-reset.md decision 4): one line and one button, centered in the window. */
+.grid-unreadable {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-grid-12);
+  min-height: calc(100vh - 2 * var(--grid-pad, 16px));
+  text-align: center;
+}
+
+/* the shared rule below 601 px makes a .button as wide as its container; this one keeps its natural width */
+.grid-unreadable .button {
+  width: auto;
+}
+
+/* the plain .button ring (3 px --focus) is 1.8:1 (light) on this page background; the same soft ring as .desktop-status__reload:focus-visible */
+.grid-unreadable .button:focus-visible {
+  background: var(--soft-fill-strong);
+  box-shadow: 0 0 0 2px var(--focus-overlay-ring);
+  outline-color: transparent;
+}
+
 .chrome-tile {
   display: inline-flex;
   align-items: center;
