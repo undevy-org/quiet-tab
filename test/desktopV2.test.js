@@ -166,6 +166,13 @@ describe("ensureWidgetsLayout (Defaults, AS-1, AS-35; centered since run 15)", (
         [widgetItemStorageKey("f0")]: fav("f0", { grid: g(0, 0) }),
         quietTabWeatherLocation: { version: 1, name: "Tbilisi" }
       });
+      // premise: with only the meta removed (not a full reset) the leftovers ARE read, so the test below tells the two apart
+      const metaOnly = createMemoryStorageArea(await area.get(null));
+      await metaOnly.remove(WIDGETS_META_KEY);
+      await ensureWidgetsLayout(metaOnly, { screen: { rows: 9, columns: 14 } });
+      const kept = await metaOnly.get(null);
+      assert.equal(kept[widgetItemStorageKey("weather:temperature")].enabled, false, "the hidden temperature stays hidden");
+      assert.deepEqual(kept[widgetItemStorageKey("chrome:settings")].grid, g(5, 5), "Settings stays at its leftover cell");
       assert.deepEqual(await resetUnreadableWidgets(area), { reset: true, meta: "invalid" });
       assert.equal(inspectWidgetsMeta(await area.get(WIDGETS_META_KEY)), "missing");
       assert.deepEqual(await ensureWidgetsLayout(area, { screen: { rows: 9, columns: 14 } }), { changed: true, meta: "missing" });

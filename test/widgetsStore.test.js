@@ -10,7 +10,8 @@ import {
   isWidgetItem,
   isWidgetsState,
   resetUnreadableWidgets,
-  widgetItemStorageKey
+  widgetItemStorageKey,
+  withWidgetsMutationLock
 } from "../src/widgetsStore.js";
 import { MAX_FAVORITE_WIDGETS, NEWER_WIDGETS_MESSAGE, WEATHER_METRIC_IDS } from "../src/widgetsShared.js";
 
@@ -454,13 +455,13 @@ describe("store messages say grid and links (run 49)", () => {
 // resetUnreadableWidgets (docs/unreadable-grid-reset.md decision 6, AS-UGR-19): the one erasing path of the screen for an unreadable meta.
 // ---------------------------------------------------------------------------
 describe("resetUnreadableWidgets (run 51, AS-UGR-19)", () => {
+  // literals on purpose: the persisted key format, not the writer of the module under test
   const META_KEY = "quietTabWidgetsMeta";
   const itemKey = (id) => `quietTabWidget:${id}`;
-  const SYSTEM_IDS = ["weather:temperature", "weather:precipitation", "weather:airQuality", "weather:uv", "chrome:settings", "chrome:add"];
+  const SYSTEM_IDS = [...WEATHER_METRIC_IDS, "chrome:settings", "chrome:add"];
   const keysOf = async (area) => Object.keys(await area.get(null)).sort();
 
-  // The area wrapped in a spy: every get and remove with its argument. `failGet`, `failRemove` make the call reject (a remove rejects before it
-  // changes anything); `beforeRemove` lets a test hold or observe the removal.
+  // The area wrapped in a spy: every call with its argument. `failGet`, `failRemove` make the call reject (a remove rejects before it changes anything).
   function spied(initial, { failGet = false, failRemove = false } = {}) {
     const inner = createMemoryStorageArea(initial);
     const calls = [];
@@ -529,6 +530,7 @@ describe("resetUnreadableWidgets (run 51, AS-UGR-19)", () => {
       assert.equal(gets(calls).length, 1);
       assert.equal(gets(calls)[0].key, null);
       assert.equal(removes(calls).length, 0);
+      assert.equal(calls.length, 1, "nothing but that get");
     });
   }
 
@@ -569,14 +571,25 @@ describe("resetUnreadableWidgets (run 51, AS-UGR-19)", () => {
     const { area, calls } = spied(invalidSeed(), { failGet: true });
     await assert.rejects(() => resetUnreadableWidgets(area), { message: "get rejected" });
     assert.equal(removes(calls).length, 0);
+    assert.equal(calls.length, 1, "nothing but that get");
+  });
+
+  it("shares the one widgets lock: while another mutation holds it the reset has not read the area, and it runs when the lock is released", async () => {
+    const { area, calls } = spied(invalidSeed());
+    let release;
+    const held = withWidgetsMutationLock(() => new Promise((resolve) => { release = resolve; }));
+    const pending = resetUnreadableWidgets(area);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.equal(calls.length, 0, "no get while the lock is held");
+    release();
+    await held;
+    assert.deepEqual(await pending, { reset: true, meta: "invalid" });
+    assert.equal(calls.length, 2, "the get and the remove, after the release");
   });
 
   it("a key such as quietTabWidgetX (no colon) and the meta-like quietTabWidgets are never removed, a key with the colon always is", async () => {
     const { area, inner } = spied({ ...invalidSeed(), quietTabWidgets: "no colon", "quietTabWidget:": "empty id", "quietTabWidget:weather:uv": { id: "weather:uv" } });
     assert.equal((await resetUnreadableWidgets(area)).reset, true);
-    const left = await keysOf(inner);
-    assert.ok(left.includes("quietTabWidgetX") && left.includes("quietTabWidgets"));
-    assert.equal(left.some((key) => key.startsWith("quietTabWidget:")), false);
-    assert.equal(left.includes(META_KEY), false);
+    assert.deepEqual(await keysOf(inner), [...Object.keys(unrelated), "quietTabWidgets"].sort(), "the unrelated keys, quietTabWidgetX and quietTabWidgets stay; the meta and every quietTabWidget: key are gone");
   });
 });

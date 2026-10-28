@@ -42,6 +42,8 @@ const SYNC_WRITE_ERROR =
 export function widgetItemStorageKey(id) {
   return `quietTabWidget:${id}`;
 }
+// The prefix of every item key, derived from the writer above (resetUnreadableWidgets removes by it).
+const WIDGET_ITEM_KEY_PREFIX = widgetItemStorageKey("");
 
 export function createInitialWidgetsState(now = new Date().toISOString()) {
   return { version: WIDGETS_VERSION, items: [], createdAt: now, updatedAt: now };
@@ -359,18 +361,15 @@ export function ensureWidgetsLayout(storageArea, { now = () => new Date().toISOS
 }
 
 // ---------------------------------------------------------------------------
-// resetUnreadableWidgets: the one erasing path of the page for an unreadable grid (docs/unreadable-grid-reset.md decision 6; the other,
-// `clearState` of the store, is test-only). Runs under the widgets lock and reads the area ONCE: the meta check (`inspectWidgetsMeta`) and
-// the key list both come from that one snapshot of `get(null)`, so they cannot disagree. ONLY an `invalid` meta is erased: for `valid`,
-// `missing` or `newer` nothing is removed and { reset: false, meta } is returned (another tab already reset or fixed the data, or the grid
-// is a newer version's: a stale screen must never erase a grid that is readable now). For `invalid` ONE `remove` takes `quietTabWidgetsMeta`
-// and every key of the snapshot that starts with `quietTabWidget:`, the item keys the unreadable meta does not list included (its `order` cannot
-// be trusted, and a leftover system item would come back through ensureWidgetsLayout). Nothing else is erased: the weather city and cache,
-// the first-run flags, the legacy favorites keys and every other key stay. A failing `get` rejects before any `remove`; a failing `remove`
-// rejects. The one window left open is between the `get` and the `remove`.
+// resetUnreadableWidgets: the only path that erases the whole grid (docs/unreadable-grid-reset.md decision 6; `setState` also calls `remove`,
+// for the items an edit dropped, and `clearState` is test-only). Runs under the widgets lock and reads the area ONCE: the meta check
+// (`inspectWidgetsMeta`) and the key list both come from that one snapshot of `get(null)`, so they cannot disagree. ONLY an `invalid` meta
+// is erased: for `valid`, `missing` or `newer` nothing is removed and { reset: false, meta } is returned (another tab already reset or fixed
+// the data, or the grid is a newer version's, which is never erased). For `invalid` ONE `remove` takes `quietTabWidgetsMeta` and every key
+// of the snapshot that starts with `quietTabWidget:`, the item keys the unreadable meta does not list included (its `order` cannot be
+// trusted, and a leftover system item would come back through ensureWidgetsLayout). Every other key stays, the city and the first-run flags
+// included. The window between the `get` and the `remove` is Accepted exception 2 of the spec.
 // ---------------------------------------------------------------------------
-const WIDGET_ITEM_KEY_PREFIX = widgetItemStorageKey("");
-
 export function resetUnreadableWidgets(storageArea) {
   return withWidgetsMutationLock(async () => {
     const snapshot = await storageArea.get(null);
