@@ -263,7 +263,7 @@ describe("displayLayout anchored at the center line (decisions 2-3; AS-CG-01, 03
       { id: "weather:uv", type: "weather-metric", enabled: true, ...extra },
       { id: "chrome:add", type: "chrome", ...extra }
     ], 14));
-    const size = (cellOf) => [cellOf.w, cellOf.h];
+    const size = (cell) => [cell.w, cell.h];
     const plainLayout = layoutWith({});
     assert.deepEqual(size(plainLayout.w), [1, 1]);
     assert.deepEqual(size(plainLayout["weather:precipitation"]), [2, 1]);
@@ -881,7 +881,7 @@ describe("a tile wider than the grid says tile (run 49)", () => {
     assert.throws(() => displayLayout([fav("a", g(0, 0, 2, 1))], 1), tooWide);
   });
 
-  it("displayLayout, unplaced item (nearestFree): an unplaced precipitation metric (2 wide by default) in 1 column", () => {
+  it("displayLayout, unplaced item (nearestFree) in 1 column: an unplaced precipitation metric (2 wide by default) throws, an unplaced link does not (whatever tileSize it carries)", () => {
     assert.throws(() => displayLayout([{ id: "weather:precipitation", type: "weather-metric", enabled: true }], 1), tooWide);
     assert.doesNotThrow(() => displayLayout([{ id: "a", type: "favorite", tileSize: "wide" }], 1), "a link is 1 wide whatever tileSize it carries");
   });

@@ -97,7 +97,6 @@ function isFavoriteWidgetItem(value) {
   );
 }
 
-// An item field this validator does not name (the legacy size field of an older build, say) is ignored: not read, not checked, not removed.
 function isWeatherMetricItem(value) {
   return (
     hasOwnFields(value, ["id", "type", "enabled"]) &&
@@ -309,7 +308,8 @@ export function createWidgetsStore(
 // Item keys are written before the meta; idempotent.
 // Optional `screen` = { rows, columns } (the first screen of this boot, `newtab.js` `firstScreen()`): when ALL six system items are
 // absent (the first appearance), the block is centered vertically in it, never lower than the row it would take in a 1280x800 window
-// for its height (docs/vertically-centered-defaults.md, docs/unreadable-grid-reset.md decision 2); `placeMissing` validates it. A partial self-heal, or no / an invalid `screen`, keeps the row-0 rule. `y` is never recomputed later.
+// for the block's height (docs/vertically-centered-defaults.md, docs/unreadable-grid-reset.md decision 2); `placeMissing` validates it.
+// A partial self-heal, or no / an invalid `screen`, keeps the row-0 rule. `y` is never recomputed later.
 // ---------------------------------------------------------------------------
 const ENSURED_IDS = [...WEATHER_METRIC_IDS, CHROME_IDS.settings, CHROME_IDS.add];
 

@@ -73,21 +73,19 @@ describe("widgetsStore", () => {
   // Run 51 (docs/unreadable-grid-reset.md decision 3): a stored `tileSize` is ignored data, not read and not validated; whatever it holds, the item is valid.
   it("ignores a tileSize field: an item with any value of it, or none, is valid", () => {
     const base = currentState();
+    const kinds = {
+      link: (extra) => placed(extra),
+      metric: (extra) => ({ ...metric("weather:temperature", extra), grid: cell(1, 0) }),
+      chrome: (extra) => ({ ...chromeAt("settings", cell(2, 0)), ...extra })
+    };
 
-    assert.equal(isWidgetsState(base), true, "absent tileSize (legacy item)");
-    assert.equal(
-      isWidgetsState({ ...base, items: [placed({ tileSize: "square" })] }),
-      true,
-      "square"
-    );
-    assert.equal(
-      isWidgetsState({ ...base, items: [placed({ tileSize: "wide" })] }),
-      true,
-      "wide"
-    );
-    for (const value of ["huge", "", 5, null, { w: 2 }]) {
-      assert.equal(isWidgetsState({ ...base, items: [placed({ tileSize: value })] }), true, `unknown tileSize ${JSON.stringify(value)} is ignored`);
-      assert.equal(isWidgetItem(placed({ tileSize: value })), true, `isWidgetItem, tileSize ${JSON.stringify(value)}`);
+    for (const [kind, make] of Object.entries(kinds)) {
+      assert.equal(isWidgetItem(make({})), true, `${kind}: no tileSize (a legacy item or a new one)`);
+      assert.equal(isWidgetsState({ ...base, items: [make({})] }), true, `${kind} in a state: no tileSize`);
+      for (const value of ["square", "wide", "huge", "", 5, null, { w: 2 }]) {
+        assert.equal(isWidgetItem(make({ tileSize: value })), true, `${kind}: isWidgetItem, tileSize ${JSON.stringify(value)} is ignored`);
+        assert.equal(isWidgetsState({ ...base, items: [make({ tileSize: value })] }), true, `${kind} in a state: tileSize ${JSON.stringify(value)} is ignored`);
+      }
     }
   });
 
@@ -277,7 +275,6 @@ describe("widgetsStore", () => {
 
   it("accepts a tile that carries a grid and an extra tileSize (the grid, not the column count or the field, owns placement)", () => {
     assert.equal(isWidgetsState(currentState([placed({ tileSize: "wide", grid: cell(0, 0, 2, 1) })])), true);
-    assert.equal(isWidgetsState(currentState([placed({ tileSize: "huge", grid: cell(0, 0, 2, 1) })])), true);
   });
 });
 
@@ -292,8 +289,6 @@ describe("weather-metric widgets", () => {
   it("validates metric items strictly", () => {
     assert.equal(isWidgetItem(metric()), true);
     assert.equal(isWidgetItem(metric("weather:nope")), false);
-    assert.equal(isWidgetItem(metric("weather:uv", { tileSize: "huge" })), true, "an extra tileSize is ignored, as on a link");
-    assert.equal(isWidgetItem(metric("weather:uv", { tileSize: "wide" })), true);
     assert.equal(isWidgetItem(metric("weather:uv", { enabled: "yes" })), false);
     const { enabled, ...missing } = metric();
     assert.equal(isWidgetItem(missing), false);

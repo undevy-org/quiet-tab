@@ -123,8 +123,7 @@ function nearestFreeAround(occupied, w, h, columns, target) {
   }
 }
 
-// Size of an item: its valid grid, else its default size (a weather metric's `defaultSize`: 2×1 for precipitation and air quality, 1×1 for
-// the others), else 1×1. A size field stored by an older build is not read (docs/unreadable-grid-reset.md decision 3).
+// Size of an item: its valid grid, else the default size of its kind (a metric's defaultSize, else 1×1).
 export function sizeOf(item) {
   if (isValidGrid(item.grid)) return { w: item.grid.w, h: item.grid.h };
   return item.type === "weather-metric" ? { ...defaultSize(item.id) } : { w: 1, h: 1 };
