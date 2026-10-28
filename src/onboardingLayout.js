@@ -79,7 +79,10 @@ export function isFreshDesk(items) {
 }
 
 // Stored grids for the island of k links, or null when it does not apply: k not an integer 0..8, linkIds not k ids, or the island
-// wider than the window. `rows` = first-screen rows at Finish (anything but an integer 1..4096 means dy = 0).
+// wider than the window. `rows` = first-screen rows at Finish (anything but an integer 1..4096 means dy = 0). dy is the centered row
+// capped by the island's own height (`centeredDefaultRow`, docs/unreadable-grid-reset.md decision 2): at most row 3 for 3 rows and row 2
+// for 4 or 5 rows, so the island ends at row 5 or 6 at the latest and Settings and Add in its last row stay on the first screen of a
+// low window.
 export function islandPlacements({ k, linkIds, rows, columns }) {
   if (!Number.isInteger(k) || k < 0 || k > MAX_ISLAND_LINKS) return null;
   if (!Array.isArray(linkIds) || linkIds.length !== k) return null;

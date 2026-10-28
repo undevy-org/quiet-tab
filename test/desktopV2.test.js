@@ -133,7 +133,7 @@ describe("ensureWidgetsLayout (Defaults, AS-1, AS-35; centered since run 15)", (
     };
 
     it("a fresh install with { screen } writes y = Y0 for all six, x as before, one items set then the meta set", async () => {
-      for (const [screen, y] of [[{ rows: 9, columns: 14 }, 4], [{ rows: 8, columns: 14 }, 3], [{ rows: 1, columns: 14 }, 0], [{ rows: 10, columns: 6 }, 4], [{ rows: 9, columns: 4 }, 3]]) {
+      for (const [screen, y] of [[{ rows: 9, columns: 14 }, 4], [{ rows: 8, columns: 14 }, 3], [{ rows: 1, columns: 14 }, 0], [{ rows: 10, columns: 6 }, 3], [{ rows: 9, columns: 4 }, 3]]) {
         const area = createMemoryStorageArea();
         const calls = recording(area);
         const result = await ensureWidgetsLayout(area, { screen });
@@ -146,6 +146,15 @@ describe("ensureWidgetsLayout (Defaults, AS-1, AS-35; centered since run 15)", (
         assert.equal(meta.version, 3);
         assert.equal(inspectWidgetsMeta(await area.get(WIDGETS_META_KEY)), "valid");
         assert.deepEqual(meta.order, SIX);
+      }
+    });
+    it("a fresh install in a tall window writes the ceiling row: y = 4 at 14 columns, y = 3 at 6 and 4 columns (run 51, AS-UGR-01, 02)", async () => {
+      for (const [screen, y] of [[{ rows: 10, columns: 14 }, 4], [{ rows: 11, columns: 14 }, 4], [{ rows: 19, columns: 14 }, 4], [{ rows: 26, columns: 14 }, 4], [{ rows: 17, columns: 30 }, 4],
+        [{ rows: 11, columns: 6 }, 3], [{ rows: 19, columns: 6 }, 3], [{ rows: 12, columns: 4 }, 3], [{ rows: 19, columns: 4 }, 3]]) {
+        const area = createMemoryStorageArea();
+        const result = await ensureWidgetsLayout(area, { screen });
+        assert.deepEqual(result, { changed: true, meta: "missing" });
+        assert.deepEqual(await gridsOf(area), atRow(y), JSON.stringify(screen));
       }
     });
     it("without a screen, or with an invalid one, the result is today's row 0", async () => {
