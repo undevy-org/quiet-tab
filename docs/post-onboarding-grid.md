@@ -4,6 +4,8 @@
 
 `implemented` — revision 2 (2026-10-10) after two independent spec reviews (notes `pipeline/reports/onboarding-grid-initiative-spec-review.md`). **Part 2** of the onboarding-grid initiative: part 1 `docs/tile-size-1x2.md` (prerequisite: 1×2 footprints in UI/CSS), part 3 `docs/onboarding-starter-rows.md` (step 2 UI, independent of this spec).
 
+> **Changed by run 51** (`docs/unreadable-grid-reset.md` decision 2): `dy = centeredDefaultRow(rows, H)` is capped by the island's height (row 3 for 3 rows, row 2 for 4 or 5).
+
 Decision: **do it**. After onboarding **Finish** on a fresh desk, the system widgets and the new starter links form **one island**: a solid rectangle (no empty cell inside its bbox), centered once (horizontal: the grid's center line; vertical: the first screen). The island geometry per link count **k** is a **normative table** in this spec (§ Island table). Reload and resize never re-pack (no storage write; on a window narrower than the island `displayLayout` reflows it on screen only, as for any layout).
 
 **Data compatibility: not required** (no-users policy, `agent-config/CLAUDE.md`).
