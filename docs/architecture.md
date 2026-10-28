@@ -15,10 +15,10 @@ forecast cache and a per-device "city prompt dismissed" flag persist to
 
 | File | Responsibility |
 | --- | --- |
-| `src/newtab.js` | Renders the desktop grid (links, weather tiles, the "Set a city" hint tile, the Settings and Add tiles), edit mode (jiggle, − badges, pointer drag with drop highlight and autoscroll), the desktop dialogs (add link, edit link without a Delete button, delete confirm, hide-weather confirm, weather edit), the Add menu, the page status line, the shared tooltip layer and the city modal, and wires them to the services. The only file that touches the DOM. |
+| `src/newtab.js` | Renders the desktop grid (links, weather tiles, the "Set a city" hint tile, the Settings and Add tiles), edit mode (jiggle, − badges, pointer drag with drop highlight and autoscroll), the desktop dialogs (add link, edit link without a Delete button, delete confirm, hide-weather confirm, reset-grid confirm, weather edit), the Add menu, the page status line, the shared tooltip layer and the city modal, and wires them to the services. The only file that touches the DOM. |
 | `src/desktopLayout.js` | Pure grid engine: grid metrics and the (always even) column count for a viewport width, grid validation (`isValidGrid` with a signed `x`), the stored/displayed frame (`originColumn`, `toStored`, `toDisplayed`), the displayed layout (`displayLayout`, a stateless anchored repack of the stored grids for the current column count), placement rules (`canPlace`, `placeResized`, `placeNew` nearest to the center, `cellFromPoint`), the default block (`placeMissing`, with the vertical centering of its first placement: `centeredDefaultRow`, `defaultBlockRows`, capped by `CEILING_REFERENCE_ROWS`). |
 | `src/desktopUiState.js` | Pure UI state for edit mode, the Add menu, the open dialog and an active drag, the Escape layering (`escapeLayer`) and the tab-return re-read rules (`deskRefreshBlocker`: which layer is up; `deskRefreshDecision`: skip, pending, again or apply). |
-| `src/widgetsStore.js` | Validates, reads, and writes persisted widgets state (links, weather metrics and chrome tiles, each with a `grid`), sharded across `chrome.storage.sync` keys; reads are lenient about a missing or malformed `grid`. Also holds `ensureWidgetsLayout` (defaults and self-heal), `inspectWidgetsMeta` (`missing|valid|newer|invalid`; a v1/v2 meta is `invalid`), `resetUnreadableWidgets` and the write guard (`assertWritable`) that refuses `newer` and `invalid` metas (only `valid` and `missing` are writable). |
+| `src/widgetsStore.js` | Validates, reads, and writes persisted widgets state (links, weather metrics and chrome tiles, each with a `grid`), sharded across `chrome.storage.sync` keys; reads are lenient about a missing or malformed `grid`. Also holds `ensureWidgetsLayout` (defaults and self-heal), `inspectWidgetsMeta` (`missing\|valid\|newer\|invalid`; a v1/v2 meta is `invalid`), `resetUnreadableWidgets` and the write guard (`assertWritable`) that refuses `newer` and `invalid` metas (only `valid` and `missing` are writable). |
 | `src/widgetsService.js` | Add/update/delete for links, `updateWeatherMetric` (size, shown/hidden) and `moveWidget` (drop at a cell, `PlacementError` when the block is taken). Every mutation takes the current column count, runs under the mutation lock, checks `assertWritable` first, applies the action to the displayed layout of fresh storage and persists the displayed grid of every widget. |
 | `src/widgetsShared.js` | Shared widget constants (types, weather metric ids, caps, lock name, newer-version message). |
 | `src/widgetsLayout.js` | `placeTooltip` (edge-aware tooltip placement). |
@@ -350,7 +350,7 @@ Tiles take one of four footprints (1×1, 1×2, 2×1, 2×2; chrome tiles 1×1 onl
   add).
 - **Dialogs.** One at a time, `role="dialog"`, `aria-modal`, focus trapped, the
   grid inert; a write failure inside a dialog is shown in its alert line; a failed
-  drag, delete, hide or restore is shown in the page status line (`role="alert"`,
+  drag, delete, hide, restore or reset is shown in the page status line (`role="alert"`,
   cleared by the next action or after 8 s) and nothing is persisted.
 - **Layers and the low window** (`docs/layers-low-window.md`). The page status
   chip (`#desktop-status`) is not painted while any modal layer is in the DOM (a
@@ -445,8 +445,7 @@ nothing needs to be reconciled). Do not remove it from the repository.
 - Custom-icon images are never sampled into a canvas, since arbitrary hosts
   rarely send CORS headers.
 - Persisted state is schema-validated: on read, a malformed widget is left out
-  (a widget whose only fault is its `grid` is kept, unplaced), a malformed meta
-  reads as an empty grid, and a malformed location or cache reads as unset; on
+  (a widget whose only fault is its `grid` is kept, unplaced), a malformed meta reads as an empty grid (the page then shows the Reset grid screen), and a malformed location or cache reads as unset; on
   write, invalid state is rejected with an error.
 - The extension has no content scripts, remote code, background worker, or
   broad host permissions; host access is Open-Meteo's three public endpoints and
