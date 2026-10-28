@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The first set of tiles (and the starter-links island after the first-run wizard) is centered in the window as before, but never lower than where it would be centered in a 1280×800 window (row 4 for the six tiles in one row, row 3 for their two-row block in a narrow window, row 3 or 2 for the island), so a grid written in a tall window is still on the first screen when Chrome Sync opens it in a low window of the same width (`docs/unreadable-grid-reset.md` decision 2).
+- The legacy `tileSize` field of a stored tile is ignored: it is no longer validated, no longer sizes a tile that has no cell, and no longer removed by an edit; a tile without a cell is drawn at its default size (`docs/unreadable-grid-reset.md` decision 3).
 - Typography: text in inputs, buttons, descriptions, the Add menu and the city suggestions is 14 px (it was 12 px, the browser's default for an
   extension page); the dialogs, the first-run wizard, the city modal, the shared tooltip and the status chip are now sized in `rem` and follow Chrome's
   "Font size" setting, while tile text, the cell and the control geometry stay in px. A segmented option grows with a wrapped label ("From site" at
@@ -54,8 +56,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - City suggestion list (modal and wizard step 1) is an ARIA 1.2 combobox with a listbox of options. Tab skips the
   suggestions (clear, Cancel or Skip, Save); arrow keys enter the list. The focus ring of "use your location" now
   reaches 3 px beyond the link text and no longer covers a neighbouring character (`docs/city-suggestion-list.md`).
-- The first set of tiles (and the starter-links island after the first-run wizard) is centered in the window as before, but never lower than where it would be centered in a 1280×800 window (row 4 for the six tiles in one row, row 3 for their two-row block in a narrow window, row 3 or 2 for the island), so a grid written in a tall window is still on the first screen when Chrome Sync opens it in a low window of the same width (`docs/unreadable-grid-reset.md` decision 2).
-- The legacy `tileSize` field of a stored tile is ignored: it is no longer validated, no longer sizes a tile that has no cell, and no longer removed by an edit; a tile without a cell is drawn at its default size (`docs/unreadable-grid-reset.md` decision 3).
 
 ### Added
 
