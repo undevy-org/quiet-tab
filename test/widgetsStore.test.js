@@ -9,6 +9,7 @@ import {
   inspectWidgetsMeta,
   isWidgetItem,
   isWidgetsState,
+  resetUnreadableWidgets,
   widgetItemStorageKey
 } from "../src/widgetsStore.js";
 import { MAX_FAVORITE_WIDGETS, NEWER_WIDGETS_MESSAGE, WEATHER_METRIC_IDS } from "../src/widgetsShared.js";
@@ -446,5 +447,136 @@ describe("store messages say grid and links (run 49)", () => {
       assert.doesNotMatch(text, /\b(?:favou?rite|widget|desktop|bookmark)s?\b/i, text);
       assert.doesNotMatch(text, / - /, text);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resetUnreadableWidgets (docs/unreadable-grid-reset.md decision 6, AS-UGR-19): the one erasing path of the screen for an unreadable meta.
+// ---------------------------------------------------------------------------
+describe("resetUnreadableWidgets (run 51, AS-UGR-19)", () => {
+  const META_KEY = "quietTabWidgetsMeta";
+  const itemKey = (id) => `quietTabWidget:${id}`;
+  const SYSTEM_IDS = ["weather:temperature", "weather:precipitation", "weather:airQuality", "weather:uv", "chrome:settings", "chrome:add"];
+  const keysOf = async (area) => Object.keys(await area.get(null)).sort();
+
+  // The area wrapped in a spy: every get and remove with its argument. `failGet`, `failRemove` make the call reject (a remove rejects before it
+  // changes anything); `beforeRemove` lets a test hold or observe the removal.
+  function spied(initial, { failGet = false, failRemove = false } = {}) {
+    const inner = createMemoryStorageArea(initial);
+    const calls = [];
+    const area = {
+      async get(key) {
+        calls.push({ op: "get", key });
+        if (failGet) throw new Error("get rejected");
+        return inner.get(key);
+      },
+      async set(values) {
+        calls.push({ op: "set", values });
+        return inner.set(values);
+      },
+      async remove(key) {
+        calls.push({ op: "remove", key });
+        if (failRemove) throw new Error("remove rejected");
+        return inner.remove(key);
+      }
+    };
+    return { area, inner, calls };
+  }
+  const gets = (calls) => calls.filter((call) => call.op === "get");
+  const removes = (calls) => calls.filter((call) => call.op === "remove");
+
+  const unrelated = {
+    quietTabWeatherLocation: { version: 1, name: "Tbilisi", country: "Georgia", latitude: 41.7, longitude: 44.8 },
+    quietTabWeatherPromptDismissed: true,
+    quietTabFavoritesMeta: { version: 1, order: ["a"], createdAt: NOW, updatedAt: NOW },
+    "quietTabFavorite:a": { id: "a" },
+    quietTabWidgetX: "a key without the colon",
+    unrelated: 1
+  };
+  // an unreadable meta: the version is current but a timestamp is not a date; f2 is on disk and not in `order`
+  const invalidMeta = { version: 3, order: ["f0", "f1"], createdAt: "not a date", updatedAt: NOW };
+  const invalidSeed = () => ({
+    [META_KEY]: invalidMeta,
+    [itemKey("f0")]: favorite({ id: "f0" }),
+    [itemKey("f1")]: favorite({ id: "f1" }),
+    [itemKey("f2")]: favorite({ id: "f2" }),
+    ...unrelated
+  });
+  const validMeta = { version: 3, order: ["f0"], createdAt: NOW, updatedAt: NOW };
+
+  it("(a) an invalid meta with three item keys, one of them not in order: all four widget keys go, nothing else; one get(null) and one remove", async () => {
+    const { area, inner, calls } = spied(invalidSeed());
+    assert.deepEqual(await resetUnreadableWidgets(area), { reset: true, meta: "invalid" });
+    assert.deepEqual(await keysOf(inner), Object.keys(unrelated).sort(), "the city, the flags, the legacy keys, quietTabWidgetX and the unrelated key stay");
+    assert.deepEqual(await inner.get(null), unrelated);
+    assert.equal(gets(calls).length, 1);
+    assert.equal(gets(calls)[0].key, null);
+    assert.equal(removes(calls).length, 1);
+    assert.deepEqual([...removes(calls)[0].key].sort(), [META_KEY, itemKey("f0"), itemKey("f1"), itemKey("f2")].sort(), "the meta key and exactly the quietTabWidget: keys of the snapshot");
+    assert.equal(calls.length, 2, "nothing but that get and that remove");
+  });
+
+  for (const [label, meta, seed] of [
+    ["(b) a valid meta", "valid", () => ({ [META_KEY]: validMeta, [itemKey("f0")]: favorite({ id: "f0", grid: cell(0, 0) }), ...unrelated })],
+    ["(c) no meta (a stray item key stays too)", "missing", () => ({ [itemKey("stray")]: favorite({ id: "stray" }), ...unrelated })],
+    ["(d) a newer meta", "newer", () => ({ [META_KEY]: { ...validMeta, version: 4 }, [itemKey("f0")]: favorite({ id: "f0" }), ...unrelated })]
+  ]) {
+    it(`${label}: { reset: false, meta: "${meta}" }, the area is deep-equal, one get and no remove`, async () => {
+      const { area, inner, calls } = spied(seed());
+      const before = await inner.get(null);
+      assert.deepEqual(await resetUnreadableWidgets(area), { reset: false, meta });
+      assert.deepEqual(await inner.get(null), before);
+      assert.equal(gets(calls).length, 1);
+      assert.equal(gets(calls)[0].key, null);
+      assert.equal(removes(calls).length, 0);
+    });
+  }
+
+  it("(e) an invalid meta whose remove rejects: the function rejects, the area is deep-equal, one remove call", async () => {
+    const { area, inner, calls } = spied(invalidSeed(), { failRemove: true });
+    const before = await inner.get(null);
+    await assert.rejects(() => resetUnreadableWidgets(area), { message: "remove rejected" });
+    assert.deepEqual(await inner.get(null), before);
+    assert.equal(removes(calls).length, 1);
+    assert.equal(gets(calls).length, 1);
+  });
+
+  it("(f) two calls at once on an invalid meta: one removes, the other finds no meta and returns reset: false (the lock)", async () => {
+    const { area, inner, calls } = spied(invalidSeed());
+    const results = await Promise.all([resetUnreadableWidgets(area), resetUnreadableWidgets(area)]);
+    assert.deepEqual(results.map((result) => result.reset).sort(), [false, true]);
+    assert.deepEqual(results.find((result) => !result.reset), { reset: false, meta: "missing" });
+    assert.equal(removes(calls).length, 1);
+    assert.equal(gets(calls).length, 2);
+    assert.deepEqual(await inner.get(null), unrelated);
+  });
+
+  it("(g) an invalid meta with 206 item keys (200 links and the six system items): one remove of exactly the meta key and the 206 keys, one get", async () => {
+    const seed = { [META_KEY]: { version: 3, order: "x", createdAt: NOW, updatedAt: NOW }, ...unrelated };
+    const ids = [...Array.from({ length: 200 }, (_, i) => `link${i}`), ...SYSTEM_IDS];
+    for (const id of ids) seed[itemKey(id)] = { id };
+    const { area, inner, calls } = spied(seed);
+    assert.deepEqual(await resetUnreadableWidgets(area), { reset: true, meta: "invalid" });
+    assert.equal(ids.length, 206);
+    assert.equal(removes(calls).length, 1);
+    assert.equal(removes(calls)[0].key.length, 207);
+    assert.deepEqual([...removes(calls)[0].key].sort(), [META_KEY, ...ids.map(itemKey)].sort());
+    assert.equal(gets(calls).length, 1);
+    assert.deepEqual(await inner.get(null), unrelated);
+  });
+
+  it("(h) an area whose get rejects: the function rejects and no remove is called", async () => {
+    const { area, calls } = spied(invalidSeed(), { failGet: true });
+    await assert.rejects(() => resetUnreadableWidgets(area), { message: "get rejected" });
+    assert.equal(removes(calls).length, 0);
+  });
+
+  it("a key such as quietTabWidgetX (no colon) and the meta-like quietTabWidgets are never removed, a key with the colon always is", async () => {
+    const { area, inner } = spied({ ...invalidSeed(), quietTabWidgets: "no colon", "quietTabWidget:": "empty id", "quietTabWidget:weather:uv": { id: "weather:uv" } });
+    assert.equal((await resetUnreadableWidgets(area)).reset, true);
+    const left = await keysOf(inner);
+    assert.ok(left.includes("quietTabWidgetX") && left.includes("quietTabWidgets"));
+    assert.equal(left.some((key) => key.startsWith("quietTabWidget:")), false);
+    assert.equal(left.includes(META_KEY), false);
   });
 });
