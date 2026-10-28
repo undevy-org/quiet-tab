@@ -16,13 +16,13 @@ forecast cache and a per-device "city prompt dismissed" flag persist to
 | File | Responsibility |
 | --- | --- |
 | `src/newtab.js` | Renders the desktop grid (links, weather tiles, the "Set a city" hint tile, the Settings and Add tiles), edit mode (jiggle, − badges, pointer drag with drop highlight and autoscroll), the desktop dialogs (add link, edit link without a Delete button, delete confirm, hide-weather confirm, weather edit), the Add menu, the page status line, the shared tooltip layer and the city modal, and wires them to the services. The only file that touches the DOM. |
-| `src/desktopLayout.js` | Pure grid engine: grid metrics and the (always even) column count for a viewport width, grid validation (`isValidGrid` with a signed `x`), the stored/displayed frame (`originColumn`, `toStored`, `toDisplayed`), the displayed layout (`displayLayout`, a stateless anchored repack of the stored grids for the current column count), placement rules (`canPlace`, `placeResized`, `placeNew` nearest to the center, `cellFromPoint`), the default block (`placeMissing`, with the vertical centering of its first placement: `centeredDefaultRow`, `defaultBlockRows`). |
+| `src/desktopLayout.js` | Pure grid engine: grid metrics and the (always even) column count for a viewport width, grid validation (`isValidGrid` with a signed `x`), the stored/displayed frame (`originColumn`, `toStored`, `toDisplayed`), the displayed layout (`displayLayout`, a stateless anchored repack of the stored grids for the current column count), placement rules (`canPlace`, `placeResized`, `placeNew` nearest to the center, `cellFromPoint`), the default block (`placeMissing`, with the vertical centering of its first placement: `centeredDefaultRow`, `defaultBlockRows`, capped by `CEILING_REFERENCE_ROWS`). |
 | `src/desktopUiState.js` | Pure UI state for edit mode, the Add menu, the open dialog and an active drag, the Escape layering (`escapeLayer`) and the tab-return re-read rules (`deskRefreshBlocker`: which layer is up; `deskRefreshDecision`: skip, pending, again or apply). |
-| `src/widgetsStore.js` | Validates, reads, and writes persisted widgets state (links, weather metrics and chrome tiles, each with a `grid`), sharded across `chrome.storage.sync` keys; reads are lenient about a missing or malformed `grid`. Also holds `ensureWidgetsLayout` (defaults and self-heal), `inspectWidgetsMeta` (`missing|valid|newer|invalid`; a v1/v2 meta is `invalid`) and the write guard (`assertWritable`) that refuses `newer` and `invalid` metas (only `valid` and `missing` are writable). |
+| `src/widgetsStore.js` | Validates, reads, and writes persisted widgets state (links, weather metrics and chrome tiles, each with a `grid`), sharded across `chrome.storage.sync` keys; reads are lenient about a missing or malformed `grid`. Also holds `ensureWidgetsLayout` (defaults and self-heal), `inspectWidgetsMeta` (`missing|valid|newer|invalid`; a v1/v2 meta is `invalid`), `resetUnreadableWidgets` and the write guard (`assertWritable`) that refuses `newer` and `invalid` metas (only `valid` and `missing` are writable). |
 | `src/widgetsService.js` | Add/update/delete for links, `updateWeatherMetric` (size, shown/hidden) and `moveWidget` (drop at a cell, `PlacementError` when the block is taken). Every mutation takes the current column count, runs under the mutation lock, checks `assertWritable` first, applies the action to the displayed layout of fresh storage and persists the displayed grid of every widget. |
 | `src/widgetsShared.js` | Shared widget constants (types, weather metric ids, caps, lock name, newer-version message). |
 | `src/widgetsLayout.js` | `placeTooltip` (edge-aware tooltip placement). |
-| `src/favoritesShared.js` | Shared favorites constants (icon modes, color sources, tile sizes) and helpers. |
+| `src/favoritesShared.js` | Shared favorites constants (icon modes, color sources) and helpers. |
 | `src/favoriteIcon.js` | Chooses a favicon, custom image, or letter icon for a tile. (The default-globe check on top of it lives in `defaultFavicon.js` and `newtab.js`; see `docs/favicon-globe-fallback.md`.) |
 | `src/defaultFavicon.js` | Tells Chrome's grey default `_favicon` globe from a real icon: pure exact-pixel comparison (`isDefaultFaviconPixels`), a per-page-load checker (one sentinel image, 2 s timeout, fail open) and an in-memory verdict cache. |
 | `src/favoriteColor.js` | Derives a tile's accent color from its domain or a sampled icon. |
@@ -103,11 +103,15 @@ defaults and the self-heal (`placeMissing`, stored frame in and out, over 12
 reference columns) lay the missing tiles out as one contiguous row block, in the
 default order, in the first row with a free run of that width, nearest to the
 center. The first placement of the whole default block (all six absent) takes its
-row `Y0 = max(0, floor((R − blockRows) / 2))` from the first screen (`R` rows of
-`viewportRows`, `blockRows` the displayed height of the six tiles at the page's
+row `Y0 = max(0, floor((min(R, 9) − blockRows) / 2))` from the first screen (`R` rows
+of `viewportRows`, `blockRows` the displayed height of the six tiles at the page's
 column count) instead of row 0, searching by distance from `Y0` (above first); the
 self-heal of 1..5 tiles and `placeNew` stay row-0 first, and a stored `y` is never
-recomputed.
+recomputed. The 9 (`CEILING_REFERENCE_ROWS`) is the number of rows of a 1280×800
+window: a block is never lower than the row at which it would be centered there (row
+4 for the six tiles in one row, row 3 for their two-row block in a narrow window); it
+applies to the island of the onboarding Finish too, by the island's own height (row 3
+for 3 rows, row 2 for 4 or 5).
 
 **Writes.** Every explicit action (drag, add, edit, resize, delete, hide,
 restore) is a read-modify-write under the mutation lock: read fresh storage,
@@ -133,8 +137,9 @@ mutation lock as every mutation:
    `ensureWidgetsLayout(sync, { screen })` with `screen = { rows, columns }` from
    `firstScreen()` in `newtab.js`. On a fresh install this creates temperature
    (−4,Y0), precipitation (−3,Y0), air quality (−1,Y0), UV (1,Y0), Settings
-   (2,Y0), Add (3,Y0), with `Y0` the centered row of the first screen (4 at
-   1280×800); without a valid `screen`, or for a partial self-heal, the row is 0.
+   (2,Y0), Add (3,Y0), with `Y0` the centered row of the first screen, never lower
+   than its row in a 1280×800 window (4 at 1280×800); without a valid `screen`, or
+   for a partial self-heal, the row is 0.
    It writes nothing for a newer or invalid meta. A write failure is non-fatal: the
    grid renders without the missing tiles and the page status line says so until the
    next open retries.
@@ -150,11 +155,17 @@ version on another device) is never touched: the ensure step writes and deletes
 nothing, every service mutation fails first with the newer-version message
 (`assertWritable`), and the grid is locked read-only with that message, also after a
 resize. Every write is likewise refused while the stored meta is invalid (malformed,
-or a v1/v2 meta of an older build), with a message to reload the tab: from such a
-meta a read is empty, so a write would orphan every stored widget. A build from
-before the centered grid reads a v3 meta the same way (newer, read-only), as a build
-from before the desktop grid does with a v2 or v3 meta. An invalid meta is left alone
-by the ensure step.
+or a v1/v2 meta of an older build), with a message to reload the tab (the reload
+shows the Reset grid screen): from such a meta a read is empty, so a write would
+orphan every stored widget. A build from before the centered grid reads a v3 meta the
+same way (newer, read-only), as a build from before the desktop grid does with a v2 or
+v3 meta. An invalid meta is left alone by the ensure step. The page then shows
+`Your grid couldn't be read.` and a `Reset grid` button instead of an empty grid; the
+boot stops there like the newer-version lock (no first read, no weather, no wizard).
+The button opens the `confirm-reset-grid` dialog; its confirm button calls
+`resetUnreadableWidgets` under the mutation lock, which erases the meta and every
+`quietTabWidget:` key only while the meta is still unreadable, and the page then loads
+again as a fresh install (`docs/unreadable-grid-reset.md`).
 
 `manifest.json` pins the extension id with a `key` (see "Extension id" below), so
 separate "Load unpacked" installs from different directories get the same id on
@@ -257,7 +268,8 @@ attempt in flight blocks both. The automatic attempt is silent: it never writes 
   six system tiles at their default sizes, all metrics enabled, temperature first; `isFreshDesk`) that fits
   the window (`W <= columns`), the one `setState` writes the system tiles and the new links in the cells of
   the fixed island table (`src/onboardingLayout.js`, `islandPlacements`), centered with the stored `dx` and
-  `centeredDefaultRow(rows, H)`; otherwise the links go by `placeNew` as 2×1 and nothing else moves. A call
+  `centeredDefaultRow(rows, H)` (never lower than its row in a 1280×800 window);
+  otherwise the links go by `placeNew` as 2×1 and nothing else moves. A call
   that adds nothing and applies no island is a no-op (no write). With zero links a failed call is swallowed
   (the desk keeps the boot strip) and no heal runs, so a wiped storage stays unwritten. Reload and resize
   never re-pack. CSS: `scroll-margin: 6px` on `.desktop-grid > [data-widget-id]` keeps a focused tile's ring
