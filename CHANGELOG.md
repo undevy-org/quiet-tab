@@ -54,9 +54,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - City suggestion list (modal and wizard step 1) is an ARIA 1.2 combobox with a listbox of options. Tab skips the
   suggestions (clear, Cancel or Skip, Save); arrow keys enter the list. The focus ring of "use your location" now
   reaches 3 px beyond the link text and no longer covers a neighbouring character (`docs/city-suggestion-list.md`).
+- The first set of tiles (and the starter-links island after the first-run wizard) is centered in the window as before, but never lower than where it would be
+  centered in a 1280×800 window (row 4 for the six tiles in one row, row 3 for their two-row block in a narrow window, row 3 or 2 for the island), so a grid
+  written in a tall window is still on the first screen when Chrome Sync opens it in a low window of the same width (`docs/unreadable-grid-reset.md` decision 2).
+- The legacy `tileSize` field of a stored tile is ignored: it is no longer validated, no longer sizes a tile that has no cell, and no longer removed by an edit; a tile
+  without a cell is drawn at its default size (`docs/unreadable-grid-reset.md` decision 3).
 
 ### Added
 
+- A page whose saved grid cannot be read now says so: `Your grid couldn't be read.` with a `Reset grid` button; the button asks first (`Your links will be removed.`),
+  erases the grid's own saved data (the widgets meta and every tile key, in Chrome Sync) and loads the page again as a fresh install. The city and the first-run flags
+  stay; a newer-version grid is still read-only and never erased (`docs/unreadable-grid-reset.md`, E2E `dg-91-unreadable-grid-reset.mjs`).
 - Returning to the tab: the weather and the grid catch up. When a tab becomes visible again, a weather tile that failed to load, is stale, or whose data is
   30 minutes old or more is refreshed by itself, and again when the network comes back (nothing is polled or repeated on a timer, once a tab has loaded a
   hidden tab starts nothing, the weather refresh announces nothing); the grid is read again from storage, so links added, moved or removed in another tab appear,
@@ -115,7 +123,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The migration code (legacy favorites → widgets v1 → v2 → v3) and its upgrade tests.
   Data of earlier versions is ignored: the old favorites keys are neither read nor
   deleted, and a v1 or v2 widgets layout is read as unsupported, like a damaged one
-  (an empty read-only desk, nothing is written). Quiet Tab has no users on those
+  (the page says `Your grid couldn't be read.` and offers Reset grid; nothing is
+  written until it is pressed). Quiet Tab has no users on those
   versions (`docs/remove-migrations.md`).
 
 ### Fixed
