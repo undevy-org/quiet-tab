@@ -10,8 +10,7 @@ import {
 import {
   BACKGROUND_COLOR_SOURCES,
   HEX_COLOR_VALIDATION_PATTERN,
-  ICON_MODES,
-  TILE_SIZES
+  ICON_MODES
 } from "./favoritesShared.js";
 import {
   MAX_CHROME_WIDGETS,
@@ -65,10 +64,6 @@ function isCustomIconUrl(value) {
   return value === null || isHttpUrl(value);
 }
 
-function isOptionalTileSize(value) {
-  return !Object.hasOwn(value, "tileSize") || TILE_SIZES.has(value.tileSize);
-}
-
 function isFavoriteWidgetItem(value) {
   const requiredFields = [
     "id",
@@ -94,7 +89,6 @@ function isFavoriteWidgetItem(value) {
     isNonEmptyString(value.domain) &&
     ICON_MODES.has(value.iconMode) &&
     isCustomIconUrl(value.customIconUrl) &&
-    isOptionalTileSize(value) &&
     typeof value.backgroundColor === "string" &&
     HEX_COLOR_VALIDATION_PATTERN.test(value.backgroundColor) &&
     BACKGROUND_COLOR_SOURCES.has(value.backgroundColorSource) &&
@@ -103,13 +97,12 @@ function isFavoriteWidgetItem(value) {
   );
 }
 
-// `tileSize` is a legacy optional field: items that carry it stay valid (sizeOf reads it for items without a grid).
+// An item field this validator does not name (the legacy size field of an older build, say) is ignored: not read, not checked, not removed.
 function isWeatherMetricItem(value) {
   return (
     hasOwnFields(value, ["id", "type", "enabled"]) &&
     value.type === "weather-metric" &&
     WEATHER_METRIC_IDS.includes(value.id) &&
-    isOptionalTileSize(value) &&
     typeof value.enabled === "boolean"
   );
 }
@@ -315,8 +308,8 @@ export function createWidgetsStore(
 // Writes only for a `valid` (v3) or `missing` meta; `newer` and `invalid` (a v1 or v2 meta included) are left alone.
 // Item keys are written before the meta; idempotent.
 // Optional `screen` = { rows, columns } (the first screen of this boot, `newtab.js` `firstScreen()`): when ALL six system items are
-// absent (the first appearance), the block is centered vertically in it (docs/vertically-centered-defaults.md); `placeMissing`
-// validates it. A partial self-heal, or no / an invalid `screen`, keeps the row-0 rule. `y` is never recomputed later.
+// absent (the first appearance), the block is centered vertically in it, never lower than the row it would take in a 1280x800 window
+// for its height (docs/vertically-centered-defaults.md, docs/unreadable-grid-reset.md decision 2); `placeMissing` validates it. A partial self-heal, or no / an invalid `screen`, keeps the row-0 rule. `y` is never recomputed later.
 // ---------------------------------------------------------------------------
 const ENSURED_IDS = [...WEATHER_METRIC_IDS, CHROME_IDS.settings, CHROME_IDS.add];
 

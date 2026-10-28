@@ -70,7 +70,8 @@ describe("widgetsStore", () => {
     assert.equal(isWidgetsState({ ...valid, items: [placed({ backgroundColorSource: "remote" })] }), false);
   });
 
-  it("validates an explicit tileSize when present, but tolerates its absence", () => {
+  // Run 51 (docs/unreadable-grid-reset.md decision 3): a stored `tileSize` is ignored data, not read and not validated; whatever it holds, the item is valid.
+  it("ignores a tileSize field: an item with any value of it, or none, is valid", () => {
     const base = currentState();
 
     assert.equal(isWidgetsState(base), true, "absent tileSize (legacy item)");
@@ -84,11 +85,19 @@ describe("widgetsStore", () => {
       true,
       "wide"
     );
-    assert.equal(
-      isWidgetsState({ ...base, items: [placed({ tileSize: "huge" })] }),
-      false,
-      "unknown tileSize"
-    );
+    for (const value of ["huge", "", 5, null, { w: 2 }]) {
+      assert.equal(isWidgetsState({ ...base, items: [placed({ tileSize: value })] }), true, `unknown tileSize ${JSON.stringify(value)} is ignored`);
+      assert.equal(isWidgetItem(placed({ tileSize: value })), true, `isWidgetItem, tileSize ${JSON.stringify(value)}`);
+    }
+  });
+
+  it("reads and writes an item with an extra tileSize unchanged: nothing strips or validates it", async () => {
+    const store = createWidgetsStore(createMemoryStorageArea(), { now: () => NOW });
+    const items = [placed({ id: "a", tileSize: "huge" }), placed({ id: "b", tileSize: "wide" }, 1), placed({ id: "c" }, 2)];
+    await store.setState(currentState(items));
+    const loaded = await store.getState();
+    assert.deepEqual(loaded.items.map((item) => item.tileSize), ["huge", "wide", undefined]);
+    assert.equal(Object.hasOwn(loaded.items[2], "tileSize"), false, "an item without the field gets none");
   });
 
   it("rejects states above the item cap", () => {
@@ -266,8 +275,9 @@ describe("widgetsStore", () => {
     assert.deepEqual((await store.getState()).items, []);
   });
 
-  it("accepts a wide tile when it carries a grid (the grid, not the column count, owns placement)", () => {
+  it("accepts a tile that carries a grid and an extra tileSize (the grid, not the column count or the field, owns placement)", () => {
     assert.equal(isWidgetsState(currentState([placed({ tileSize: "wide", grid: cell(0, 0, 2, 1) })])), true);
+    assert.equal(isWidgetsState(currentState([placed({ tileSize: "huge", grid: cell(0, 0, 2, 1) })])), true);
   });
 });
 
@@ -282,7 +292,8 @@ describe("weather-metric widgets", () => {
   it("validates metric items strictly", () => {
     assert.equal(isWidgetItem(metric()), true);
     assert.equal(isWidgetItem(metric("weather:nope")), false);
-    assert.equal(isWidgetItem(metric("weather:uv", { tileSize: "huge" })), false);
+    assert.equal(isWidgetItem(metric("weather:uv", { tileSize: "huge" })), true, "an extra tileSize is ignored, as on a link");
+    assert.equal(isWidgetItem(metric("weather:uv", { tileSize: "wide" })), true);
     assert.equal(isWidgetItem(metric("weather:uv", { enabled: "yes" })), false);
     const { enabled, ...missing } = metric();
     assert.equal(isWidgetItem(missing), false);

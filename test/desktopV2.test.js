@@ -481,8 +481,8 @@ describe("write guard: only a valid or missing meta may be written (final review
   const INVALID_MESSAGE = "Your saved grid could not be read, so changes are paused. Reload this tab; if this keeps happening, update Quiet Tab.";
   const v1Seed = {
     [WIDGETS_META_KEY]: { version: 1, order: ["a", "b"], columns: 6, position: "top", createdAt: NOW, updatedAt: NOW },
-    [widgetItemStorageKey("a")]: fav("a", { tileSize: "square" }),
-    [widgetItemStorageKey("b")]: fav("b", { tileSize: "wide" })
+    [widgetItemStorageKey("a")]: fav("a"),
+    [widgetItemStorageKey("b")]: fav("b")
   };
   const v2Seed = {
     [WIDGETS_META_KEY]: { version: 2, order: ["a"], createdAt: NOW, updatedAt: NOW },

@@ -275,19 +275,32 @@ describe("widgetsService", () => {
     assert.equal("tileSize" in state.items[0], false);
   });
 
-  it("drops a stored legacy tileSize from a favorite on any edit, size or not", async () => {
+  // Run 51 (docs/unreadable-grid-reset.md decision 3): a stored tileSize is ignored data; a write neither strips nor validates it.
+  it("leaves an extra tileSize alone on any edit of a link, size or not", async () => {
     const { service, store } = await createHarness();
-    await seed(store, [favorite({ tileSize: "wide", grid: g(0, 0, 2, 1) }), favorite({ id: "fav-2", tileSize: "square", grid: g(2, 0) })]);
-    assert.equal((await store.getState()).items[0].tileSize, "wide", "the seed keeps the legacy field");
+    await seed(store, [favorite({ tileSize: "wide", grid: g(0, 0, 2, 1) }), favorite({ id: "fav-2", tileSize: "huge", grid: g(2, 0) })]);
+    assert.equal((await store.getState()).items[0].tileSize, "wide", "the seed keeps the field");
 
     const labelOnly = await service.updateFavorite("fav-1", { label: "Renamed" }, COLS);
-    assert.equal("tileSize" in labelOnly.items[0], false);
+    assert.equal(labelOnly.items[0].tileSize, "wide");
     assert.deepEqual(shown(labelOnly.items[0].grid), g(0, 0, 2, 1));
     const resized = await service.updateFavorite("fav-2", { w: 2, h: 2 }, COLS);
-    assert.equal("tileSize" in resized.items[1], false);
+    assert.equal(resized.items[1].tileSize, "huge");
     assert.equal(resized.items[1].label, "Example");
     const stored = await store.getState();
-    assert.equal(stored.items.some((item) => "tileSize" in item), false);
+    assert.deepEqual(stored.items.map((item) => item.tileSize), ["wide", "huge"]);
+  });
+
+  it("leaves an extra tileSize alone on a weather metric: hide, restore and resize", async () => {
+    const { service, store } = await createHarness();
+    await seed(store, [metric("weather:uv", { tileSize: "wide", grid: g(0, 0) }), metric("weather:temperature", { tileSize: "huge", grid: g(2, 0) })]);
+    const hidden = await service.updateWeatherMetric("weather:uv", { enabled: false }, COLS);
+    assert.equal(hidden.items[0].tileSize, "wide");
+    const restored = await service.updateWeatherMetric("weather:uv", { enabled: true }, COLS);
+    assert.equal(restored.items[0].tileSize, "wide");
+    const resized = await service.updateWeatherMetric("weather:temperature", { w: 2 }, COLS);
+    assert.equal(resized.items[1].tileSize, "huge");
+    assert.deepEqual((await store.getState()).items.map((item) => item.tileSize), ["wide", "huge"]);
   });
 
   it("rejects an unsupported span", async () => {

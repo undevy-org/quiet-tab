@@ -253,9 +253,25 @@ describe("displayLayout anchored at the center line (decisions 2-3; AS-CG-01, 03
     assert.deepEqual(layout.f1, g(4, 1, 2, 1));
     assert.equal("weather:uv" in layout, false);
   });
-  it("a legacy tileSize sizes an unplaced item", () => {
-    const layout = plain(displayLayout([{ id: "w", type: "favorite", tileSize: "wide" }], 14));
-    assert.deepEqual(layout.w, g(6, 0, 2, 1));
+  // Run 51 (docs/unreadable-grid-reset.md decision 3): the legacy tileSize is not read; an item without a valid grid takes its default size.
+  it("an unplaced link is 1×1 and an unplaced precipitation or air quality metric is 2×1, whatever tileSize it carries", () => {
+    const layoutWith = (extra) => plain(displayLayout([
+      { id: "w", type: "favorite", ...extra },
+      { id: "weather:precipitation", type: "weather-metric", enabled: true, ...extra },
+      { id: "weather:airQuality", type: "weather-metric", enabled: true, ...extra },
+      { id: "weather:temperature", type: "weather-metric", enabled: true, ...extra },
+      { id: "weather:uv", type: "weather-metric", enabled: true, ...extra },
+      { id: "chrome:add", type: "chrome", ...extra }
+    ], 14));
+    const size = (cellOf) => [cellOf.w, cellOf.h];
+    const plainLayout = layoutWith({});
+    assert.deepEqual(size(plainLayout.w), [1, 1]);
+    assert.deepEqual(size(plainLayout["weather:precipitation"]), [2, 1]);
+    assert.deepEqual(size(plainLayout["weather:airQuality"]), [2, 1]);
+    assert.deepEqual(size(plainLayout["weather:temperature"]), [1, 1]);
+    assert.deepEqual(size(plainLayout["weather:uv"]), [1, 1]);
+    assert.deepEqual(size(plainLayout["chrome:add"]), [1, 1]);
+    for (const tileSize of ["wide", "square", "huge", 5, null]) assert.deepEqual(layoutWith({ tileSize }), plainLayout, `tileSize ${JSON.stringify(tileSize)} changes nothing`);
   });
   it("keeps (y, x, order) processing: an item that keeps its anchored cell never moves for a later one", () => {
     const items = [fav("late", g(-2, 0)), fav("early", g(-2, 0)), fav("other", g(-3, 0))];
@@ -865,8 +881,9 @@ describe("a tile wider than the grid says tile (run 49)", () => {
     assert.throws(() => displayLayout([fav("a", g(0, 0, 2, 1))], 1), tooWide);
   });
 
-  it("displayLayout, unplaced item (nearestFree): a legacy wide tile without a grid in 1 column", () => {
-    assert.throws(() => displayLayout([{ id: "a", type: "favorite", tileSize: "wide" }], 1), tooWide);
+  it("displayLayout, unplaced item (nearestFree): an unplaced precipitation metric (2 wide by default) in 1 column", () => {
+    assert.throws(() => displayLayout([{ id: "weather:precipitation", type: "weather-metric", enabled: true }], 1), tooWide);
+    assert.doesNotThrow(() => displayLayout([{ id: "a", type: "favorite", tileSize: "wide" }], 1), "a link is 1 wide whatever tileSize it carries");
   });
 
   it("placeMissing never throws with the fixed default widths (the nearestFreeAround site is guarded by the six tiles' 8 of 12 columns)", () => {

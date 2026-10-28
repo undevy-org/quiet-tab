@@ -366,6 +366,12 @@ describe("newtab favorites source", () => {
     assert.match(boot, /widgetsState = await widgetsService\.getState\(\);\s*\} catch \(error\) \{\s*favoritesError = error instanceof Error \? error\.message : String\(error\);/);
   });
 
+  it("no legacy tileSize is left anywhere in src/: not the field, not TILE_SIZES, not isOptionalTileSize (run 51 decision 3, AS-UGR-20)", async () => {
+    for (const { name, text } of await allSrc()) {
+      assert.doesNotMatch(text, /tileSize|TILE_SIZES|isOptionalTileSize/, name);
+    }
+  });
+
   it("no migration symbol or deleted message string is left anywhere in src/ (AS-RM-05)", async () => {
     const files = (await readdir(new URL("../src/", import.meta.url))).filter((name) => /\.(js|css|html)$/.test(name));
     const banned = [
