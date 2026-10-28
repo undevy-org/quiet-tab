@@ -1,4 +1,5 @@
-// The post-onboarding island (docs/post-onboarding-grid.md): pure data and rules, no DOM, no storage.
+// The post-onboarding island (docs/post-onboarding-grid.md): pure data and rules, no DOM, no storage. The island's row is the centered
+// row capped by the island's own height (docs/unreadable-grid-reset.md decision 2): row 3 at most for 3 rows, row 2 for 4 or 5 rows.
 import { CHROME_IDS, DEFAULT_ENTRY_ORDER, centeredDefaultRow, defaultSize, isValidGrid } from "./desktopLayout.js";
 
 export const MAX_ISLAND_LINKS = 8;

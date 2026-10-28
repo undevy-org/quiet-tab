@@ -35,8 +35,8 @@ export const toStored = (grid, columns) => ({ ...grid, x: grid.x - originColumn(
 export const toDisplayed = (grid, columns) => ({ ...grid, x: grid.x + originColumn(columns) });
 
 // Rows that fit the first screen: `height` is document.documentElement.clientHeight, `width` picks the metrics. Also the `screen.rows`
-// of `placeMissing` (a NaN / Infinity height gives a non-integer, which `placeMissing` rejects: row 0 as before). A window higher than
-// CEILING_REFERENCE_ROWS (below) rows counts as that many for the first block: `centeredDefaultRow` never places it lower.
+// of `placeMissing` (a NaN / Infinity height gives a non-integer, which `placeMissing` rejects: row 0 as before). It returns the real
+// number of rows; it is `centeredDefaultRow` that counts a window higher than CEILING_REFERENCE_ROWS (below) rows as that many rows.
 export function viewportRows(height, width) {
   const { cell, gap, pad } = gridMetrics(width);
   return Math.max(1, Math.floor((height - 2 * pad + gap) / (cell + gap)));
@@ -281,8 +281,8 @@ const validScreen = (screen) =>
 // total width, at the position nearest to the center of the 12 reference columns (ties to the right). `existing` holds
 // items with their stored grids; only those on the grid with a valid grid occupy cells.
 // Optional `screen` = { rows, columns } (integers, rows >= 1, columns >= 2): when ALL six default ids are requested, the row
-// search starts at the centered row of the first screen, capped at the centered row of the reference window (`centeredDefaultRow`,
-// at most row 4 for the one-row block and row 3 for the two-row block of a narrow window), and goes by distance (above first)
+// search starts at the centered row of the first screen, capped at the centered row of the reference window for the height of this
+// block (`centeredDefaultRow`: the ceiling by block height, so a taller block takes a higher row), and goes by distance (above first)
 // instead of from row 0. That row is only where the search starts: with other tiles in the way the nearest free row is taken.
 // Without a valid `screen`, or with 1..5 ids (self-heal), the result is exactly the row-0 rule.
 export function placeMissing(missingIds, existing, screen) {

@@ -162,8 +162,6 @@ describe("islandPlacements", () => {
         const map = islandPlacements({ k: row.k, linkIds: ids(row.k), rows, columns: 14 });
         const dx = -Math.floor(row.W / 2);
         assert.equal(map.get("weather:temperature").y, want.dy[i], `k=${row.k} rows=${rows}`);
-        assert.equal(map.get("chrome:settings").y, want.dy[i] + row.H - 1, `k=${row.k} rows=${rows} last row`);
-        assert.equal(map.get("chrome:add").y, want.dy[i] + row.H - 1, `k=${row.k} rows=${rows} last row`);
         assert.equal(map.get("weather:temperature").x, dx, `k=${row.k} rows=${rows} x`);
       });
       // the cap changes the row from rows 10 (an even H) or 11 (an odd H): the first rows whose uncapped row is above the cap
@@ -171,12 +169,17 @@ describe("islandPlacements", () => {
       assert.equal(firstBiting, row.H % 2 === 0 ? 10 : 11, `k=${row.k} first rows at which the cap bites`);
     }
   });
-  it("an island written in a tall window ends at row 5 (H 3 or 4) or row 6 (H 5) at the latest, the last row fully inside the first screen of a window from 6 or 7 rows (AS-UGR-04)", () => {
-    const LAST = { 3: 5, 4: 5, 5: 6 };
+  it("an island written at 9 rows or more ends at row 5 (H 3 or 4) or row 6 (H 5) at the latest, with Settings and Add in that last row, among the first 6 or 7 rows (AS-UGR-04)", () => {
+    const LAST = { 3: 5, 4: 5, 5: 6 }; // the last row of the island, whatever the height of the window
+    const FIRST_SCREEN = { 3: 6, 4: 6, 5: 7 }; // rows of the lowest window whose first screen holds that last row (504 and 584 px at 1280 wide)
     for (const row of TABLE) {
       for (const rows of [9, 10, 11, 14, 19, 26, 80]) {
         const map = islandPlacements({ k: row.k, linkIds: ids(row.k), rows, columns: 14 });
-        assert.equal(map.get("chrome:settings").y, LAST[row.H], `k=${row.k} rows=${rows}`);
+        const last = Math.max(...[...map.values()].map((cell) => cell.y + cell.h - 1));
+        assert.equal(last, LAST[row.H], `k=${row.k} rows=${rows} last row of the island`);
+        assert.equal(map.get("chrome:settings").y, last, `k=${row.k} rows=${rows} Settings in the last row`);
+        assert.equal(map.get("chrome:add").y, last, `k=${row.k} rows=${rows} Add in the last row`);
+        assert.ok(last < FIRST_SCREEN[row.H], `k=${row.k} rows=${rows}: row ${last} is among the first ${FIRST_SCREEN[row.H]} rows`);
       }
     }
   });
