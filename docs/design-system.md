@@ -263,8 +263,7 @@ All heights are **border-box** (`box-sizing: border-box` globally).
   label, secondary (`x`, Cancel or Not now) on the left, commit on the right
 - `margin-top: var(--modal-actions-margin-top)` (**16px**); no footer padding or
   `border-top`; **20px** (`--surface-modal-padding`) is the only inset under the buttons
-- Commit icons: `check` (Add, Save), `trash2` on `button--danger` (Delete),
-  `eyeOff` on primary (Hide)
+- Commit icons: `check` (Add, Save), `trash2` on `button--danger` (Delete), `eyeOff` on primary (Hide), `refresh` on `button--danger` (Reset grid)
 - Edit link has Cancel and Save only; Delete lives in edit mode (− then Delete link?)
 - Error text (`.desktop-dialog__error`, `.city-modal__feedback .status--error`):
   `margin: 8px 0 0` (**8px** from the control or last row, **16px** to the actions);
