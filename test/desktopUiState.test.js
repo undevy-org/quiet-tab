@@ -60,7 +60,7 @@ describe("menu and dialog", () => {
   });
   it("run 51: confirm-reset-grid is a dialog kind and opens without an id", () => {
     assert.ok(DIALOG_KINDS.has("confirm-reset-grid"));
-    const s = openDialog(edit(), { kind: "confirm-reset-grid" });
+    const s = openDialog(createDesktopUiState(), { kind: "confirm-reset-grid" }); // the screen has no edit mode
     assert.deepEqual(s.dialog, { kind: "confirm-reset-grid" });
     assert.equal(escapeLayer(s), "dialog");
   });

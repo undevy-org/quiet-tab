@@ -353,7 +353,8 @@ describe("newtab favorites source", () => {
     assert.match(boot, /if \(inspectWidgetsMeta\(rawMeta\) === "newer"\) \{\s*widgetsNewer = true;\s*renderFavorites\(\);\s*return;\s*\}/);
     // run 51 (docs/unreadable-grid-reset.md decision 4): an invalid meta shows the screen, the same shape of exit, in two places
     assert.match(boot, /if \(inspectWidgetsMeta\(rawMeta\) === "invalid"\) \{\s*widgetsUnreadable = true;\s*renderFavorites\(\);\s*return;\s*\}/);
-    assert.match(boot, /const ensured = await ensureWidgetsLayout\(syncStorageArea, \{ screen: firstScreen\(\) \}\);\s*if \(ensured\.meta === "invalid"\) \{\s*widgetsUnreadable = true;\s*renderFavorites\(\);\s*return;\s*\}/);
+    // the second exit sits OUTSIDE the try whose catch sets widgetsEnsureFailed: a render that throws is not swallowed as an ensure failure
+    assert.match(boot, /const ensured = await ensureWidgetsLayout\(syncStorageArea, \{ screen: firstScreen\(\) \}\);\s*ensuredInvalid = ensured\.meta === "invalid";\s*\} catch \{\s*widgetsEnsureFailed = true;\s*\}\s*\}\s*if \(ensuredInvalid\) \{\s*widgetsUnreadable = true;\s*renderFavorites\(\);\s*return;\s*\}/);
   });
 
   it("the early meta read sits in its own try whose catch sets no lock flag, and the boot goes on (AS-RM-05b)", async () => {
@@ -3240,7 +3241,7 @@ describe("run 51: the screen for an unreadable grid and the reset (AS-UGR-22)", 
     assert.equal(src.split("RESET_FAILED_MESSAGE").length - 1, 2, "defined once, used once");
   });
 
-  it("resetUnreadableWidgets is imported once and called once (from resetGrid), and reads the area once (one get(null), no second get)", async () => {
+  it("resetUnreadableWidgets is called once in newtab.js (from resetGrid), and its body reads the area once, with get(null), under the widgets lock", async () => {
     const src = await code();
     assert.equal(src.split("resetUnreadableWidgets(").length - 1, 1);
     assert.equal(topLevelFunction(src, "resetGrid").split("resetUnreadableWidgets(").length - 1, 1);

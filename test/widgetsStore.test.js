@@ -455,7 +455,7 @@ describe("store messages say grid and links (run 49)", () => {
 // resetUnreadableWidgets (docs/unreadable-grid-reset.md decision 6, AS-UGR-19): the one erasing path of the screen for an unreadable meta.
 // ---------------------------------------------------------------------------
 describe("resetUnreadableWidgets (run 51, AS-UGR-19)", () => {
-  // literals on purpose: the persisted key format, not the writer of the module under test
+  // the key literals are the persisted format on purpose (not built by the module under test); SYSTEM_IDS comes from the module's WEATHER_METRIC_IDS
   const META_KEY = "quietTabWidgetsMeta";
   const itemKey = (id) => `quietTabWidget:${id}`;
   const SYSTEM_IDS = [...WEATHER_METRIC_IDS, "chrome:settings", "chrome:add"];

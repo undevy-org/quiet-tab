@@ -2257,7 +2257,7 @@ function revealAddedTile(id) {
 
 const DIALOG_SCROLL_MARGIN_PX = 5; // the scroll-margin of a dialog control (surfaces.css)
 const ADD_TILE_SELECTOR = '[data-widget-id="chrome:add"]';
-const DIALOG_BACKDROP_GUARD_MS = 300;
+const DIALOG_BACKDROP_GUARD_MS = 300; // the backdrop ignores clicks this long after a dialog opens, and so do the two buttons of the Reset grid dialog (guardResetDialogPresses)
 let desktopDialogRoot = null;
 let desktopDialogOpener = null; // { id, badge } of the tile or − badge that opened the dialog, looked up again at close
 let desktopDialogOpenedAt = 0;
@@ -3681,9 +3681,10 @@ if (favoritesRoot) {
       return;
     }
 
-    // Bootstrap order: early `newer` check, then ensure, then the first read. A `newer` meta (another device or a rollback)
-    // is never written: the grid is locked read-only. A rejected early read is not fatal (rawMeta = {}): it fails again in
-    // getState, whose catch shows the storage error, and ensureWidgetsLayout has its own catch.
+    // Bootstrap order: early `newer` check, early `invalid` check, then ensure (an `invalid` result of it takes the same exit as the early
+    // one), then the first read. A `newer` meta (another device or a rollback) is never written: the grid is locked read-only. An `invalid`
+    // meta shows the screen with Reset grid: nothing is written, read or fetched. A rejected early read is not fatal (rawMeta = {}): ensure
+    // reads the meta again, getState fails again with the storage error in its catch, and ensureWidgetsLayout has its own catch.
     let rawMeta = {};
     try {
       if (hasStorageArea(syncStorageArea)) rawMeta = await syncStorageArea.get(WIDGETS_META_KEY);
@@ -3702,18 +3703,21 @@ if (favoritesRoot) {
       return;
     }
 
+    // the early read may have failed (rawMeta = {}) and this one find an unreadable meta: the same exit, taken outside the try so that a render
+    // that throws is not swallowed as an ensure failure
+    let ensuredInvalid = false;
     if (hasStorageArea(syncStorageArea)) {
       try {
-        // the early read may have failed (rawMeta = {}) and this one find an unreadable meta: the same exit
         const ensured = await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });
-        if (ensured.meta === "invalid") {
-          widgetsUnreadable = true;
-          renderFavorites();
-          return;
-        }
+        ensuredInvalid = ensured.meta === "invalid";
       } catch {
         widgetsEnsureFailed = true;
       }
+    }
+    if (ensuredInvalid) {
+      widgetsUnreadable = true;
+      renderFavorites();
+      return;
     }
 
     try {
