@@ -58,6 +58,12 @@ describe("menu and dialog", () => {
     const s = openDialog(edit(), { kind: "confirm-hide-weather", id: "weather:uv" });
     assert.deepEqual(s.dialog, { kind: "confirm-hide-weather", id: "weather:uv" });
   });
+  it("run 51: confirm-reset-grid is a dialog kind and opens without an id", () => {
+    assert.ok(DIALOG_KINDS.has("confirm-reset-grid"));
+    const s = openDialog(createDesktopUiState(), { kind: "confirm-reset-grid" }); // the screen has no edit mode
+    assert.deepEqual(s.dialog, { kind: "confirm-reset-grid" });
+    assert.equal(escapeLayer(s), "dialog");
+  });
   it("opening a dialog closes the menu", () => {
     const s = openDialog(openMenu(edit(), "add"), { kind: "add-link" });
     assert.equal(s.menu, null);

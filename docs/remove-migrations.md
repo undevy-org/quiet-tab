@@ -4,6 +4,8 @@
 
 `implemented` — closes backlog 37. No UI change: the page for a normal (v3) install is identical.
 
+> **Changed by run 51** (`docs/unreadable-grid-reset.md`): an `invalid` meta now shows `Your grid couldn't be read.` and a Reset grid button (L1-02 is decided); the `tileSize` tolerance of decision 7 is removed.
+
 ## Intake log
 
 | Date | Raw note (owner) | Verdict | Reference |

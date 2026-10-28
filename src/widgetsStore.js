@@ -10,8 +10,7 @@ import {
 import {
   BACKGROUND_COLOR_SOURCES,
   HEX_COLOR_VALIDATION_PATTERN,
-  ICON_MODES,
-  TILE_SIZES
+  ICON_MODES
 } from "./favoritesShared.js";
 import {
   MAX_CHROME_WIDGETS,
@@ -43,6 +42,8 @@ const SYNC_WRITE_ERROR =
 export function widgetItemStorageKey(id) {
   return `quietTabWidget:${id}`;
 }
+// The prefix of every item key, derived from the writer above (resetUnreadableWidgets removes by it).
+const WIDGET_ITEM_KEY_PREFIX = widgetItemStorageKey("");
 
 export function createInitialWidgetsState(now = new Date().toISOString()) {
   return { version: WIDGETS_VERSION, items: [], createdAt: now, updatedAt: now };
@@ -63,10 +64,6 @@ function isHttpUrl(value) {
 
 function isCustomIconUrl(value) {
   return value === null || isHttpUrl(value);
-}
-
-function isOptionalTileSize(value) {
-  return !Object.hasOwn(value, "tileSize") || TILE_SIZES.has(value.tileSize);
 }
 
 function isFavoriteWidgetItem(value) {
@@ -94,7 +91,6 @@ function isFavoriteWidgetItem(value) {
     isNonEmptyString(value.domain) &&
     ICON_MODES.has(value.iconMode) &&
     isCustomIconUrl(value.customIconUrl) &&
-    isOptionalTileSize(value) &&
     typeof value.backgroundColor === "string" &&
     HEX_COLOR_VALIDATION_PATTERN.test(value.backgroundColor) &&
     BACKGROUND_COLOR_SOURCES.has(value.backgroundColorSource) &&
@@ -103,13 +99,11 @@ function isFavoriteWidgetItem(value) {
   );
 }
 
-// `tileSize` is a legacy optional field: items that carry it stay valid (sizeOf reads it for items without a grid).
 function isWeatherMetricItem(value) {
   return (
     hasOwnFields(value, ["id", "type", "enabled"]) &&
     value.type === "weather-metric" &&
     WEATHER_METRIC_IDS.includes(value.id) &&
-    isOptionalTileSize(value) &&
     typeof value.enabled === "boolean"
   );
 }
@@ -315,8 +309,9 @@ export function createWidgetsStore(
 // Writes only for a `valid` (v3) or `missing` meta; `newer` and `invalid` (a v1 or v2 meta included) are left alone.
 // Item keys are written before the meta; idempotent.
 // Optional `screen` = { rows, columns } (the first screen of this boot, `newtab.js` `firstScreen()`): when ALL six system items are
-// absent (the first appearance), the block is centered vertically in it (docs/vertically-centered-defaults.md); `placeMissing`
-// validates it. A partial self-heal, or no / an invalid `screen`, keeps the row-0 rule. `y` is never recomputed later.
+// absent (the first appearance), the block is centered vertically in it, never lower than the row it would take in a 1280x800 window
+// for the block's height (docs/vertically-centered-defaults.md, docs/unreadable-grid-reset.md decision 2); `placeMissing` validates it.
+// A partial self-heal, or no / an invalid `screen`, keeps the row-0 rule. `y` is never recomputed later.
 // ---------------------------------------------------------------------------
 const ENSURED_IDS = [...WEATHER_METRIC_IDS, CHROME_IDS.settings, CHROME_IDS.add];
 
@@ -362,5 +357,26 @@ export function ensureWidgetsLayout(storageArea, { now = () => new Date().toISOS
       [WIDGETS_META_KEY]: { ...meta, order: [...meta.order, ...unlisted], updatedAt: timestamp }
     });
     return { changed: true, meta: kind };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// resetUnreadableWidgets: the only path that erases the whole grid (docs/unreadable-grid-reset.md decision 6; `setState` also calls `remove`,
+// for the items an edit dropped, and `clearState` is test-only). Runs under the widgets lock and reads the area ONCE: the meta check
+// (`inspectWidgetsMeta`) and the key list both come from that one snapshot of `get(null)`, so they cannot disagree. ONLY an `invalid` meta
+// is erased: for `valid`, `missing` or `newer` nothing is removed and { reset: false, meta } is returned (another tab already reset or fixed
+// the data, or the grid is a newer version's, which is never erased). For `invalid` ONE `remove` takes `quietTabWidgetsMeta` and every key
+// of the snapshot that starts with `quietTabWidget:`, the item keys the unreadable meta does not list included (its `order` cannot be
+// trusted, and a leftover system item would come back through ensureWidgetsLayout). Every other key stays, the city and the first-run flags
+// included. The window between the `get` and the `remove` is Accepted exception 2 of the spec.
+// ---------------------------------------------------------------------------
+export function resetUnreadableWidgets(storageArea) {
+  return withWidgetsMutationLock(async () => {
+    const snapshot = await storageArea.get(null);
+    const kind = inspectWidgetsMeta(snapshot);
+    if (kind !== "invalid") return { reset: false, meta: kind };
+    const itemKeys = Object.keys(snapshot).filter((key) => key.startsWith(WIDGET_ITEM_KEY_PREFIX));
+    await storageArea.remove([WIDGETS_META_KEY, ...itemKeys]);
+    return { reset: true, meta: "invalid" };
   });
 }

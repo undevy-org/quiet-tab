@@ -9,7 +9,9 @@ import {
   inspectWidgetsMeta,
   isWidgetItem,
   isWidgetsState,
-  widgetItemStorageKey
+  resetUnreadableWidgets,
+  widgetItemStorageKey,
+  withWidgetsMutationLock
 } from "../src/widgetsStore.js";
 import { MAX_FAVORITE_WIDGETS, NEWER_WIDGETS_MESSAGE, WEATHER_METRIC_IDS } from "../src/widgetsShared.js";
 
@@ -70,25 +72,32 @@ describe("widgetsStore", () => {
     assert.equal(isWidgetsState({ ...valid, items: [placed({ backgroundColorSource: "remote" })] }), false);
   });
 
-  it("validates an explicit tileSize when present, but tolerates its absence", () => {
+  // Run 51 (docs/unreadable-grid-reset.md decision 3): a stored `tileSize` is ignored data, not read and not validated; whatever it holds, the item is valid.
+  it("ignores a tileSize field: an item with any value of it, or none, is valid", () => {
     const base = currentState();
+    const kinds = {
+      link: (extra) => placed(extra),
+      metric: (extra) => ({ ...metric("weather:temperature", extra), grid: cell(1, 0) }),
+      chrome: (extra) => ({ ...chromeAt("settings", cell(2, 0)), ...extra })
+    };
 
-    assert.equal(isWidgetsState(base), true, "absent tileSize (legacy item)");
-    assert.equal(
-      isWidgetsState({ ...base, items: [placed({ tileSize: "square" })] }),
-      true,
-      "square"
-    );
-    assert.equal(
-      isWidgetsState({ ...base, items: [placed({ tileSize: "wide" })] }),
-      true,
-      "wide"
-    );
-    assert.equal(
-      isWidgetsState({ ...base, items: [placed({ tileSize: "huge" })] }),
-      false,
-      "unknown tileSize"
-    );
+    for (const [kind, make] of Object.entries(kinds)) {
+      assert.equal(isWidgetItem(make({})), true, `${kind}: no tileSize (a legacy item or a new one)`);
+      assert.equal(isWidgetsState({ ...base, items: [make({})] }), true, `${kind} in a state: no tileSize`);
+      for (const value of ["square", "wide", "huge", "", 5, null, { w: 2 }]) {
+        assert.equal(isWidgetItem(make({ tileSize: value })), true, `${kind}: isWidgetItem, tileSize ${JSON.stringify(value)} is ignored`);
+        assert.equal(isWidgetsState({ ...base, items: [make({ tileSize: value })] }), true, `${kind} in a state: tileSize ${JSON.stringify(value)} is ignored`);
+      }
+    }
+  });
+
+  it("reads and writes an item with an extra tileSize unchanged: nothing strips or validates it", async () => {
+    const store = createWidgetsStore(createMemoryStorageArea(), { now: () => NOW });
+    const items = [placed({ id: "a", tileSize: "huge" }), placed({ id: "b", tileSize: "wide" }, 1), placed({ id: "c" }, 2)];
+    await store.setState(currentState(items));
+    const loaded = await store.getState();
+    assert.deepEqual(loaded.items.map((item) => item.tileSize), ["huge", "wide", undefined]);
+    assert.equal(Object.hasOwn(loaded.items[2], "tileSize"), false, "an item without the field gets none");
   });
 
   it("rejects states above the item cap", () => {
@@ -266,7 +275,7 @@ describe("widgetsStore", () => {
     assert.deepEqual((await store.getState()).items, []);
   });
 
-  it("accepts a wide tile when it carries a grid (the grid, not the column count, owns placement)", () => {
+  it("accepts a tile that carries a grid and an extra tileSize (the grid, not the column count or the field, owns placement)", () => {
     assert.equal(isWidgetsState(currentState([placed({ tileSize: "wide", grid: cell(0, 0, 2, 1) })])), true);
   });
 });
@@ -282,7 +291,6 @@ describe("weather-metric widgets", () => {
   it("validates metric items strictly", () => {
     assert.equal(isWidgetItem(metric()), true);
     assert.equal(isWidgetItem(metric("weather:nope")), false);
-    assert.equal(isWidgetItem(metric("weather:uv", { tileSize: "huge" })), false);
     assert.equal(isWidgetItem(metric("weather:uv", { enabled: "yes" })), false);
     const { enabled, ...missing } = metric();
     assert.equal(isWidgetItem(missing), false);
@@ -440,5 +448,148 @@ describe("store messages say grid and links (run 49)", () => {
       assert.doesNotMatch(text, /\b(?:favou?rite|widget|desktop|bookmark)s?\b/i, text);
       assert.doesNotMatch(text, / - /, text);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resetUnreadableWidgets (docs/unreadable-grid-reset.md decision 6, AS-UGR-19): the one erasing path of the screen for an unreadable meta.
+// ---------------------------------------------------------------------------
+describe("resetUnreadableWidgets (run 51, AS-UGR-19)", () => {
+  // the key literals are the persisted format on purpose (not built by the module under test); SYSTEM_IDS comes from the module's WEATHER_METRIC_IDS
+  const META_KEY = "quietTabWidgetsMeta";
+  const itemKey = (id) => `quietTabWidget:${id}`;
+  const SYSTEM_IDS = [...WEATHER_METRIC_IDS, "chrome:settings", "chrome:add"];
+  const keysOf = async (area) => Object.keys(await area.get(null)).sort();
+
+  // The area wrapped in a spy: every call with its argument. `failGet`, `failRemove` make the call reject (a remove rejects before it changes anything).
+  function spied(initial, { failGet = false, failRemove = false } = {}) {
+    const inner = createMemoryStorageArea(initial);
+    const calls = [];
+    const area = {
+      async get(key) {
+        calls.push({ op: "get", key });
+        if (failGet) throw new Error("get rejected");
+        return inner.get(key);
+      },
+      async set(values) {
+        calls.push({ op: "set", values });
+        return inner.set(values);
+      },
+      async remove(key) {
+        calls.push({ op: "remove", key });
+        if (failRemove) throw new Error("remove rejected");
+        return inner.remove(key);
+      }
+    };
+    return { area, inner, calls };
+  }
+  const gets = (calls) => calls.filter((call) => call.op === "get");
+  const removes = (calls) => calls.filter((call) => call.op === "remove");
+
+  const unrelated = {
+    quietTabWeatherLocation: { version: 1, name: "Tbilisi", country: "Georgia", latitude: 41.7, longitude: 44.8 },
+    quietTabWeatherPromptDismissed: true,
+    quietTabFavoritesMeta: { version: 1, order: ["a"], createdAt: NOW, updatedAt: NOW },
+    "quietTabFavorite:a": { id: "a" },
+    quietTabWidgetX: "a key without the colon",
+    unrelated: 1
+  };
+  // an unreadable meta: the version is current but a timestamp is not a date; f2 is on disk and not in `order`
+  const invalidMeta = { version: 3, order: ["f0", "f1"], createdAt: "not a date", updatedAt: NOW };
+  const invalidSeed = () => ({
+    [META_KEY]: invalidMeta,
+    [itemKey("f0")]: favorite({ id: "f0" }),
+    [itemKey("f1")]: favorite({ id: "f1" }),
+    [itemKey("f2")]: favorite({ id: "f2" }),
+    ...unrelated
+  });
+  const validMeta = { version: 3, order: ["f0"], createdAt: NOW, updatedAt: NOW };
+
+  it("(a) an invalid meta with three item keys, one of them not in order: all four widget keys go, nothing else; one get(null) and one remove", async () => {
+    const { area, inner, calls } = spied(invalidSeed());
+    assert.deepEqual(await resetUnreadableWidgets(area), { reset: true, meta: "invalid" });
+    assert.deepEqual(await keysOf(inner), Object.keys(unrelated).sort(), "the city, the flags, the legacy keys, quietTabWidgetX and the unrelated key stay");
+    assert.deepEqual(await inner.get(null), unrelated);
+    assert.equal(gets(calls).length, 1);
+    assert.equal(gets(calls)[0].key, null);
+    assert.equal(removes(calls).length, 1);
+    assert.deepEqual([...removes(calls)[0].key].sort(), [META_KEY, itemKey("f0"), itemKey("f1"), itemKey("f2")].sort(), "the meta key and exactly the quietTabWidget: keys of the snapshot");
+    assert.equal(calls.length, 2, "nothing but that get and that remove");
+  });
+
+  for (const [label, meta, seed] of [
+    ["(b) a valid meta", "valid", () => ({ [META_KEY]: validMeta, [itemKey("f0")]: favorite({ id: "f0", grid: cell(0, 0) }), ...unrelated })],
+    ["(c) no meta (a stray item key stays too)", "missing", () => ({ [itemKey("stray")]: favorite({ id: "stray" }), ...unrelated })],
+    ["(d) a newer meta", "newer", () => ({ [META_KEY]: { ...validMeta, version: 4 }, [itemKey("f0")]: favorite({ id: "f0" }), ...unrelated })]
+  ]) {
+    it(`${label}: { reset: false, meta: "${meta}" }, the area is deep-equal, one get and no remove`, async () => {
+      const { area, inner, calls } = spied(seed());
+      const before = await inner.get(null);
+      assert.deepEqual(await resetUnreadableWidgets(area), { reset: false, meta });
+      assert.deepEqual(await inner.get(null), before);
+      assert.equal(gets(calls).length, 1);
+      assert.equal(gets(calls)[0].key, null);
+      assert.equal(removes(calls).length, 0);
+      assert.equal(calls.length, 1, "nothing but that get");
+    });
+  }
+
+  it("(e) an invalid meta whose remove rejects: the function rejects, the area is deep-equal, one remove call", async () => {
+    const { area, inner, calls } = spied(invalidSeed(), { failRemove: true });
+    const before = await inner.get(null);
+    await assert.rejects(() => resetUnreadableWidgets(area), { message: "remove rejected" });
+    assert.deepEqual(await inner.get(null), before);
+    assert.equal(removes(calls).length, 1);
+    assert.equal(gets(calls).length, 1);
+  });
+
+  it("(f) two calls at once on an invalid meta: one removes, the other finds no meta and returns reset: false (the lock)", async () => {
+    const { area, inner, calls } = spied(invalidSeed());
+    const results = await Promise.all([resetUnreadableWidgets(area), resetUnreadableWidgets(area)]);
+    assert.deepEqual(results.map((result) => result.reset).sort(), [false, true]);
+    assert.deepEqual(results.find((result) => !result.reset), { reset: false, meta: "missing" });
+    assert.equal(removes(calls).length, 1);
+    assert.equal(gets(calls).length, 2);
+    assert.deepEqual(await inner.get(null), unrelated);
+  });
+
+  it("(g) an invalid meta with 206 item keys (200 links and the six system items): one remove of exactly the meta key and the 206 keys, one get", async () => {
+    const seed = { [META_KEY]: { version: 3, order: "x", createdAt: NOW, updatedAt: NOW }, ...unrelated };
+    const ids = [...Array.from({ length: 200 }, (_, i) => `link${i}`), ...SYSTEM_IDS];
+    for (const id of ids) seed[itemKey(id)] = { id };
+    const { area, inner, calls } = spied(seed);
+    assert.deepEqual(await resetUnreadableWidgets(area), { reset: true, meta: "invalid" });
+    assert.equal(ids.length, 206);
+    assert.equal(removes(calls).length, 1);
+    assert.equal(removes(calls)[0].key.length, 207);
+    assert.deepEqual([...removes(calls)[0].key].sort(), [META_KEY, ...ids.map(itemKey)].sort());
+    assert.equal(gets(calls).length, 1);
+    assert.deepEqual(await inner.get(null), unrelated);
+  });
+
+  it("(h) an area whose get rejects: the function rejects and no remove is called", async () => {
+    const { area, calls } = spied(invalidSeed(), { failGet: true });
+    await assert.rejects(() => resetUnreadableWidgets(area), { message: "get rejected" });
+    assert.equal(removes(calls).length, 0);
+    assert.equal(calls.length, 1, "nothing but that get");
+  });
+
+  it("shares the one widgets lock: while another mutation holds it the reset has not read the area, and it runs when the lock is released", async () => {
+    const { area, calls } = spied(invalidSeed());
+    let release;
+    const held = withWidgetsMutationLock(() => new Promise((resolve) => { release = resolve; }));
+    const pending = resetUnreadableWidgets(area);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.equal(calls.length, 0, "no get while the lock is held");
+    release();
+    await held;
+    assert.deepEqual(await pending, { reset: true, meta: "invalid" });
+    assert.equal(calls.length, 2, "the get and the remove, after the release");
+  });
+
+  it("a key such as quietTabWidgetX (no colon) and the meta-like quietTabWidgets are never removed, a key with the colon always is", async () => {
+    const { area, inner } = spied({ ...invalidSeed(), quietTabWidgets: "no colon", "quietTabWidget:": "empty id", "quietTabWidget:weather:uv": { id: "weather:uv" } });
+    assert.equal((await resetUnreadableWidgets(area)).reset, true);
+    assert.deepEqual(await keysOf(inner), [...Object.keys(unrelated), "quietTabWidgets"].sort(), "the unrelated keys, quietTabWidgetX and quietTabWidgets stay; the meta and every quietTabWidget: key are gone");
   });
 });

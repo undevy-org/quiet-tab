@@ -253,9 +253,25 @@ describe("displayLayout anchored at the center line (decisions 2-3; AS-CG-01, 03
     assert.deepEqual(layout.f1, g(4, 1, 2, 1));
     assert.equal("weather:uv" in layout, false);
   });
-  it("a legacy tileSize sizes an unplaced item", () => {
-    const layout = plain(displayLayout([{ id: "w", type: "favorite", tileSize: "wide" }], 14));
-    assert.deepEqual(layout.w, g(6, 0, 2, 1));
+  // Run 51 (docs/unreadable-grid-reset.md decision 3): the legacy tileSize is not read; an item without a valid grid takes its default size.
+  it("an unplaced link is 1×1 and an unplaced precipitation or air quality metric is 2×1, whatever tileSize it carries", () => {
+    const layoutWith = (extra) => plain(displayLayout([
+      { id: "w", type: "favorite", ...extra },
+      { id: "weather:precipitation", type: "weather-metric", enabled: true, ...extra },
+      { id: "weather:airQuality", type: "weather-metric", enabled: true, ...extra },
+      { id: "weather:temperature", type: "weather-metric", enabled: true, ...extra },
+      { id: "weather:uv", type: "weather-metric", enabled: true, ...extra },
+      { id: "chrome:add", type: "chrome", ...extra }
+    ], 14));
+    const size = (cell) => [cell.w, cell.h];
+    const plainLayout = layoutWith({});
+    assert.deepEqual(size(plainLayout.w), [1, 1]);
+    assert.deepEqual(size(plainLayout["weather:precipitation"]), [2, 1]);
+    assert.deepEqual(size(plainLayout["weather:airQuality"]), [2, 1]);
+    assert.deepEqual(size(plainLayout["weather:temperature"]), [1, 1]);
+    assert.deepEqual(size(plainLayout["weather:uv"]), [1, 1]);
+    assert.deepEqual(size(plainLayout["chrome:add"]), [1, 1]);
+    for (const tileSize of ["wide", "square", "huge", 5, null]) assert.deepEqual(layoutWith({ tileSize }), plainLayout, `tileSize ${JSON.stringify(tileSize)} changes nothing`);
   });
   it("keeps (y, x, order) processing: an item that keeps its anchored cell never moves for a later one", () => {
     const items = [fav("late", g(-2, 0)), fav("early", g(-2, 0)), fav("other", g(-3, 0))];
@@ -503,10 +519,12 @@ describe("vertically centered defaults (docs/vertically-centered-defaults.md; AS
   const xs = (map) => six.map((id) => map.get(id).x);
   const link = (refColumn, y, w = 1, h = 1) => fav(`l${refColumn}-${y}`, g(refColumn - 6, y, w, h)); // reference column -> stored
 
-  it("centeredDefaultRow(R, b) = max(0, floor((R - b) / 2)): tables", () => {
-    const one = [0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6];
+  // Run 51 (docs/unreadable-grid-reset.md decision 2): the centered row is capped by the row at which the block is centered in a 1280x800 window
+  // (9 rows); the rows above 9 give the cap (4, 3, 3, 2, 2 for b = 1..5), so R = 11..13 with b = 1 and R = 10 with b = 2 are no longer 5, 5, 6 and 4.
+  it("centeredDefaultRow(R, b) = min(cap(b), max(0, floor((R - b) / 2))): tables", () => {
+    const one = [0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 4, 4, 4];
     one.forEach((y, i) => assert.equal(engine.centeredDefaultRow(i + 1, 1), y, `R=${i + 1}, b=1`));
-    const two = [0, 0, 0, 1, 1, 2, 2, 3, 3, 4];
+    const two = [0, 0, 0, 1, 1, 2, 2, 3, 3, 3];
     two.forEach((y, i) => assert.equal(engine.centeredDefaultRow(i + 1, 2), y, `R=${i + 1}, b=2`));
   });
   it("centeredDefaultRow: R < b, R = b and the spec examples", () => {
@@ -514,8 +532,44 @@ describe("vertically centered defaults (docs/vertically-centered-defaults.md; AS
     assert.equal(engine.centeredDefaultRow(3, 4), 0);
     assert.equal(engine.centeredDefaultRow(2, 2), 0);
     assert.equal(engine.centeredDefaultRow(4, 4), 0);
-    for (const [R, b, y] of [[9, 1, 4], [8, 1, 3], [7, 1, 3], [5, 1, 2], [4, 1, 1], [3, 1, 1], [2, 1, 0], [1, 1, 0], [13, 1, 6], [17, 1, 8], [26, 1, 12], [10, 2, 4], [9, 2, 3]]) {
+    for (const [R, b, y] of [[9, 1, 4], [8, 1, 3], [7, 1, 3], [5, 1, 2], [4, 1, 1], [3, 1, 1], [2, 1, 0], [1, 1, 0], [13, 1, 4], [17, 1, 4], [26, 1, 4], [10, 2, 3], [9, 2, 3]]) {
       assert.equal(engine.centeredDefaultRow(R, b), y, `(${R}, ${b})`);
+    }
+  });
+  it("CEILING_REFERENCE_ROWS is the number of rows of a 1280x800 window (AS-UGR-01)", () => {
+    assert.equal(engine.CEILING_REFERENCE_ROWS, viewportRows(800, 1280));
+    assert.equal(engine.CEILING_REFERENCE_ROWS, 9);
+  });
+  it("the two forms of the ceiling agree: min(cap, centered) = the centered row of a window counted as at most 9 rows high (rows 1..80, b 1..12)", () => {
+    const CEIL = 9; // written out, not read from the module
+    for (let rows = 1; rows <= 80; rows += 1) {
+      for (let b = 1; b <= 12; b += 1) {
+        const capped = Math.min(Math.max(0, Math.floor((CEIL - b) / 2)), Math.max(0, Math.floor((rows - b) / 2)));
+        const clamped = Math.max(0, Math.floor((Math.min(rows, CEIL) - b) / 2));
+        assert.equal(capped, clamped, `forms (${rows}, ${b})`);
+        assert.equal(engine.centeredDefaultRow(rows, b), capped, `centeredDefaultRow(${rows}, ${b})`);
+      }
+    }
+  });
+  it("centeredDefaultRow table over rows 1..40 and b = 1..5: unchanged up to 9 rows, the cap 4, 3, 3, 2, 2 above (AS-UGR-01)", () => {
+    const CAP = [4, 3, 3, 2, 2];
+    const FIRST12 = { // rows 1..12
+      1: [0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 4, 4],
+      2: [0, 0, 0, 1, 1, 2, 2, 3, 3, 3, 3, 3],
+      3: [0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 3, 3],
+      4: [0, 0, 0, 0, 0, 1, 1, 2, 2, 2, 2, 2],
+      5: [0, 0, 0, 0, 0, 0, 1, 1, 2, 2, 2, 2]
+    };
+    for (let b = 1; b <= 5; b += 1) {
+      for (let rows = 1; rows <= 40; rows += 1) {
+        const want = rows <= 12 ? FIRST12[b][rows - 1] : CAP[b - 1];
+        assert.equal(engine.centeredDefaultRow(rows, b), want, `rows ${rows}, b ${b}`);
+      }
+    }
+  });
+  it("for every block height the result at more than 9 rows equals the result at 9 rows (AS-UGR-01)", () => {
+    for (let b = 1; b <= 12; b += 1) {
+      for (let rows = 10; rows <= 60; rows += 1) assert.equal(engine.centeredDefaultRow(rows, b), engine.centeredDefaultRow(9, b), `rows ${rows}, b ${b}`);
     }
   });
   it("defaultBlockRows(C) is the displayed height of the six tiles (decision 3)", () => {
@@ -529,7 +583,7 @@ describe("vertically centered defaults (docs/vertically-centered-defaults.md; AS
     assert.deepEqual(xs(m), SIX_X);
     assert.deepEqual(six.map((id) => [m.get(id).w, m.get(id).h]), [[1, 1], [2, 1], [2, 1], [1, 1], [1, 1], [1, 1]]);
     assert.deepEqual(ys(m), [4, 4, 4, 4, 4, 4]);
-    assert.deepEqual(ys(placeMissing(six, [], { rows: 10, columns: 6 })), Array(6).fill(4));
+    assert.deepEqual(ys(placeMissing(six, [], { rows: 10, columns: 6 })), Array(6).fill(3)); // the two-row block is capped at row 3 from R = 10 (run 51)
     assert.deepEqual(ys(placeMissing(six, [], { rows: 9, columns: 4 })), Array(6).fill(3));
     assert.deepEqual(ys(placeMissing(six, [], { rows: 1, columns: 14 })), Array(6).fill(0));
   });
@@ -555,6 +609,27 @@ describe("vertically centered defaults (docs/vertically-centered-defaults.md; AS
       assert.deepEqual(plain(placeMissing(ids, existing, screen)), plain(placeMissing(ids, existing)), ids.join());
     }
   });
+  it("placeMissing with all six absent and a tall screen: row 4 for 8 or more columns, row 3 for 4 or 6 columns, row 2 for 2 columns; x as before (AS-UGR-01, 02)", () => {
+    for (const rows of [10, 11, 13, 17, 26, 80]) {
+      for (const columns of [8, 10, 14, 22, 30]) {
+        const m = placeMissing(six, [], { rows, columns });
+        assert.deepEqual(ys(m), Array(6).fill(4), `rows ${rows}, columns ${columns}`);
+        assert.deepEqual(xs(m), SIX_X);
+      }
+      for (const columns of [4, 6]) assert.deepEqual(ys(placeMissing(six, [], { rows, columns })), Array(6).fill(3), `rows ${rows}, columns ${columns}`);
+      assert.deepEqual(ys(placeMissing(six, [], { rows, columns: 2 })), Array(6).fill(2), `rows ${rows}, columns 2`);
+    }
+  });
+  it("1..5 ids with a tall screen equal the same call with no screen: row 0, the ceiling does not reach the partial self-heal (AS-UGR-05)", () => {
+    const subsets = [[CHROME_IDS.settings], [CHROME_IDS.add], six.slice(0, 4), six.slice(0, 5), [...six.slice(0, 4), CHROME_IDS.settings], [CHROME_IDS.settings, CHROME_IDS.add]];
+    const existingSets = [[], [fav("a", g(-5, 0)), fav("b", g(4, 0))], [fav("tall", g(-1, 0, 2, 2))]];
+    for (const screen of [{ rows: 10, columns: 14 }, { rows: 17, columns: 14 }, { rows: 26, columns: 6 }]) {
+      for (const ids of subsets) for (const existing of existingSets) {
+        assert.deepEqual(plain(placeMissing(ids, existing, screen)), plain(placeMissing(ids, existing)), `${ids.join()} ${JSON.stringify(screen)}`);
+      }
+    }
+    assert.deepEqual([...placeMissing([CHROME_IDS.settings], [], { rows: 26, columns: 14 }).values()].map((x) => x.y), [0]);
+  });
   describe("a target row that is not free (decision 5; AS-VC-10)", () => {
     const screen = { rows: 9, columns: 14 }; // Y0 = 4
     const run = (existing, s = screen) => placeMissing(six, existing, s);
@@ -568,6 +643,11 @@ describe("vertically centered defaults (docs/vertically-centered-defaults.md; AS
     });
     it("a block in row 0 only does not matter", () => {
       assert.deepEqual(ys(run([link(4, 0), link(8, 0)])), Array(6).fill(4));
+    });
+    it("in a tall window the ceiling row 4 is where the search starts: links at 4 and 8 in row 4 give row 3, rows 4 and 3 blocked give row 5 (run 51)", () => {
+      const tall = { rows: 26, columns: 14 };
+      assert.deepEqual(ys(run([link(4, 4), link(8, 4)], tall)), Array(6).fill(3));
+      assert.deepEqual(ys(run([link(4, 4), link(8, 4), link(4, 3), link(8, 3)], tall)), Array(6).fill(5));
     });
     it("Y0 = 0 with row 0 blocked: row 1 (row -1 is skipped)", () => {
       assert.deepEqual(ys(run([link(4, 0), link(8, 0)], { rows: 1, columns: 14 })), Array(6).fill(1));
@@ -801,8 +881,9 @@ describe("a tile wider than the grid says tile (run 49)", () => {
     assert.throws(() => displayLayout([fav("a", g(0, 0, 2, 1))], 1), tooWide);
   });
 
-  it("displayLayout, unplaced item (nearestFree): a legacy wide tile without a grid in 1 column", () => {
-    assert.throws(() => displayLayout([{ id: "a", type: "favorite", tileSize: "wide" }], 1), tooWide);
+  it("displayLayout, unplaced item (nearestFree) in 1 column: an unplaced precipitation metric (2 wide by default) throws, an unplaced link does not (whatever tileSize it carries)", () => {
+    assert.throws(() => displayLayout([{ id: "weather:precipitation", type: "weather-metric", enabled: true }], 1), tooWide);
+    assert.doesNotThrow(() => displayLayout([{ id: "a", type: "favorite", tileSize: "wide" }], 1), "a link is 1 wide whatever tileSize it carries");
   });
 
   it("placeMissing never throws with the fixed default widths (the nearestFreeAround site is guarded by the six tiles' 8 of 12 columns)", () => {

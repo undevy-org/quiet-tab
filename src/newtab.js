@@ -36,7 +36,8 @@ import {
   WIDGETS_META_KEY,
   createWidgetsStore,
   ensureWidgetsLayout,
-  inspectWidgetsMeta
+  inspectWidgetsMeta,
+  resetUnreadableWidgets
 } from "./widgetsStore.js";
 import { placeTooltip } from "./widgetsLayout.js";
 import { MAX_FAVORITE_WIDGETS, NEWER_WIDGETS_MESSAGE, weatherMetricKey } from "./widgetsShared.js";
@@ -311,6 +312,7 @@ let weatherRetryToken = 0; // a retry result applies only while this and weather
 let weatherRetryTimer = 0; // the end of the cooldown (updates the existing retry nodes in place)
 let widgetsEnsureFailed = false;
 let widgetsNewer = false;
+let widgetsUnreadable = false; // the meta is unreadable (docs/unreadable-grid-reset.md): the page shows the screen with Reset grid and does nothing else
 let activeCityForm = null; // { cancelPending, renderSuggestions, refresh, place, focusField, caretToEnd, dispose, choose, chosen, recentlyChosen } of the mounted city form
 let weatherUi = createInitialWeatherUiState();
 let weatherBusy = false;
@@ -2255,7 +2257,7 @@ function revealAddedTile(id) {
 
 const DIALOG_SCROLL_MARGIN_PX = 5; // the scroll-margin of a dialog control (surfaces.css)
 const ADD_TILE_SELECTOR = '[data-widget-id="chrome:add"]';
-const DIALOG_BACKDROP_GUARD_MS = 300;
+const DIALOG_BACKDROP_GUARD_MS = 300; // the backdrop ignores clicks this long after a dialog opens, and so do the two buttons of the Reset grid dialog (guardResetDialogPresses)
 let desktopDialogRoot = null;
 let desktopDialogOpener = null; // { id, badge } of the tile or − badge that opened the dialog, looked up again at close
 let desktopDialogOpenedAt = 0;
@@ -2347,6 +2349,18 @@ function buildDialogContent(root, dialog) {
       remove.dataset.dialogAction = "delete";
       remove.addEventListener("click", () => void confirmDeleteFavorite(item.id));
       root.append(title, body, createDialogErrorSlot(), createDialogFooter(createDialogCancel(), remove));
+      break;
+    }
+    case "confirm-reset-grid": {
+      title.textContent = "Reset grid?";
+      const body = createNode("p", "desktop-dialog__body", "Your links will be removed.");
+      body.id = "desktop-dialog-body";
+      root.setAttribute("aria-describedby", body.id);
+      const reset = createIconButton("button button--danger", "Reset grid", "refresh");
+      reset.type = "button";
+      reset.dataset.dialogAction = "reset-grid";
+      reset.addEventListener("click", () => void resetGrid());
+      root.append(title, body, createDialogErrorSlot(), createDialogFooter(createDialogCancel(), reset));
       break;
     }
     case "confirm-hide-weather": {
@@ -2470,6 +2484,7 @@ function openDesktopDialog(dialog, { opener = focusedWidgetId() } = {}) {
     desktopDialogOpener = null;
     throw error;
   }
+  if (dialog.kind === "confirm-reset-grid") guardResetDialogPresses(root);
   const backdrop = createNode("div", "desktop-backdrop");
   backdrop.addEventListener("click", () => {
     if (Date.now() - desktopDialogOpenedAt < DIALOG_BACKDROP_GUARD_MS || favoritesBusy) return;
@@ -2495,6 +2510,7 @@ function openDesktopDialog(dialog, { opener = focusedWidgetId() } = {}) {
 // remove the target: Save, Delete, Hide, a gone-link recovery) also brings the target in by the nearest edge when it is not safely inside.
 function closeDesktopDialog({ restoreFocusTo = desktopDialogOpener, reveal = false } = {}) {
   const fallback = desktopUi.dialog?.id ?? null;
+  const wasResetConfirm = desktopUi.dialog?.kind === "confirm-reset-grid";
   desktopDialogScrollObserver?.disconnect();
   desktopDialogScrollObserver = null;
   document.querySelectorAll(".desktop-dialog, .desktop-backdrop").forEach((node) => node.remove());
@@ -2502,8 +2518,50 @@ function closeDesktopDialog({ restoreFocusTo = desktopDialogOpener, reveal = fal
   if (favoritesRoot) favoritesRoot.inert = false;
   desktopUi = closeDialog(desktopUi);
   desktopDialogOpener = null;
+  if (wasResetConfirm) {
+    // Every close of the Reset grid dialog (Cancel, Escape, the backdrop, the refused removal): the second click of a double click lands on the screen's
+    // button under it, so the post-close guard swallows it (decision 5 (d)); the focus goes to that button, looked up now (a render may have replaced the node).
+    armPostCloseClickGuard();
+    favoritesRoot?.querySelector('[data-grid-action="reset"]')?.focus({ preventScroll: true });
+  }
   if (restoreFocusTo) focusWidgetTarget([restoreFocusTo, fallback].flat(), { preventScroll: true, reveal });
   scheduleDeferredDeskRefresh();
+}
+
+// A double click on the screen's Reset grid button must neither confirm nor flip the dialog (docs/unreadable-grid-reset.md decision 5): the dialog is
+// centered like the screen's block, so the lower part of the screen button lies under the dialog's own two buttons. A pointer click in the first
+// 300 ms after the dialog opened, and any click with detail > 1 (the second click of a slow double click), does nothing on a button of the dialog,
+// and the press of such a click does not move the focus off Cancel. A keyboard activation (detail 0) is never delayed; after 300 ms a single click decides.
+function guardResetDialogPresses(root) {
+  const guarded = (event) =>
+    (event.detail > 1 || (event.detail > 0 && Date.now() - desktopDialogOpenedAt < DIALOG_BACKDROP_GUARD_MS)) &&
+    event.target instanceof Element &&
+    event.target.closest("button") !== null;
+  root.addEventListener("click", (event) => {
+    if (guarded(event)) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  }, true);
+  root.addEventListener("mousedown", (event) => {
+    if (guarded(event)) event.preventDefault();
+  }, true);
+}
+
+// The Reset grid confirm (docs/unreadable-grid-reset.md decision 6): the one removal, then a reload on any result, which runs the normal first load. A
+// failing get or remove closes the dialog (with the post-close guard) and says so in the page status line; the screen stays.
+async function resetGrid() {
+  if (favoritesBusy) return;
+  const generation = startFavoritesAction({ render: false });
+  desktopDialogRoot?.setAttribute("aria-busy", "true");
+  try {
+    await resetUnreadableWidgets(syncStorageArea);
+    location.reload();
+  } catch {
+    finishFavoritesAction(generation, () => {});
+    closeDesktopDialog({ restoreFocusTo: null }); // the close of this kind focuses the screen's button itself
+    showDesktopStatus(RESET_FAILED_MESSAGE);
+  }
 }
 
 // Focuses the first present, enabled target: a widget id string (its tile) or { id, badge } (the tile or its − badge).
@@ -2782,6 +2840,8 @@ function scrollDialogErrorIntoView(root, slot, target) {
 }
 
 const LAYOUT_RESET_MESSAGE = "Your layout was reset in another tab.";
+const UNREADABLE_GRID_MESSAGE = "Your grid couldn't be read.";
+const RESET_FAILED_MESSAGE = "Couldn't reset your grid. Try again in a moment.";
 const LAYOUT_RESTORE_FAILED_MESSAGE = "Couldn't restore your layout. Reload this tab.";
 
 // The storage was cleared in another tab when a state has no Settings tile (docs/stale-tab-empty-state.md,
@@ -3117,6 +3177,16 @@ function renderDesktop() {
   hideTooltip();
   if (widgetsNewer) {
     favoritesRoot.replaceChildren(createStatus(NEWER_WIDGETS_MESSAGE, { error: true, live: "assertive", full: true }));
+    return;
+  }
+  if (widgetsUnreadable) {
+    // An unreadable meta (items L1-02 and 95): one line and one button, no grid. A meta of a newer version keeps its own message and no button.
+    const block = createNode("div", "grid-unreadable");
+    const reset = createIconButton("button", "Reset grid", "refresh");
+    reset.type = "button";
+    reset.dataset.gridAction = "reset";
+    block.append(createStatus(UNREADABLE_GRID_MESSAGE, { error: true, live: "assertive", full: true }), reset);
+    favoritesRoot.replaceChildren(block);
     return;
   }
   if (!widgetsState) {
@@ -3611,9 +3681,10 @@ if (favoritesRoot) {
       return;
     }
 
-    // Bootstrap order: early `newer` check, then ensure, then the first read. A `newer` meta (another device or a rollback)
-    // is never written: the grid is locked read-only. A rejected early read is not fatal (rawMeta = {}): it fails again in
-    // getState, whose catch shows the storage error, and ensureWidgetsLayout has its own catch.
+    // Bootstrap order: early `newer` check, early `invalid` check, then ensure (an `invalid` result of it takes the same exit as the early
+    // one), then the first read. A `newer` meta (another device or a rollback) is never written: the grid is locked read-only. An `invalid`
+    // meta shows the screen with Reset grid: nothing is written, read or fetched. A rejected early read is not fatal (rawMeta = {}): ensure
+    // reads the meta again, getState fails again with the storage error in its catch, and ensureWidgetsLayout has its own catch.
     let rawMeta = {};
     try {
       if (hasStorageArea(syncStorageArea)) rawMeta = await syncStorageArea.get(WIDGETS_META_KEY);
@@ -3625,13 +3696,28 @@ if (favoritesRoot) {
       renderFavorites();
       return;
     }
+    // An unreadable meta shows the screen and nothing else is done: no write, no first read, no weather, no wizard (the same shape as the lock above).
+    if (inspectWidgetsMeta(rawMeta) === "invalid") {
+      widgetsUnreadable = true;
+      renderFavorites();
+      return;
+    }
 
+    // the early read may have failed (rawMeta = {}) and this one find an unreadable meta: the same exit, taken outside the try so that a render
+    // that throws is not swallowed as an ensure failure
+    let ensuredInvalid = false;
     if (hasStorageArea(syncStorageArea)) {
       try {
-        await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });
+        const ensured = await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });
+        ensuredInvalid = ensured.meta === "invalid";
       } catch {
         widgetsEnsureFailed = true;
       }
+    }
+    if (ensuredInvalid) {
+      widgetsUnreadable = true;
+      renderFavorites();
+      return;
     }
 
     try {
@@ -3671,6 +3757,11 @@ if (favoritesRoot) {
   // nothing. The chrome tiles (Settings, Add) render but are wired by the edit-mode and add-link tasks.
   function handleFavoritesClick(event) {
     if (!(event.target instanceof Element)) {
+      return;
+    }
+
+    if (event.target.closest('[data-grid-action="reset"]')) {
+      if (widgetsUnreadable && !favoritesBusy) openDesktopDialog({ kind: "confirm-reset-grid" }, { opener: null });
       return;
     }
 

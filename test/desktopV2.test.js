@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import { createMemoryStorageArea } from "./memoryStorageArea.js";
 import {
   WIDGETS_META_KEY, createWidgetsStore, inspectWidgetsMeta, isWidgetsState, widgetItemStorageKey,
-  ensureWidgetsLayout
+  ensureWidgetsLayout, resetUnreadableWidgets
 } from "../src/widgetsStore.js";
 import { PlacementError, createWidgetsService } from "../src/widgetsService.js";
 import { MAX_WIDGETS, WEATHER_METRIC_IDS } from "../src/widgetsShared.js";
@@ -133,7 +133,7 @@ describe("ensureWidgetsLayout (Defaults, AS-1, AS-35; centered since run 15)", (
     };
 
     it("a fresh install with { screen } writes y = Y0 for all six, x as before, one items set then the meta set", async () => {
-      for (const [screen, y] of [[{ rows: 9, columns: 14 }, 4], [{ rows: 8, columns: 14 }, 3], [{ rows: 1, columns: 14 }, 0], [{ rows: 10, columns: 6 }, 4], [{ rows: 9, columns: 4 }, 3]]) {
+      for (const [screen, y] of [[{ rows: 9, columns: 14 }, 4], [{ rows: 8, columns: 14 }, 3], [{ rows: 1, columns: 14 }, 0], [{ rows: 10, columns: 6 }, 3], [{ rows: 9, columns: 4 }, 3]]) {
         const area = createMemoryStorageArea();
         const calls = recording(area);
         const result = await ensureWidgetsLayout(area, { screen });
@@ -147,6 +147,42 @@ describe("ensureWidgetsLayout (Defaults, AS-1, AS-35; centered since run 15)", (
         assert.equal(inspectWidgetsMeta(await area.get(WIDGETS_META_KEY)), "valid");
         assert.deepEqual(meta.order, SIX);
       }
+    });
+    it("a fresh install in a tall window writes the ceiling row: y = 4 at 14 columns, y = 3 at 6 and 4 columns (run 51, AS-UGR-01, 02)", async () => {
+      for (const [screen, y] of [[{ rows: 10, columns: 14 }, 4], [{ rows: 11, columns: 14 }, 4], [{ rows: 19, columns: 14 }, 4], [{ rows: 26, columns: 14 }, 4], [{ rows: 17, columns: 30 }, 4],
+        [{ rows: 11, columns: 6 }, 3], [{ rows: 19, columns: 6 }, 3], [{ rows: 12, columns: 4 }, 3], [{ rows: 19, columns: 4 }, 3]]) {
+        const area = createMemoryStorageArea();
+        const result = await ensureWidgetsLayout(area, { screen });
+        assert.deepEqual(result, { changed: true, meta: "missing" });
+        assert.deepEqual(await gridsOf(area), atRow(y), JSON.stringify(screen));
+      }
+    });
+    // the leftovers of an unreadable grid: a hidden temperature with a far cell, a Settings tile at another cell, a link, all on disk
+    const leftovers = () => createMemoryStorageArea({
+      [WIDGETS_META_KEY]: { version: 3, order: "x", createdAt: NOW, updatedAt: NOW },
+      [widgetItemStorageKey("weather:temperature")]: metric("weather:temperature", { enabled: false, grid: g(9, 9) }),
+      [widgetItemStorageKey("chrome:settings")]: chrome("settings", g(5, 5)),
+      [widgetItemStorageKey("f0")]: fav("f0", { grid: g(0, 0) }),
+      quietTabWeatherLocation: { version: 1, name: "Tbilisi" }
+    });
+    it("premise (run 51, AS-UGR-19): with only the meta removed, ensureWidgetsLayout keeps the leftover hidden temperature and the Settings cell", async () => {
+      const metaOnly = leftovers();
+      await metaOnly.remove(WIDGETS_META_KEY);
+      await ensureWidgetsLayout(metaOnly, { screen: { rows: 9, columns: 14 } });
+      const kept = await metaOnly.get(null);
+      assert.equal(kept[widgetItemStorageKey("weather:temperature")].enabled, false, "the hidden temperature stays hidden");
+      assert.deepEqual(kept[widgetItemStorageKey("chrome:settings")].grid, g(5, 5), "Settings stays at its leftover cell");
+    });
+    it("after resetUnreadableWidgets, ensureWidgetsLayout lays out the six defaults and reads no leftover item key (run 51, AS-UGR-19)", async () => {
+      const area = leftovers();
+      assert.deepEqual(await resetUnreadableWidgets(area), { reset: true, meta: "invalid" });
+      assert.equal(inspectWidgetsMeta(await area.get(WIDGETS_META_KEY)), "missing");
+      assert.deepEqual(await ensureWidgetsLayout(area, { screen: { rows: 9, columns: 14 } }), { changed: true, meta: "missing" });
+      assert.deepEqual(await gridsOf(area), atRow(4), "the six defaults at the first-appearance row, none of the leftover cells");
+      const stored = await area.get(null);
+      assert.deepEqual(Object.keys(stored).sort(), [WIDGETS_META_KEY, "quietTabWeatherLocation", ...SIX.map(widgetItemStorageKey)].sort(), "no f0, and the city stays");
+      assert.equal(stored[widgetItemStorageKey("weather:temperature")].enabled, true, "the default temperature, not the hidden leftover");
+      assert.deepEqual(stored[WIDGETS_META_KEY].order, SIX);
     });
     it("without a screen, or with an invalid one, the result is today's row 0", async () => {
       for (const options of [{}, { screen: undefined }, { screen: { rows: 0, columns: 14 } }, { screen: { rows: NaN, columns: 14 } }, { screen: { rows: Infinity, columns: 14 } }, { screen: { rows: 9, columns: 1 } }, { screen: { rows: 9 } }]) {
@@ -472,8 +508,8 @@ describe("write guard: only a valid or missing meta may be written (final review
   const INVALID_MESSAGE = "Your saved grid could not be read, so changes are paused. Reload this tab; if this keeps happening, update Quiet Tab.";
   const v1Seed = {
     [WIDGETS_META_KEY]: { version: 1, order: ["a", "b"], columns: 6, position: "top", createdAt: NOW, updatedAt: NOW },
-    [widgetItemStorageKey("a")]: fav("a", { tileSize: "square" }),
-    [widgetItemStorageKey("b")]: fav("b", { tileSize: "wide" })
+    [widgetItemStorageKey("a")]: fav("a"),
+    [widgetItemStorageKey("b")]: fav("b")
   };
   const v2Seed = {
     [WIDGETS_META_KEY]: { version: 2, order: ["a"], createdAt: NOW, updatedAt: NOW },

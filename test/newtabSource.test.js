@@ -345,12 +345,16 @@ describe("newtab favorites source", () => {
   it("the bootstrap has no migration step: early newer check, then ensureWidgetsLayout, then getState (AS-RM-05)", async () => {
     const code = await source();
     assert.match(code, /from "\.\/widgetsStore\.js"/);
-    assert.match(code, /import \{\s*WIDGETS_META_KEY,\s*createWidgetsStore,\s*ensureWidgetsLayout,\s*inspectWidgetsMeta\s*\} from "\.\/widgetsStore\.js";/);
+    assert.match(code, /import \{\s*WIDGETS_META_KEY,\s*createWidgetsStore,\s*ensureWidgetsLayout,\s*inspectWidgetsMeta,\s*resetUnreadableWidgets\s*\} from "\.\/widgetsStore\.js";/);
     const boot = code.slice(code.indexOf("if (favoritesRoot) {\n  void (async () => {"), code.indexOf("})();", code.indexOf("if (favoritesRoot)")));
-    const order = ['inspectWidgetsMeta(rawMeta) === "newer"', "await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });", "widgetsState = await widgetsService.getState();"].map((n) => boot.indexOf(n));
+    const order = ['inspectWidgetsMeta(rawMeta) === "newer"', 'inspectWidgetsMeta(rawMeta) === "invalid"', "await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });", 'ensured.meta === "invalid"', "widgetsState = await widgetsService.getState();"].map((n) => boot.indexOf(n));
     assert.ok(order.every((i) => i >= 0), order.join());
     assert.deepEqual([...order].sort((a, b) => a - b), order);
     assert.match(boot, /if \(inspectWidgetsMeta\(rawMeta\) === "newer"\) \{\s*widgetsNewer = true;\s*renderFavorites\(\);\s*return;\s*\}/);
+    // run 51 (docs/unreadable-grid-reset.md decision 4): an invalid meta shows the screen, the same shape of exit, in two places
+    assert.match(boot, /if \(inspectWidgetsMeta\(rawMeta\) === "invalid"\) \{\s*widgetsUnreadable = true;\s*renderFavorites\(\);\s*return;\s*\}/);
+    // the second exit sits OUTSIDE the try whose catch sets widgetsEnsureFailed: a render that throws is not swallowed as an ensure failure
+    assert.match(boot, /const ensured = await ensureWidgetsLayout\(syncStorageArea, \{ screen: firstScreen\(\) \}\);\s*ensuredInvalid = ensured\.meta === "invalid";\s*\} catch \{\s*widgetsEnsureFailed = true;\s*\}\s*\}\s*if \(ensuredInvalid\) \{\s*widgetsUnreadable = true;\s*renderFavorites\(\);\s*return;\s*\}/);
   });
 
   it("the early meta read sits in its own try whose catch sets no lock flag, and the boot goes on (AS-RM-05b)", async () => {
@@ -364,6 +368,12 @@ describe("newtab favorites source", () => {
     assert.doesNotMatch(early, /widgetsNewer|favoritesError|renderFavorites|return/);
     // the only other read, getState, has its own catch that shows the storage error text
     assert.match(boot, /widgetsState = await widgetsService\.getState\(\);\s*\} catch \(error\) \{\s*favoritesError = error instanceof Error \? error\.message : String\(error\);/);
+  });
+
+  it("no legacy tileSize is left anywhere in src/: not the field, not TILE_SIZES, not isOptionalTileSize (run 51 decision 3, AS-UGR-20)", async () => {
+    for (const { name, text } of await allSrc()) {
+      assert.doesNotMatch(text, /tileSize|TILE_SIZES|isOptionalTileSize/, name);
+    }
   });
 
   it("no migration symbol or deleted message string is left anywhere in src/ (AS-RM-05)", async () => {
@@ -411,12 +421,12 @@ describe("newtab favorites source", () => {
   it("locks the grid with the newer-version message before anything else and runs the bootstrap in order (R7)", async () => {
     const code = await source();
     assert.match(code, /if \(widgetsNewer\) \{\s*favoritesRoot\.replaceChildren\(createStatus\(NEWER_WIDGETS_MESSAGE/);
-    assert.ok(code.indexOf("if (widgetsNewer)") < code.indexOf("if (!widgetsState) {\n    // Unavailable APIs"));
+    assert.ok(code.indexOf("if (widgetsNewer)") < code.indexOf("if (widgetsUnreadable)") && code.indexOf("if (widgetsUnreadable)") < code.indexOf("if (!widgetsState) {\n    // Unavailable APIs"));
     assert.match(code, /inspectWidgetsMeta\(rawMeta\) === "newer"/);
     assert.match(code, /await ensureWidgetsLayout\(syncStorageArea, \{ screen: firstScreen\(\) \}\)/);
     assert.match(code, /widgetsEnsureFailed = true;/);
     const boot = code.slice(code.indexOf("if (favoritesRoot) {\n  void (async () => {"), code.indexOf("})();", code.indexOf("if (favoritesRoot)")));
-    const order = ['inspectWidgetsMeta(rawMeta) === "newer"', "await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });", "widgetsState = await widgetsService.getState();"].map((n) => boot.indexOf(n));
+    const order = ['inspectWidgetsMeta(rawMeta) === "newer"', 'inspectWidgetsMeta(rawMeta) === "invalid"', "await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });", 'ensured.meta === "invalid"', "widgetsState = await widgetsService.getState();"].map((n) => boot.indexOf(n));
     assert.ok(order.every((i) => i >= 0), order.join());
     assert.deepEqual([...order].sort((a, b) => a - b), order);
   });
@@ -1041,7 +1051,7 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
   it("Task 10: edit, confirm-delete and weather dialogs, the Add menu and the hide/restore actions (copy, kinds, wiring)", async () => {
     const code = await source();
     const build = fn(code, "buildDialogContent");
-    for (const kind of ["add-link", "edit-link", "confirm-delete", "confirm-hide-weather", "edit-weather"]) assert.ok(build.includes(`case "${kind}":`), kind);
+    for (const kind of ["add-link", "edit-link", "confirm-delete", "confirm-hide-weather", "edit-weather", "confirm-reset-grid"]) assert.ok(build.includes(`case "${kind}":`), kind);
     assert.match(build, /title\.textContent = "Delete link\?";/);
     assert.match(build, /createNode\("p", "desktop-dialog__body", "This removes the link from your grid\."\)/);
     assert.match(build, /createIconButton\("button button--danger", "Delete", "trash2"\)/);
@@ -1162,10 +1172,10 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     assert.equal(fn(code, "recoverFromGoneLink").split("firstScreen(").length - 1, 0);
     const boot = code.slice(code.indexOf("if (favoritesRoot) {\n  void (async () => {"), code.indexOf("})();", code.indexOf("if (favoritesRoot)")));
     const call = boot.indexOf("await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });");
-    assert.ok(call > boot.indexOf('inspectWidgetsMeta(rawMeta) === "newer"') && call < boot.indexOf("widgetsState = await widgetsService.getState();"));
-    // evaluated before the first render of the desk: the only render before the call is the early newer lock (which returns)
+    assert.ok(call > boot.indexOf('inspectWidgetsMeta(rawMeta) === "invalid"') && call < boot.indexOf("widgetsState = await widgetsService.getState();"));
+    // evaluated before the first render of the desk: the only renders before the call are the two early locks (the newer and the invalid meta), each returns
     const beforeCall = boot.slice(boot.indexOf("let rawMeta = {};"), call);
-    assert.equal((beforeCall.match(/renderFavorites\(\)/g) ?? []).length, 1, "only the early newer lock renders before the call (it returns)");
+    assert.equal((beforeCall.match(/renderFavorites\(\)/g) ?? []).length, 2, "only the two early locks render before the call (each returns)");
   });
   it("run 15: the page works in displayed cells", async () => {
     const code = await source();
@@ -3163,6 +3173,103 @@ describe("grid re-read on return source pins (run 50, docs/tab-return-refresh.md
     for (const { name, text } of await allSrc()) {
       if (name === "newtab.js" || !name.endsWith(".js")) continue;
       assert.doesNotMatch(stripComments(text), /refreshDeskOnReturn|scheduleDeferredDeskRefresh/, name);
+    }
+  });
+});
+
+// Run 51 (docs/unreadable-grid-reset.md decisions 4 to 6, 9; AS-UGR-22): the screen for an unreadable grid and the Reset grid dialog.
+describe("run 51: the screen for an unreadable grid and the reset (AS-UGR-22)", () => {
+  const code = async () => stripComments(await source());
+  const widgetsStoreSource = () => readFile(new URL("../src/widgetsStore.js", import.meta.url), "utf8");
+
+  it("renderDesktop checks widgetsNewer, then widgetsUnreadable, then !widgetsState, before applyGridMetrics and any scroll read; the screen is built with createStatus and createIconButton, no innerHTML", async () => {
+    const render = topLevelFunction(await code(), "renderDesktop");
+    const at = (needle) => {
+      const i = render.indexOf(needle);
+      assert.notEqual(i, -1, needle);
+      return i;
+    };
+    assert.ok(at("if (widgetsNewer)") < at("if (widgetsUnreadable)") && at("if (widgetsUnreadable)") < at("if (!widgetsState)") && at("if (!widgetsState)") < at("applyGridMetrics()") && at("if (widgetsUnreadable)") < at("window.scrollY"));
+    const branch = render.slice(at("if (widgetsUnreadable)"), at("if (!widgetsState)"));
+    assert.match(branch, /createNode\("div", "grid-unreadable"\)/);
+    assert.match(branch, /createIconButton\("button", "Reset grid", "refresh"\)/);
+    assert.match(branch, /dataset\.gridAction = "reset"/);
+    assert.match(branch, /createStatus\(UNREADABLE_GRID_MESSAGE, \{ error: true, live: "assertive", full: true \}\)/);
+    assert.match(branch, /favoritesRoot\.replaceChildren\(block\);\s*return;/);
+    assert.doesNotMatch(branch, /innerHTML/);
+    assert.match(await code(), /const UNREADABLE_GRID_MESSAGE = "Your grid couldn't be read\.";/);
+  });
+
+  it("the dialog case builds the title, the body, the error slot and the footer with Cancel and a danger Reset grid; the click calls resetGrid", async () => {
+    const build = topLevelFunction(await code(), "buildDialogContent");
+    const body = build.slice(build.indexOf('case "confirm-reset-grid":'), build.indexOf("break;", build.indexOf('case "confirm-reset-grid":')));
+    assert.match(body, /title\.textContent = "Reset grid\?";/);
+    assert.match(body, /createNode\("p", "desktop-dialog__body", "Your links will be removed\."\)/);
+    assert.match(body, /root\.setAttribute\("aria-describedby", body\.id\);/);
+    assert.match(body, /createIconButton\("button button--danger", "Reset grid", "refresh"\)/);
+    assert.match(body, /dataset\.dialogAction = "reset-grid";/);
+    assert.match(body, /addEventListener\("click", \(\) => void resetGrid\(\)\)/);
+    assert.match(body, /root\.append\(title, body, createDialogErrorSlot\(\), createDialogFooter\(createDialogCancel\(\), reset\)\);/);
+  });
+
+  it("the guards of decision 5: a pointer click in the first 300 ms and a click with detail > 1 do nothing on the two buttons, the mousedown is cancelled, every close arms the post-close guard", async () => {
+    const src = await code();
+    assert.match(src, /openDesktopDialog\(\{ kind: "confirm-reset-grid" \}, \{ opener: null \}\)/);
+    const guard = topLevelFunction(src, "guardResetDialogPresses");
+    assert.match(guard, /event\.detail > 0 && Date\.now\(\) - desktopDialogOpenedAt < DIALOG_BACKDROP_GUARD_MS/);
+    assert.match(guard, /event\.detail > 1/);
+    assert.match(guard, /addEventListener\("click", \(event\) => \{\s*if \(guarded\(event\)\) \{\s*event\.preventDefault\(\);\s*event\.stopPropagation\(\);/);
+    assert.match(guard, /addEventListener\("mousedown", \(event\) => \{\s*if \(guarded\(event\)\) event\.preventDefault\(\);/);
+    assert.match(topLevelFunction(src, "openDesktopDialog"), /if \(dialog\.kind === "confirm-reset-grid"\) guardResetDialogPresses\(root\);/);
+    const close = topLevelFunction(src, "closeDesktopDialog");
+    assert.match(close, /const wasResetConfirm = desktopUi\.dialog\?\.kind === "confirm-reset-grid";/);
+    assert.match(close, /if \(wasResetConfirm\) \{\s*armPostCloseClickGuard\(\);\s*favoritesRoot\?\.querySelector\('\[data-grid-action="reset"\]'\)\?\.focus\(\{ preventScroll: true \}\);/);
+    // Cancel, Escape and the backdrop all end in closeDesktopDialog, and so does the catch of resetGrid
+    assert.match(topLevelFunction(src, "resetGrid"), /catch \{\s*finishFavoritesAction\(generation, \(\) => \{\}\);\s*closeDesktopDialog\(\{ restoreFocusTo: null \}\);/);
+  });
+
+  it("resetGrid begins with the busy check, marks the dialog busy, reloads on both results and shows the failure text only in its catch", async () => {
+    const src = await code();
+    const reset = topLevelFunction(src, "resetGrid");
+    assert.match(reset, /^async function resetGrid\(\) \{\s*if \(favoritesBusy\) return;/);
+    assert.match(reset, /startFavoritesAction\(\{ render: false \}\);\s*desktopDialogRoot\?\.setAttribute\("aria-busy", "true"\);/);
+    assert.match(reset, /await resetUnreadableWidgets\(syncStorageArea\);\s*location\.reload\(\);/);
+    const tryPart = reset.slice(0, reset.indexOf("catch"));
+    assert.doesNotMatch(tryPart, /RESET_FAILED_MESSAGE|showDesktopStatus/);
+    assert.match(reset.slice(reset.indexOf("catch")), /finishFavoritesAction\(generation, \(\) => \{\}\);\s*closeDesktopDialog\(\{ restoreFocusTo: null \}\);\s*showDesktopStatus\(RESET_FAILED_MESSAGE\);/);
+    assert.match(src, /const RESET_FAILED_MESSAGE = "Couldn't reset your grid\. Try again in a moment\.";/);
+    assert.equal(src.split("RESET_FAILED_MESSAGE").length - 1, 2, "defined once, used once");
+  });
+
+  it("resetUnreadableWidgets is called once in newtab.js (from resetGrid), and its body reads the area once, with get(null), under the widgets lock", async () => {
+    const src = await code();
+    assert.equal(src.split("resetUnreadableWidgets(").length - 1, 1);
+    assert.equal(topLevelFunction(src, "resetGrid").split("resetUnreadableWidgets(").length - 1, 1);
+    const store = stripComments(await widgetsStoreSource());
+    const fnBody = store.slice(store.indexOf("export function resetUnreadableWidgets"));
+    const fnEnd = fnBody.slice(0, fnBody.indexOf("\n}\n") + 3);
+    assert.equal(fnEnd.split(".get(").length - 1, 1, "one get in the function");
+    assert.match(fnEnd, /storageArea\.get\(null\)/);
+    assert.match(fnEnd, /withWidgetsMutationLock\(/);
+  });
+
+  it("the click on the screen's button opens the dialog only for an unreadable grid and not while busy", async () => {
+    assert.match(await code(), /function handleFavoritesClick\(event\) \{\s*if \(!\(event\.target instanceof Element\)\) \{\s*return;\s*\}\s*if \(event\.target\.closest\('\[data-grid-action="reset"\]'\)\) \{\s*if \(widgetsUnreadable && !favoritesBusy\) openDesktopDialog\(/);
+  });
+
+  it("the CSS: the screen's block is centered, its button keeps its width, the soft focus ring replaces the plain one, and nothing is nowrap for the dialog", async () => {
+    const styles = await appStyles();
+    assert.match(styles, /\.grid-unreadable \{[^}]*display: flex;[^}]*flex-direction: column;[^}]*align-items: center;[^}]*justify-content: center;[^}]*text-align: center;[^}]*\}/s);
+    assert.match(styles, /\.grid-unreadable \.button \{\s*width: auto;\s*\}/);
+    assert.match(styles, /\.grid-unreadable \.button:focus-visible \{\s*background: var\(--soft-fill-strong\);\s*box-shadow: 0 0 0 2px var\(--focus-overlay-ring\);\s*outline-color: transparent;[^}]*\}/);
+    assert.doesNotMatch(styles, /confirm-reset-grid[^{]*\{[^}]*white-space:\s*nowrap/);
+    assert.doesNotMatch(styles, /\.grid-unreadable[^{]*\{[^}]*white-space:\s*nowrap/);
+  });
+
+  it("resetUnreadableWidgets is called from nowhere but the handler of the confirm button (AS-UGR-18)", async () => {
+    for (const { name, text } of await allSrc()) {
+      if (name === "widgetsStore.js" || name === "newtab.js" || !name.endsWith(".js")) continue;
+      assert.doesNotMatch(stripComments(text), /resetUnreadableWidgets/, name);
     }
   });
 });

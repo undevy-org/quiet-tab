@@ -1,7 +1,6 @@
 import { withWidgetsMutationLock } from "./widgetsStore.js";
 import {
   canPlace,
-  defaultSize,
   displayLayout,
   isValidGrid,
   placeNew,
@@ -238,7 +237,7 @@ function sanitizeViewportRows(value) {
 }
 
 function placeholderGrid(item) {
-  const size = item.type === "weather-metric" ? defaultSize(item.id) : sizeOf(item);
+  const size = sizeOf(item);
   return { x: 0, y: 0, w: size.w, h: size.h };
 }
 
@@ -417,7 +416,6 @@ export function createWidgetsService({
         }
 
         const nextItem = { ...base.items[index] };
-        delete nextItem.tileSize; // writes never carry the legacy tileSize
 
         if (Object.hasOwn(payload, "url")) {
           const normalizedUrl = normalizeFavoriteUrl(payload.url);
@@ -480,7 +478,6 @@ export function createWidgetsService({
 
         const current = base.items[index];
         const next = { ...current };
-        delete next.tileSize;
         let size = { w: current.grid.w, h: current.grid.h };
         if (Object.hasOwn(payload, "w") || Object.hasOwn(payload, "h")) {
           size = {

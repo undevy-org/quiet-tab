@@ -263,8 +263,7 @@ All heights are **border-box** (`box-sizing: border-box` globally).
   label, secondary (`x`, Cancel or Not now) on the left, commit on the right
 - `margin-top: var(--modal-actions-margin-top)` (**16px**); no footer padding or
   `border-top`; **20px** (`--surface-modal-padding`) is the only inset under the buttons
-- Commit icons: `check` (Add, Save), `trash2` on `button--danger` (Delete),
-  `eyeOff` on primary (Hide)
+- Commit icons: `check` (Add, Save), `trash2` on `button--danger` (Delete), `eyeOff` on primary (Hide), `refresh` on `button--danger` (Reset grid)
 - Edit link has Cancel and Save only; Delete lives in edit mode (− then Delete link?)
 - Error text (`.desktop-dialog__error`, `.city-modal__feedback .status--error`):
   `margin: 8px 0 0` (**8px** from the control or last row, **16px** to the actions);
@@ -309,6 +308,7 @@ Modal titles: `--font-size-title`, `margin: 0 0 var(--title-margin-bottom)` (**1
 | Edit link | Above (Size: 1×1, 1×2, 2×1, 2×2); Cancel, Save; color swatch **40px** tall |
 | Delete link? | Cancel, Delete |
 | Hide <metric>? | Cancel, Hide (primary, `eyeOff`) |
+| Reset grid? | Cancel, Reset grid (danger, `refresh`) |
 | Edit weather | City-field **40px**; Size segmented (1×1, 1×2, 2×1, 2×2); Cancel, Save |
 | Change city / Set a city | Search input **40px**; clear **36px** inset **2px**; suggestion rows **40px**; Cancel or Not now, Save |
 | Add menu | Each menu item **40px** |

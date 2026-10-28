@@ -146,6 +146,44 @@ describe("islandPlacements", () => {
     assert.equal(islandPlacements({ k: 6, linkIds: ids(6), rows: 4, columns: 14 }).get("weather:temperature").y, 0);
   });
 
+  // Run 51 (docs/unreadable-grid-reset.md decision 2, AS-UGR-04): dy is the centered row capped by the row at which an island of this height is centered in a
+  // 1280x800 window (9 rows): 3 for H = 3, 2 for H = 4 and 5. The literals below do not call centeredDefaultRow.
+  it("dy is capped by the island height: rows 9, 10, 11, 14, 19, 26 for every k (AS-UGR-04)", () => {
+    const BY_H = { // dy by rows 9, 10, 11, 14, 19, 26; `before` = floor((rows - H) / 2), the row before the ceiling
+      3: { dy: [3, 3, 3, 3, 3, 3], before: [3, 3, 4, 5, 8, 11] },
+      4: { dy: [2, 2, 2, 2, 2, 2], before: [2, 3, 3, 5, 7, 11] },
+      5: { dy: [2, 2, 2, 2, 2, 2], before: [2, 2, 3, 4, 7, 10] }
+    };
+    const ROWS = [9, 10, 11, 14, 19, 26];
+    for (const row of TABLE) {
+      const want = BY_H[row.H];
+      ROWS.forEach((rows, i) => {
+        assert.equal(Math.floor((rows - row.H) / 2), want.before[i], `test table k=${row.k} rows=${rows}`);
+        const map = islandPlacements({ k: row.k, linkIds: ids(row.k), rows, columns: 14 });
+        const dx = -Math.floor(row.W / 2);
+        assert.equal(map.get("weather:temperature").y, want.dy[i], `k=${row.k} rows=${rows}`);
+        assert.equal(map.get("weather:temperature").x, dx, `k=${row.k} rows=${rows} x`);
+      });
+      // the cap changes the row from rows 10 (an even H) or 11 (an odd H): the first rows whose uncapped row is above the cap
+      const firstBiting = ROWS.find((rows, i) => want.before[i] !== want.dy[i]);
+      assert.equal(firstBiting, row.H % 2 === 0 ? 10 : 11, `k=${row.k} first rows at which the cap bites`);
+    }
+  });
+  it("an island written at 9 rows or more ends at row 5 (H 3 or 4) or row 6 (H 5) at the latest, with Settings and Add in that last row, among the first 6 or 7 rows (AS-UGR-04)", () => {
+    const LAST = { 3: 5, 4: 5, 5: 6 }; // the last row of the island, whatever the height of the window
+    const FIRST_SCREEN = { 3: 6, 4: 6, 5: 7 }; // rows of the lowest window whose first screen holds that last row (504 and 584 px at 1280 wide)
+    for (const row of TABLE) {
+      for (const rows of [9, 10, 11, 14, 19, 26, 80]) {
+        const map = islandPlacements({ k: row.k, linkIds: ids(row.k), rows, columns: 14 });
+        const last = Math.max(...[...map.values()].map((cell) => cell.y + cell.h - 1));
+        assert.equal(last, LAST[row.H], `k=${row.k} rows=${rows} last row of the island`);
+        assert.equal(map.get("chrome:settings").y, last, `k=${row.k} rows=${rows} Settings in the last row`);
+        assert.equal(map.get("chrome:add").y, last, `k=${row.k} rows=${rows} Add in the last row`);
+        assert.ok(last < FIRST_SCREEN[row.H], `k=${row.k} rows=${rows}: row ${last} is among the first ${FIRST_SCREEN[row.H]} rows`);
+      }
+    }
+  });
+
   it("every member covered once for every k (ids = 6 system + k links, no overlap, inside W×H)", () => {
     for (const row of TABLE) {
       const map = islandPlacements({ k: row.k, linkIds: ids(row.k), rows: 9, columns: 14 });
