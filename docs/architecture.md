@@ -106,12 +106,7 @@ center. The first placement of the whole default block (all six absent) takes it
 row `Y0 = max(0, floor((min(R, 9) − blockRows) / 2))` from the first screen (`R` rows
 of `viewportRows`, `blockRows` the displayed height of the six tiles at the page's
 column count) instead of row 0, searching by distance from `Y0` (above first); the
-self-heal of 1..5 tiles and `placeNew` stay row-0 first, and a stored `y` is never
-recomputed. The 9 (`CEILING_REFERENCE_ROWS`) is the number of rows of a 1280×800
-window: a block is never lower than the row at which it would be centered there (row
-4 for the six tiles in one row, row 3 for their two-row block in a narrow window); it
-applies to the island of the onboarding Finish too, by the island's own height (row 3
-for 3 rows, row 2 for 4 or 5).
+self-heal of 1..5 tiles and `placeNew` stay row-0 first, and a stored `y` is never recomputed. The 9 (`CEILING_REFERENCE_ROWS`) is the number of rows of a 1280×800 window: a block is never lower than the row at which it would be centered there (row 4 for the six tiles in one row, row 3 for their two-row block in a narrow window); it applies to the island of the onboarding Finish too, by the island's own height (row 3 for 3 rows, row 2 for 4 or 5).
 
 **Writes.** Every explicit action (drag, add, edit, resize, delete, hide,
 restore) is a read-modify-write under the mutation lock: read fresh storage,
@@ -137,8 +132,7 @@ mutation lock as every mutation:
    `ensureWidgetsLayout(sync, { screen })` with `screen = { rows, columns }` from
    `firstScreen()` in `newtab.js`. On a fresh install this creates temperature
    (−4,Y0), precipitation (−3,Y0), air quality (−1,Y0), UV (1,Y0), Settings
-   (2,Y0), Add (3,Y0), with `Y0` the centered row of the first screen, never lower
-   than its row in a 1280×800 window (4 at 1280×800); without a valid `screen`, or
+   (2,Y0), Add (3,Y0), with `Y0` the centered row of the first screen, never lower than its row in a 1280×800 window (4 at 1280×800); without a valid `screen`, or
    for a partial self-heal, the row is 0.
    It writes nothing for a newer or invalid meta. A write failure is non-fatal: the
    grid renders without the missing tiles and the page status line says so until the
@@ -155,17 +149,10 @@ version on another device) is never touched: the ensure step writes and deletes
 nothing, every service mutation fails first with the newer-version message
 (`assertWritable`), and the grid is locked read-only with that message, also after a
 resize. Every write is likewise refused while the stored meta is invalid (malformed,
-or a v1/v2 meta of an older build), with a message to reload the tab (the reload
-shows the Reset grid screen): from such a meta a read is empty, so a write would
+or a v1/v2 meta of an older build), with a message to reload the tab (the reload shows the Reset grid screen): from such a meta a read is empty, so a write would
 orphan every stored widget. A build from before the centered grid reads a v3 meta the
 same way (newer, read-only), as a build from before the desktop grid does with a v2 or
-v3 meta. An invalid meta is left alone by the ensure step. The page then shows
-`Your grid couldn't be read.` and a `Reset grid` button instead of an empty grid; the
-boot stops there like the newer-version lock (no first read, no weather, no wizard).
-The button opens the `confirm-reset-grid` dialog; its confirm button calls
-`resetUnreadableWidgets` under the mutation lock, which erases the meta and every
-`quietTabWidget:` key only while the meta is still unreadable, and the page then loads
-again as a fresh install (`docs/unreadable-grid-reset.md`).
+v3 meta. An invalid meta is left alone by the ensure step. The page then shows `Your grid couldn't be read.` and a `Reset grid` button instead of an empty grid; the boot stops there like the newer-version lock (no first read, no weather, no wizard). The button opens the `confirm-reset-grid` dialog; its confirm button calls `resetUnreadableWidgets` under the mutation lock, which erases the meta and every `quietTabWidget:` key only while the meta is still unreadable, and the page then loads again as a fresh install (`docs/unreadable-grid-reset.md`).
 
 `manifest.json` pins the extension id with a `key` (see "Extension id" below), so
 separate "Load unpacked" installs from different directories get the same id on
