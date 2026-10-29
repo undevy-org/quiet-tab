@@ -3087,11 +3087,16 @@ function applyReadDesk(fresh) {
 async function healReadDesk(state) {
   const focused = focusedWidgetId();
   const generation = startFavoritesAction({ render: false });
-  const outcome = await healClearedDesk(state);
-  if (outcome.failed) leaveEditModeAfterFailedHeal();
-  finishFavoritesAction(generation, () => {
-    widgetsState = outcome.state;
-  });
+  let outcome;
+  try {
+    outcome = await healClearedDesk(state);
+    if (outcome.failed) leaveEditModeAfterFailedHeal();
+  } finally {
+    // the busy lock is released whatever happened above
+    finishFavoritesAction(generation, () => {
+      if (outcome) widgetsState = outcome.state;
+    });
+  }
   if (outcome.failed) {
     showLayoutRestoreFailure();
     return;
@@ -3691,13 +3696,14 @@ if (favoritesRoot) {
     } catch {
       rawMeta = {};
     }
-    if (inspectWidgetsMeta(rawMeta) === "newer") {
+    const metaKind = inspectWidgetsMeta(rawMeta);
+    if (metaKind === "newer") {
       widgetsNewer = true;
       renderFavorites();
       return;
     }
     // An unreadable meta shows the screen and nothing else is done: no write, no first read, no weather, no wizard (the same shape as the lock above).
-    if (inspectWidgetsMeta(rawMeta) === "invalid") {
+    if (metaKind === "invalid") {
       widgetsUnreadable = true;
       renderFavorites();
       return;
@@ -4041,7 +4047,7 @@ async function retryWeather({ automatic = false, ignorePause = false } = {}) {
   weatherUi = finishWeatherRetry(weatherUi, Date.now(), !failed);
   // The service's own answer replaces the result, except that a failed read never downgrades a tile that still has data
   // (a stale one, or a ready one that an automatic attempt could not refresh).
-  const downgrade = failed && result?.status === "error" && weatherResult?.data;
+  const downgrade = Boolean(failed && result?.status === "error" && weatherResult?.data);
   const replaced = Boolean(result) && !downgrade;
   if (replaced) {
     weatherResult = result;

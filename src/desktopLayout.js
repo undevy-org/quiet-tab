@@ -36,7 +36,7 @@ export const toDisplayed = (grid, columns) => ({ ...grid, x: grid.x + originColu
 
 // Rows that fit the first screen: `height` is document.documentElement.clientHeight, `width` picks the metrics. Also the `screen.rows`
 // of `placeMissing` (a NaN / Infinity height gives a non-integer, which `placeMissing` rejects: row 0 as before). It returns the real
-// number of rows; it is `centeredDefaultRow` that counts a window higher than CEILING_REFERENCE_ROWS (below) rows as that many rows.
+// number of rows; `centeredDefaultRow` counts a window of more than CEILING_REFERENCE_ROWS (below) rows as CEILING_REFERENCE_ROWS rows.
 export function viewportRows(height, width) {
   const { cell, gap, pad } = gridMetrics(width);
   return Math.max(1, Math.floor((height - 2 * pad + gap) / (cell + gap)));
@@ -249,8 +249,7 @@ export const CEILING_REFERENCE_ROWS = 9;
 // rows of the first screen split equally, the extra one below; never above row 0. Since run 51 never below the row at which a block
 // of this height is centered in the reference window: min(cap, centered), cap = max(0, floor((CEILING_REFERENCE_ROWS - blockRows) / 2))
 // (4, 3, 3, 2, 2, 1, 1, 0 for blockRows 1..8), so a grid written in a tall window is still on the first screen of a low window of the same
-// width (a stored `y` is never recomputed). The same value is max(0, floor((min(rows, CEILING_REFERENCE_ROWS) - blockRows) / 2)).
-// Callers: `placeMissing` (the six default tiles, the heal of a cleared storage) and `islandPlacements` (the onboarding island, by its height).
+// width (a stored `y` is never recomputed).
 export function centeredDefaultRow(rows, blockRows) {
   const centered = Math.max(0, Math.floor((rows - blockRows) / 2));
   const cap = Math.max(0, Math.floor((CEILING_REFERENCE_ROWS - blockRows) / 2));

@@ -347,12 +347,12 @@ describe("newtab favorites source", () => {
     assert.match(code, /from "\.\/widgetsStore\.js"/);
     assert.match(code, /import \{\s*WIDGETS_META_KEY,\s*createWidgetsStore,\s*ensureWidgetsLayout,\s*inspectWidgetsMeta,\s*resetUnreadableWidgets\s*\} from "\.\/widgetsStore\.js";/);
     const boot = code.slice(code.indexOf("if (favoritesRoot) {\n  void (async () => {"), code.indexOf("})();", code.indexOf("if (favoritesRoot)")));
-    const order = ['inspectWidgetsMeta(rawMeta) === "newer"', 'inspectWidgetsMeta(rawMeta) === "invalid"', "await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });", 'ensured.meta === "invalid"', "widgetsState = await widgetsService.getState();"].map((n) => boot.indexOf(n));
+    const order = ['const metaKind = inspectWidgetsMeta(rawMeta);', 'metaKind === "newer"', 'metaKind === "invalid"', "await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });", 'ensured.meta === "invalid"', "widgetsState = await widgetsService.getState();"].map((n) => boot.indexOf(n));
     assert.ok(order.every((i) => i >= 0), order.join());
     assert.deepEqual([...order].sort((a, b) => a - b), order);
-    assert.match(boot, /if \(inspectWidgetsMeta\(rawMeta\) === "newer"\) \{\s*widgetsNewer = true;\s*renderFavorites\(\);\s*return;\s*\}/);
+    assert.match(boot, /if \(metaKind === "newer"\) \{\s*widgetsNewer = true;\s*renderFavorites\(\);\s*return;\s*\}/);
     // run 51 (docs/unreadable-grid-reset.md decision 4): an invalid meta shows the screen, the same shape of exit, in two places
-    assert.match(boot, /if \(inspectWidgetsMeta\(rawMeta\) === "invalid"\) \{\s*widgetsUnreadable = true;\s*renderFavorites\(\);\s*return;\s*\}/);
+    assert.match(boot, /if \(metaKind === "invalid"\) \{\s*widgetsUnreadable = true;\s*renderFavorites\(\);\s*return;\s*\}/);
     // the second exit sits OUTSIDE the try whose catch sets widgetsEnsureFailed: a render that throws is not swallowed as an ensure failure
     assert.match(boot, /const ensured = await ensureWidgetsLayout\(syncStorageArea, \{ screen: firstScreen\(\) \}\);\s*ensuredInvalid = ensured\.meta === "invalid";\s*\} catch \{\s*widgetsEnsureFailed = true;\s*\}\s*\}\s*if \(ensuredInvalid\) \{\s*widgetsUnreadable = true;\s*renderFavorites\(\);\s*return;\s*\}/);
   });
@@ -364,7 +364,7 @@ describe("newtab favorites source", () => {
       boot,
       /let rawMeta = \{\};\s*try \{\s*if \(hasStorageArea\(syncStorageArea\)\) rawMeta = await syncStorageArea\.get\(WIDGETS_META_KEY\);\s*\} catch \{\s*rawMeta = \{\};\s*\}/
     );
-    const early = boot.slice(boot.indexOf("let rawMeta = {};"), boot.indexOf('if (inspectWidgetsMeta(rawMeta) === "newer")'));
+    const early = boot.slice(boot.indexOf("let rawMeta = {};"), boot.indexOf("const metaKind = inspectWidgetsMeta(rawMeta);"));
     assert.doesNotMatch(early, /widgetsNewer|favoritesError|renderFavorites|return/);
     // the only other read, getState, has its own catch that shows the storage error text
     assert.match(boot, /widgetsState = await widgetsService\.getState\(\);\s*\} catch \(error\) \{\s*favoritesError = error instanceof Error \? error\.message : String\(error\);/);
@@ -422,11 +422,12 @@ describe("newtab favorites source", () => {
     const code = await source();
     assert.match(code, /if \(widgetsNewer\) \{\s*favoritesRoot\.replaceChildren\(createStatus\(NEWER_WIDGETS_MESSAGE/);
     assert.ok(code.indexOf("if (widgetsNewer)") < code.indexOf("if (widgetsUnreadable)") && code.indexOf("if (widgetsUnreadable)") < code.indexOf("if (!widgetsState) {\n    // Unavailable APIs"));
-    assert.match(code, /inspectWidgetsMeta\(rawMeta\) === "newer"/);
+    assert.match(code, /const metaKind = inspectWidgetsMeta\(rawMeta\);/);
+    assert.match(code, /metaKind === "newer"/);
     assert.match(code, /await ensureWidgetsLayout\(syncStorageArea, \{ screen: firstScreen\(\) \}\)/);
     assert.match(code, /widgetsEnsureFailed = true;/);
     const boot = code.slice(code.indexOf("if (favoritesRoot) {\n  void (async () => {"), code.indexOf("})();", code.indexOf("if (favoritesRoot)")));
-    const order = ['inspectWidgetsMeta(rawMeta) === "newer"', 'inspectWidgetsMeta(rawMeta) === "invalid"', "await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });", 'ensured.meta === "invalid"', "widgetsState = await widgetsService.getState();"].map((n) => boot.indexOf(n));
+    const order = ['const metaKind = inspectWidgetsMeta(rawMeta);', 'metaKind === "newer"', 'metaKind === "invalid"', "await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });", 'ensured.meta === "invalid"', "widgetsState = await widgetsService.getState();"].map((n) => boot.indexOf(n));
     assert.ok(order.every((i) => i >= 0), order.join());
     assert.deepEqual([...order].sort((a, b) => a - b), order);
   });
@@ -1172,7 +1173,7 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     assert.equal(fn(code, "recoverFromGoneLink").split("firstScreen(").length - 1, 0);
     const boot = code.slice(code.indexOf("if (favoritesRoot) {\n  void (async () => {"), code.indexOf("})();", code.indexOf("if (favoritesRoot)")));
     const call = boot.indexOf("await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });");
-    assert.ok(call > boot.indexOf('inspectWidgetsMeta(rawMeta) === "invalid"') && call < boot.indexOf("widgetsState = await widgetsService.getState();"));
+    assert.ok(call > boot.indexOf('metaKind === "invalid"') && call < boot.indexOf("widgetsState = await widgetsService.getState();"));
     // evaluated before the first render of the desk: the only renders before the call are the two early locks (the newer and the invalid meta), each returns
     const beforeCall = boot.slice(boot.indexOf("let rawMeta = {};"), call);
     assert.equal((beforeCall.match(/renderFavorites\(\)/g) ?? []).length, 2, "only the two early locks render before the call (each returns)");
@@ -3271,5 +3272,49 @@ describe("run 51: the screen for an unreadable grid and the reset (AS-UGR-22)", 
       if (name === "widgetsStore.js" || name === "newtab.js" || !name.endsWith(".js")) continue;
       assert.doesNotMatch(stripComments(text), /resetUnreadableWidgets/, name);
     }
+  });
+});
+
+describe("run 53: code with no visible effect is pinned (AS-QDL-06, decision 6)", () => {
+  const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
+  const stripped = async (name) => topLevelFunction(stripComments(await source()), name);
+
+  it("healReadDesk holds the busy lock in a try and releases it in a finally", async () => {
+    const heal = await stripped("healReadDesk");
+    const start = heal.indexOf("startFavoritesAction({ render: false })");
+    const tryAt = heal.indexOf("try {");
+    const call = heal.indexOf("await healClearedDesk(state)");
+    const fin = heal.indexOf("} finally {");
+    const finish = heal.indexOf("finishFavoritesAction(generation");
+    assert.ok(start > -1 && start < tryAt && tryAt < call && call < fin && fin < finish, "locked, try, heal, finally, release");
+  });
+
+  it("the load computes const metaKind = inspectWidgetsMeta(rawMeta) once and has no second call on rawMeta", async () => {
+    const code = await source();
+    const boot = code.slice(code.indexOf("if (favoritesRoot) {\n  void (async () => {"), code.indexOf("})();", code.indexOf("if (favoritesRoot)")));
+    assert.equal(boot.split("inspectWidgetsMeta(rawMeta)").length - 1, 1, "one call in the load");
+    assert.equal(boot.split("const metaKind = inspectWidgetsMeta(rawMeta);").length - 1, 1);
+    assert.match(boot, /metaKind === "newer"/);
+    assert.match(boot, /metaKind === "invalid"/);
+    // refreshDeskOnReturn keeps its own call on its own variable
+    assert.match(await stripped("refreshDeskOnReturn"), /const kind = inspectWidgetsMeta\(rawMeta\);/);
+  });
+
+  it("downgrade is a boolean", async () => {
+    assert.match(await source(), /const downgrade = Boolean\(failed && result\?\.status === "error" && weatherResult\?\.data\);/);
+  });
+
+  it("the comments of centeredDefaultRow, viewportRows and resetUnreadableWidgets are the new text (pins on the strings, not on the logic)", async () => {
+    const layout = await read("../src/desktopLayout.js");
+    const centered = layout.slice(layout.indexOf("// The row of the first placement of the whole default block"), layout.indexOf("export function centeredDefaultRow"));
+    assert.ok(centered.length > 0);
+    assert.doesNotMatch(centered, /The same value is/);
+    assert.doesNotMatch(centered, /Callers:/);
+    assert.match(layout, /`centeredDefaultRow` counts a window of more than CEILING_REFERENCE_ROWS \(below\) rows as CEILING_REFERENCE_ROWS rows\./);
+    const store = await read("../src/widgetsStore.js");
+    const reset = store.slice(store.indexOf("// resetUnreadableWidgets:"), store.indexOf("export function resetUnreadableWidgets"));
+    assert.ok(reset.length > 0);
+    assert.doesNotMatch(reset, /Accepted exception 2/);
+    assert.match(reset, /The one window left open is between that `get` and the `remove`/);
   });
 });

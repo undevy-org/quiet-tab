@@ -381,7 +381,7 @@ describe("newtab weather retry source (AS-WR-13)", () => {
     assert.ok(retry.includes("catch (error)"));
     assert.doesNotMatch(handler.split("}")[0], /weatherResult =/);
     // run 50 (decision 3): a failed read never downgrades a tile that still has data (a stale one as before, now also a ready one)
-    assert.match(retry, /const downgrade = failed && result\?\.status === "error" && weatherResult\?\.data;/);
+    assert.match(retry, /const downgrade = Boolean\(failed && result\?\.status === "error" && weatherResult\?\.data\);/);
   });
 
   it("the gone outcome clears a non-persist status line and the cooldown timer", async () => {
