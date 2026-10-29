@@ -4,6 +4,7 @@ import { createMemoryStorageArea } from "./memoryStorageArea.js";
 import { createWeatherCacheStore, createWeatherLocationStore } from "../src/weatherStore.js";
 import { WeatherApiError } from "../src/weatherApi.js";
 import { createWeatherService } from "../src/weatherService.js";
+import { WEATHER_CACHE_TTL_MS } from "../src/weatherShared.js";
 
 const TBILISI = { name: "Springfield", country: "Georgia", latitude: 41.72, longitude: 44.78 };
 const WEATHER_READING = {
@@ -863,7 +864,18 @@ describe("isCacheFresh through initialize(): a cache from the future is not fres
     });
   }
 
-  it("probe (row Р55 owns it, printed and not asserted beyond the result on RUN53_BASE): the city changes during the fetch, then the fetch fails", async () => {
+  it("the boundary: now - fetchedAt === WEATHER_CACHE_TTL_MS is fetched again, one millisecond less is still fresh", async () => {
+    const edge = await open({ fetchedAt: NOW - WEATHER_CACHE_TTL_MS });
+    assert.equal(NOW - (NOW - WEATHER_CACHE_TTL_MS), WEATHER_CACHE_TTL_MS, "the age is exactly the TTL");
+    assert.equal(edge.result.status, "ready");
+    assert.equal(edge.result.data.temperature, 24, "the fresh value, not the cached 11");
+    assert.equal(edge.weatherCalls + edge.airCalls, 2);
+    const inside = await open({ fetchedAt: NOW - WEATHER_CACHE_TTL_MS + 1 });
+    assert.equal(inside.result.data.temperature, 11);
+    assert.equal(inside.weatherCalls + inside.airCalls, 0);
+  });
+
+  it("probe (row R55 owns it, printed and not asserted beyond the result on RUN53_BASE): the city changes during the fetch, then the fetch fails", async () => {
     let release;
     const gate = new Promise((resolve) => {
       release = resolve;
