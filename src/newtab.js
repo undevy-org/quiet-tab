@@ -2797,6 +2797,9 @@ function invalidFieldFor(message) {
   return 'button[type="submit"]';
 }
 
+// The target `showDialogError` used for the error a dialog shows now (docs/layers-weather-polish.md decision 1): the resize scrolls to it again.
+const dialogErrorTargets = new WeakMap();
+
 // `field` is the service error's `field` (docs/link-dialog-validation.md decision 3): that input gets aria-invalid and
 // aria-describedby = the alert slot. An error without a field (a Sync failure, the links limit) only focuses the submit button.
 function showDialogError(root, message, field) {
@@ -2820,16 +2823,10 @@ function showDialogError(root, message, field) {
   scrollDialogErrorIntoView(root, slot, target);
 }
 
-// The target `showDialogError` used for the error a dialog shows now (docs/layers-weather-polish.md decision 1): the resize below scrolls to it again and does not
-// recompute it from the DOM.
-const dialogErrorTargets = new WeakMap();
-
-// A window resize (a zoom fires it too) while the open `.desktop-dialog` shows its error slot (docs/layers-weather-polish.md decision 1): the size observer of
-// `watchDialogScrolls` runs after the frame has been laid out, so the slot would stand under the sticky footer until the next scroll. Here `data-scrolls` is
-// synchronised at once and, when the dialog scrolls and the slot's bottom plus its 5px margin lies below the footer's top, the dialog scrolls instantly by
-// the rule of `scrollDialogErrorIntoView` to the remembered target (the submit button when that target is hidden, its rectangle is zero). A slot that is
-// already above the footer moves nothing; a change of the dialog's content (the Icon switch) is not a trigger. The wizard, the city modal alone, the
-// Reset grid screen and a drag are not a `.desktop-dialog`, so they never get here.
+// A window resize (a zoom fires it too) while the open `.desktop-dialog` shows its error slot (docs/layers-weather-polish.md decision 1): `data-scrolls`
+// is synchronised at once (the size observer runs a frame later) and, when the slot's bottom plus its 5px margin lies below the footer's top, the dialog
+// scrolls by the rule of `scrollDialogErrorIntoView` to the remembered target (the submit button when that target is hidden). A slot already above
+// the footer moves nothing; the wizard, the city modal alone, the Reset grid screen and a drag are not a `.desktop-dialog`.
 function followDialogErrorOnResize() {
   const root = desktopDialogRoot;
   if (!root?.isConnected) return;
@@ -2840,9 +2837,9 @@ function followDialogErrorOnResize() {
   const portBottom = root.getBoundingClientRect().top + root.clientTop + root.clientHeight;
   const footerTop = footer ? Math.min(footer.getBoundingClientRect().top, portBottom) : portBottom;
   if (slot.getBoundingClientRect().bottom + DIALOG_SCROLL_MARGIN_PX <= footerTop) return;
-  let target = dialogErrorTargets.get(root) ?? null;
-  const hidden = !(target instanceof HTMLElement) || (target.getBoundingClientRect().width === 0 && target.getBoundingClientRect().height === 0);
-  if (hidden) target = root.querySelector('button[type="submit"]');
+  let target = dialogErrorTargets.get(root);
+  const box = target instanceof HTMLElement ? target.getBoundingClientRect() : null;
+  if (!box || (box.width === 0 && box.height === 0)) target = root.querySelector('button[type="submit"]');
   scrollDialogErrorIntoView(root, slot, target);
 }
 

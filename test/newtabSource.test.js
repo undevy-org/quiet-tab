@@ -3339,7 +3339,8 @@ describe("run 53 task 2: layers (AS-QDL-01, AS-QDL-02, AS-QDL-03, AS-QDL-05)", (
     assert.match(follow, /if \(!slot \|\| slot\.hidden \|\| root\.dataset\.scrolls !== "true"\) return;/);
     assert.match(follow, /slot\.getBoundingClientRect\(\)\.bottom \+ DIALOG_SCROLL_MARGIN_PX <= footerTop\) return;/, "a slot above the footer moves nothing");
     assert.match(follow, /dialogErrorTargets\.get\(root\)/, "the target is the remembered one");
-    assert.match(follow, /width === 0 && target\.getBoundingClientRect\(\)\.height === 0/, "a hidden target has a zero rectangle");
+    assert.match(follow, /box\.width === 0 && box\.height === 0/, "a hidden target has a zero rectangle");
+    assert.equal(follow.split("getBoundingClientRect()").length - 1, 4, "the target's rectangle is read once");
     assert.match(follow, /root\.querySelector\('button\[type="submit"\]'\)/, "the submit button replaces a hidden target");
     assert.match(follow, /scrollDialogErrorIntoView\(root, slot, target\);/, "the same function as the error's first scroll");
     assert.doesNotMatch(follow, /invalidFieldFor\(|focus\(|aria-invalid|setAttribute|textContent/, "no recomputing of the target, no focus, no attribute or text change");
