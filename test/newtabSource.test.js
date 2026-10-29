@@ -3226,7 +3226,7 @@ describe("run 51: the screen for an unreadable grid and the reset (AS-UGR-22)", 
     assert.match(close, /const wasResetConfirm = desktopUi\.dialog\?\.kind === "confirm-reset-grid";/);
     assert.match(close, /if \(wasResetConfirm\) \{\s*armPostCloseClickGuard\(\);\s*favoritesRoot\?\.querySelector\('\[data-grid-action="reset"\]'\)\?\.focus\(\{ preventScroll: true \}\);/);
     // Cancel, Escape and the backdrop all end in closeDesktopDialog, and so does the catch of resetGrid
-    assert.match(topLevelFunction(src, "resetGrid"), /catch \{\s*finishFavoritesAction\(generation, \(\) => \{\}\);\s*closeDesktopDialog\(\{ restoreFocusTo: null \}\);/);
+    assert.match(topLevelFunction(src, "resetGrid"), /catch \{[^\n]*\n\s*if \(generation === favoritesGeneration\) setFavoritesBusy\(false\);\s*closeDesktopDialog\(\{ restoreFocusTo: null \}\);/);
   });
 
   it("resetGrid begins with the busy check, marks the dialog busy, reloads on both results and shows the failure text only in its catch", async () => {
@@ -3237,7 +3237,7 @@ describe("run 51: the screen for an unreadable grid and the reset (AS-UGR-22)", 
     assert.match(reset, /await resetUnreadableWidgets\(syncStorageArea\);\s*location\.reload\(\);/);
     const tryPart = reset.slice(0, reset.indexOf("catch"));
     assert.doesNotMatch(tryPart, /RESET_FAILED_MESSAGE|showDesktopStatus/);
-    assert.match(reset.slice(reset.indexOf("catch")), /finishFavoritesAction\(generation, \(\) => \{\}\);\s*closeDesktopDialog\(\{ restoreFocusTo: null \}\);\s*showDesktopStatus\(RESET_FAILED_MESSAGE\);/);
+    assert.match(reset.slice(reset.indexOf("catch")), /if \(generation === favoritesGeneration\) setFavoritesBusy\(false\);\s*closeDesktopDialog\(\{ restoreFocusTo: null \}\);\s*showDesktopStatus\(RESET_FAILED_MESSAGE\);/);
     assert.match(src, /const RESET_FAILED_MESSAGE = "Couldn't reset your grid\. Try again in a moment\.";/);
     assert.equal(src.split("RESET_FAILED_MESSAGE").length - 1, 2, "defined once, used once");
   });
@@ -3316,5 +3316,90 @@ describe("run 53: code with no visible effect is pinned (AS-QDL-06, decision 6)"
     assert.ok(reset.length > 0);
     assert.doesNotMatch(reset, /Accepted exception 2/);
     assert.match(reset, /The one window left open is between that `get` and the `remove`/);
+  });
+});
+
+describe("run 53 task 2: layers (AS-QDL-01, AS-QDL-02, AS-QDL-03, AS-QDL-05)", () => {
+  const stripped = async (name) => topLevelFunction(stripComments(await source()), name);
+  const surfaces = () => readFile(new URL("../src/surfaces.css", import.meta.url), "utf8");
+
+  it("decision 1: the resize listener calls followDialogErrorOnResize itself, before and outside the animation frame", async () => {
+    const code = stripComments(await source());
+    const start = code.indexOf('window.addEventListener("resize", () => {\n  cancelDrag();');
+    assert.ok(start > -1);
+    const handler = code.slice(start, code.indexOf("\n});\n", start));
+    assert.ok(handler.indexOf("followDialogErrorOnResize();") > handler.indexOf("cancelDrag();"), "after the drag is cancelled");
+    assert.ok(handler.indexOf("followDialogErrorOnResize();") < handler.indexOf("requestAnimationFrame("), "in the resize event itself, not in the frame callback");
+    assert.equal(code.split("followDialogErrorOnResize(").length - 1, 2, "defined once, called once");
+  });
+
+  it("decision 1: followDialogErrorOnResize works only on the open .desktop-dialog with a shown slot that scrolls and sits under the footer, with the remembered target", async () => {
+    const follow = await stripped("followDialogErrorOnResize");
+    assert.match(follow, /const root = desktopDialogRoot;\s*if \(!root\?\.isConnected\) return;\s*syncDialogScrolls\(root\);/);
+    assert.match(follow, /if \(!slot \|\| slot\.hidden \|\| root\.dataset\.scrolls !== "true"\) return;/);
+    assert.match(follow, /slot\.getBoundingClientRect\(\)\.bottom \+ DIALOG_SCROLL_MARGIN_PX <= footerTop\) return;/, "a slot above the footer moves nothing");
+    assert.match(follow, /dialogErrorTargets\.get\(root\)/, "the target is the remembered one");
+    assert.match(follow, /width === 0 && target\.getBoundingClientRect\(\)\.height === 0/, "a hidden target has a zero rectangle");
+    assert.match(follow, /root\.querySelector\('button\[type="submit"\]'\)/, "the submit button replaces a hidden target");
+    assert.match(follow, /scrollDialogErrorIntoView\(root, slot, target\);/, "the same function as the error's first scroll");
+    assert.doesNotMatch(follow, /invalidFieldFor\(|focus\(|aria-invalid|setAttribute|textContent/, "no recomputing of the target, no focus, no attribute or text change");
+  });
+
+  it("decision 1: showDialogError remembers the target it focused and scrolls to it; the content observer (watchDialogScrolls) does not scroll", async () => {
+    const show = await stripped("showDialogError");
+    assert.match(show, /dialogErrorTargets\.set\(root, target\);\s*scrollDialogErrorIntoView\(root, slot, target\);/);
+    assert.match(stripComments(await source()), /const dialogErrorTargets = new WeakMap\(\);/);
+    assert.doesNotMatch(await stripped("watchDialogScrolls"), /scrollDialogErrorIntoView|followDialogErrorOnResize/);
+    assert.doesNotMatch(await stripped("syncDialogScrolls"), /scrollTop|scrollDialogErrorIntoView/);
+  });
+
+  it("decision 2: showDesktopStatus writes --status-reserve at once for a non-empty text, after the text and the unhide; the hide path writes nothing there", async () => {
+    const show = await stripped("showDesktopStatus");
+    const hide = show.indexOf("desktopStatus.hidden = text === \"\";");
+    const write = show.indexOf('if (text !== "") writeStatusReserve(desktopStatus.getBoundingClientRect().height);');
+    assert.ok(hide > -1 && write > hide, "the write comes after the unhide");
+    assert.ok(show.indexOf("keepHoldAcrossChipRelease();") < show.indexOf("desktopStatus.textContent = text;"), "the hold takes the reserve of the shown chip first");
+    assert.doesNotMatch(show, /--status-reserve|"0px"/, "no literal write of the reserve, no 0px before keepHoldAcrossChipRelease");
+    const writer = await stripped("writeStatusReserve");
+    assert.match(writer, /setProperty\("--status-reserve", desktopStatus\.hidden \|\| height <= 0 \? "0px" : `\$\{height \+ offset\}px`\)/);
+    assert.match(writer, /--status-chip-offset-bottom/);
+    const keep = await stripped("keepHoldAcrossChipRelease");
+    assert.match(keep, /dragHoldPx \+= reserve;[\s\S]*root\.style\.setProperty\("--status-reserve", "0px"\)/, "keepHoldAcrossChipRelease is unchanged");
+  });
+
+  it("decision 2: recoverFromGoneLink shows the chip before it closes the dialog or focuses the neighbour, in both branches", async () => {
+    const recover = await stripped("recoverFromGoneLink");
+    const chip = recover.indexOf('if (outcome.healed) showDesktopStatus(LAYOUT_RESET_MESSAGE, { tone: "info" });');
+    assert.ok(chip > -1);
+    assert.equal(recover.split("showDesktopStatus(").length - 1, 2, "one place shows the chip (the healed and the plain message)");
+    assert.ok(chip > recover.indexOf("if (outcome.failed) {\n    showLayoutRestoreFailure();"), "after the failed exit");
+    assert.ok(chip < recover.indexOf("closeDesktopDialog({ restoreFocusTo: neighbours, reveal: true })"), "before the dialog closes with a reveal");
+    assert.ok(chip < recover.indexOf("focusWidgetTarget(neighbours, { preventScroll: true, reveal: true })"), "before the focus without a dialog");
+  });
+
+  it("decision 2: the heal branch of runDesktopMutation shows the chip before the Add link handler closes the dialog and reveals the tile", async () => {
+    const code = stripComments(await source());
+    const run = topLevelFunction(code, "runDesktopMutation");
+    assert.match(run, /else if \(outcome\.healed\) showDesktopStatus\(LAYOUT_RESET_MESSAGE, \{ tone: "info" \}\);\s*return true;/);
+    const add = code.slice(code.indexOf('case "add-link": {'), code.indexOf('case "edit-link": {'));
+    assert.ok(add.indexOf("runDesktopMutation(") < add.indexOf("closeDesktopDialog();") && add.indexOf("closeDesktopDialog();") < add.indexOf("revealAddedTile(added.id)"), "the mutation (which shows the chip), then the close, then the reveal");
+  });
+
+  it("decision 3: the locked starter list has scroll-margin 5px, a literal, and its ring is unchanged", async () => {
+    const css = await surfaces();
+    const rule = css.match(/\.onboarding-wizard__starters\[data-starters-locked="true"\] \{([^}]*)\}/);
+    assert.ok(rule, "the locked-list rule");
+    assert.match(rule[1], /scroll-margin: 5px;/);
+    assert.doesNotMatch(css.match(/\.onboarding-wizard__starters\[data-starters-locked="true"\]:focus-visible \{([^}]*)\}/)[1], /scroll-margin/, "the margin is on the resting state");
+    assert.match(css, /\.onboarding-wizard__starters\[data-starters-locked="true"\]:focus-visible \{\s*outline: 2px solid var\(--focus-ring\);[^}]*outline-offset: 0;/);
+    assert.doesNotMatch(css.slice(css.indexOf(".onboarding-wizard__starters {"), css.indexOf("}", css.indexOf(".onboarding-wizard__starters {"))), /scroll-margin/, "the unlocked list has none");
+  });
+
+  it("decision 5: the catch of resetGrid releases the busy flag without a render", async () => {
+    const reset = await stripped("resetGrid");
+    const handler = reset.slice(reset.indexOf("catch"));
+    assert.doesNotMatch(handler, /renderFavorites\(|finishFavoritesAction\(|renderDesktop\(|startFavoritesAction\(/, "nothing is rebuilt");
+    assert.match(handler, /if \(generation === favoritesGeneration\) setFavoritesBusy\(false\);/);
+    assert.match(handler, /closeDesktopDialog\(\{ restoreFocusTo: null \}\);\s*showDesktopStatus\(RESET_FAILED_MESSAGE\);/, "the rest of the catch stays");
   });
 });

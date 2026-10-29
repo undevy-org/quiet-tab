@@ -87,9 +87,21 @@ let desktopStatusTimer = 0;
 let layoutFailureChipShown = false; // the chip with the Reload button is up: Escape dismisses it (the `status` layer)
 let desktopStatusPersistent = false; // the shown message is a `persist` one (the ensure failure): a retry failure must not displace it
 
+// docs/layers-low-window.md decision 12: --status-reserve (px) on :root is the distance from the window bottom to the chip's
+// top while the chip exists (border box height + --status-chip-offset-bottom), 0 when it is hidden. The chip is
+// position: fixed, so it takes no room by itself; the CSS uses the property for .desktop padding-bottom and the root
+// scroll-padding-bottom only, never for any layout input (columns, viewportRows) and nothing is written to storage.
+function writeStatusReserve(height) {
+  const offset = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--status-chip-offset-bottom")) || 0;
+  document.documentElement.style.setProperty("--status-reserve", desktopStatus.hidden || height <= 0 ? "0px" : `${height + offset}px`);
+}
+
 // Page-level status line (role="alert"), text only. It clears after 8 s or at the next action. `persist` skips the
 // 8 s clear (the ensure failure: a Settings/Add tile may be missing, so its explanation stays until the next action).
 // `tone: "info"` is the neutral look (a reset notice); every other call is the danger look, set on each call so it never sticks.
+// docs/layers-weather-polish.md decision 2: a non-empty text writes the reserve at once (a forced layout), so a caller that reveals something right
+// after showing the chip reads the reserve of the chip it shows; the observer below writes the same value one tick later. The hide path writes
+// nothing here: keepHoldAcrossChipRelease runs first and reads the reserve of the shown chip.
 function showDesktopStatus(text, { persist = false, tone = "error" } = {}) {
   if (!desktopStatus) return;
   if (text === "" && !desktopStatus.hidden) keepHoldAcrossChipRelease();
@@ -99,18 +111,11 @@ function showDesktopStatus(text, { persist = false, tone = "error" } = {}) {
   desktopStatus.textContent = text;
   desktopStatus.hidden = text === ""; // the only place the chip is hidden: keepHoldAcrossChipRelease depends on the call above
   desktopStatusPersistent = persist && text !== "";
+  if (text !== "") writeStatusReserve(desktopStatus.getBoundingClientRect().height); // the observer's border-box height, so both writes agree to the pixel (offsetHeight rounds)
   if (text !== "" && !persist) desktopStatusTimer = setTimeout(() => showDesktopStatus(""), DESKTOP_STATUS_MS);
 }
 
-// docs/layers-low-window.md decision 12: --status-reserve (px) on :root is the distance from the window bottom to the chip's
-// top while the chip exists (border box height + --status-chip-offset-bottom), 0 when it is hidden. The chip is
-// position: fixed, so it takes no room by itself; the CSS uses the property for .desktop padding-bottom and the root
-// scroll-padding-bottom only, never for any layout input (columns, viewportRows) and nothing is written to storage.
 if (desktopStatus && typeof ResizeObserver === "function") {
-  const writeStatusReserve = (height) => {
-    const offset = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--status-chip-offset-bottom")) || 0;
-    document.documentElement.style.setProperty("--status-reserve", desktopStatus.hidden || height <= 0 ? "0px" : `${height + offset}px`);
-  };
   new ResizeObserver((entries) => {
     const entry = entries[entries.length - 1];
     writeStatusReserve(entry.borderBoxSize?.[0]?.blockSize ?? desktopStatus.offsetHeight);
@@ -2558,7 +2563,8 @@ async function resetGrid() {
     await resetUnreadableWidgets(syncStorageArea);
     location.reload();
   } catch {
-    finishFavoritesAction(generation, () => {});
+    // The busy flag is released without a render (docs/layers-weather-polish.md decision 5): the screen is not rebuilt and its alert is not inserted again.
+    if (generation === favoritesGeneration) setFavoritesBusy(false);
     closeDesktopDialog({ restoreFocusTo: null }); // the close of this kind focuses the screen's button itself
     showDesktopStatus(RESET_FAILED_MESSAGE);
   }
@@ -2810,6 +2816,33 @@ function showDialogError(root, message, field) {
   }
   const target = named ?? root.querySelector(invalidFieldFor(message)) ?? root.querySelector('button[type="submit"]');
   if (target instanceof HTMLElement && !target.matches(":disabled")) target.focus({ preventScroll: true });
+  dialogErrorTargets.set(root, target);
+  scrollDialogErrorIntoView(root, slot, target);
+}
+
+// The target `showDialogError` used for the error a dialog shows now (docs/layers-weather-polish.md decision 1): the resize below scrolls to it again and does not
+// recompute it from the DOM.
+const dialogErrorTargets = new WeakMap();
+
+// A window resize (a zoom fires it too) while the open `.desktop-dialog` shows its error slot (docs/layers-weather-polish.md decision 1): the size observer of
+// `watchDialogScrolls` runs after the frame has been laid out, so the slot would stand under the sticky footer until the next scroll. Here `data-scrolls` is
+// synchronised at once and, when the dialog scrolls and the slot's bottom plus its 5px margin lies below the footer's top, the dialog scrolls instantly by
+// the rule of `scrollDialogErrorIntoView` to the remembered target (the submit button when that target is hidden, its rectangle is zero). A slot that is
+// already above the footer moves nothing; a change of the dialog's content (the Icon switch) is not a trigger. The wizard, the city modal alone, the
+// Reset grid screen and a drag are not a `.desktop-dialog`, so they never get here.
+function followDialogErrorOnResize() {
+  const root = desktopDialogRoot;
+  if (!root?.isConnected) return;
+  syncDialogScrolls(root);
+  const slot = root.querySelector("[data-dialog-error]");
+  if (!slot || slot.hidden || root.dataset.scrolls !== "true") return;
+  const footer = root.querySelector(".favorite-form__footer");
+  const portBottom = root.getBoundingClientRect().top + root.clientTop + root.clientHeight;
+  const footerTop = footer ? Math.min(footer.getBoundingClientRect().top, portBottom) : portBottom;
+  if (slot.getBoundingClientRect().bottom + DIALOG_SCROLL_MARGIN_PX <= footerTop) return;
+  let target = dialogErrorTargets.get(root) ?? null;
+  const hidden = !(target instanceof HTMLElement) || (target.getBoundingClientRect().width === 0 && target.getBoundingClientRect().height === 0);
+  if (hidden) target = root.querySelector('button[type="submit"]');
   scrollDialogErrorIntoView(root, slot, target);
 }
 
@@ -2947,10 +2980,11 @@ async function recoverFromGoneLink(generation, error) {
     showLayoutRestoreFailure();
     return;
   }
-  if (desktopDialogRoot) closeDesktopDialog({ restoreFocusTo: neighbours, reveal: true });
-  else focusWidgetTarget(neighbours, { preventScroll: true, reveal: true });
+  // The chip first (docs/layers-weather-polish.md decision 2): its reserve is current when the reveal below reads it, so the neighbour ends above the chip.
   if (outcome.healed) showDesktopStatus(LAYOUT_RESET_MESSAGE, { tone: "info" });
   else showDesktopStatus(error.message);
+  if (desktopDialogRoot) closeDesktopDialog({ restoreFocusTo: neighbours, reveal: true });
+  else focusWidgetTarget(neighbours, { preventScroll: true, reveal: true });
 }
 
 // Every explicit mutation goes through here. On failure nothing is persisted and the UI returns to the stored state.
@@ -3271,6 +3305,7 @@ function renderDesktop() {
 let resizeFrame = 0;
 window.addEventListener("resize", () => {
   cancelDrag(); // Review focus 1: a viewport change cancels an active drag (tile returns, nothing written)
+  followDialogErrorOnResize();
   cancelAnimationFrame(resizeFrame);
   resizeFrame = requestAnimationFrame(() => {
     if (!widgetsState || widgetsNewer || renderedColumns === 0) return; // nothing is rendered yet: the first render (after the first-run decision) lays the grid out
