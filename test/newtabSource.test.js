@@ -347,12 +347,12 @@ describe("newtab favorites source", () => {
     assert.match(code, /from "\.\/widgetsStore\.js"/);
     assert.match(code, /import \{\s*WIDGETS_META_KEY,\s*createWidgetsStore,\s*ensureWidgetsLayout,\s*inspectWidgetsMeta,\s*resetUnreadableWidgets\s*\} from "\.\/widgetsStore\.js";/);
     const boot = code.slice(code.indexOf("if (favoritesRoot) {\n  void (async () => {"), code.indexOf("})();", code.indexOf("if (favoritesRoot)")));
-    const order = ['inspectWidgetsMeta(rawMeta) === "newer"', 'inspectWidgetsMeta(rawMeta) === "invalid"', "await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });", 'ensured.meta === "invalid"', "widgetsState = await widgetsService.getState();"].map((n) => boot.indexOf(n));
+    const order = ['const metaKind = inspectWidgetsMeta(rawMeta);', 'metaKind === "newer"', 'metaKind === "invalid"', "await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });", 'ensured.meta === "invalid"', "widgetsState = await widgetsService.getState();"].map((n) => boot.indexOf(n));
     assert.ok(order.every((i) => i >= 0), order.join());
     assert.deepEqual([...order].sort((a, b) => a - b), order);
-    assert.match(boot, /if \(inspectWidgetsMeta\(rawMeta\) === "newer"\) \{\s*widgetsNewer = true;\s*renderFavorites\(\);\s*return;\s*\}/);
+    assert.match(boot, /if \(metaKind === "newer"\) \{\s*widgetsNewer = true;\s*renderFavorites\(\);\s*return;\s*\}/);
     // run 51 (docs/unreadable-grid-reset.md decision 4): an invalid meta shows the screen, the same shape of exit, in two places
-    assert.match(boot, /if \(inspectWidgetsMeta\(rawMeta\) === "invalid"\) \{\s*widgetsUnreadable = true;\s*renderFavorites\(\);\s*return;\s*\}/);
+    assert.match(boot, /if \(metaKind === "invalid"\) \{\s*widgetsUnreadable = true;\s*renderFavorites\(\);\s*return;\s*\}/);
     // the second exit sits OUTSIDE the try whose catch sets widgetsEnsureFailed: a render that throws is not swallowed as an ensure failure
     assert.match(boot, /const ensured = await ensureWidgetsLayout\(syncStorageArea, \{ screen: firstScreen\(\) \}\);\s*ensuredInvalid = ensured\.meta === "invalid";\s*\} catch \{\s*widgetsEnsureFailed = true;\s*\}\s*\}\s*if \(ensuredInvalid\) \{\s*widgetsUnreadable = true;\s*renderFavorites\(\);\s*return;\s*\}/);
   });
@@ -364,7 +364,7 @@ describe("newtab favorites source", () => {
       boot,
       /let rawMeta = \{\};\s*try \{\s*if \(hasStorageArea\(syncStorageArea\)\) rawMeta = await syncStorageArea\.get\(WIDGETS_META_KEY\);\s*\} catch \{\s*rawMeta = \{\};\s*\}/
     );
-    const early = boot.slice(boot.indexOf("let rawMeta = {};"), boot.indexOf('if (inspectWidgetsMeta(rawMeta) === "newer")'));
+    const early = boot.slice(boot.indexOf("let rawMeta = {};"), boot.indexOf("const metaKind = inspectWidgetsMeta(rawMeta);"));
     assert.doesNotMatch(early, /widgetsNewer|favoritesError|renderFavorites|return/);
     // the only other read, getState, has its own catch that shows the storage error text
     assert.match(boot, /widgetsState = await widgetsService\.getState\(\);\s*\} catch \(error\) \{\s*favoritesError = error instanceof Error \? error\.message : String\(error\);/);
@@ -422,11 +422,12 @@ describe("newtab favorites source", () => {
     const code = await source();
     assert.match(code, /if \(widgetsNewer\) \{\s*favoritesRoot\.replaceChildren\(createStatus\(NEWER_WIDGETS_MESSAGE/);
     assert.ok(code.indexOf("if (widgetsNewer)") < code.indexOf("if (widgetsUnreadable)") && code.indexOf("if (widgetsUnreadable)") < code.indexOf("if (!widgetsState) {\n    // Unavailable APIs"));
-    assert.match(code, /inspectWidgetsMeta\(rawMeta\) === "newer"/);
+    assert.match(code, /const metaKind = inspectWidgetsMeta\(rawMeta\);/);
+    assert.match(code, /metaKind === "newer"/);
     assert.match(code, /await ensureWidgetsLayout\(syncStorageArea, \{ screen: firstScreen\(\) \}\)/);
     assert.match(code, /widgetsEnsureFailed = true;/);
     const boot = code.slice(code.indexOf("if (favoritesRoot) {\n  void (async () => {"), code.indexOf("})();", code.indexOf("if (favoritesRoot)")));
-    const order = ['inspectWidgetsMeta(rawMeta) === "newer"', 'inspectWidgetsMeta(rawMeta) === "invalid"', "await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });", 'ensured.meta === "invalid"', "widgetsState = await widgetsService.getState();"].map((n) => boot.indexOf(n));
+    const order = ['const metaKind = inspectWidgetsMeta(rawMeta);', 'metaKind === "newer"', 'metaKind === "invalid"', "await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });", 'ensured.meta === "invalid"', "widgetsState = await widgetsService.getState();"].map((n) => boot.indexOf(n));
     assert.ok(order.every((i) => i >= 0), order.join());
     assert.deepEqual([...order].sort((a, b) => a - b), order);
   });
@@ -1172,7 +1173,7 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     assert.equal(fn(code, "recoverFromGoneLink").split("firstScreen(").length - 1, 0);
     const boot = code.slice(code.indexOf("if (favoritesRoot) {\n  void (async () => {"), code.indexOf("})();", code.indexOf("if (favoritesRoot)")));
     const call = boot.indexOf("await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });");
-    assert.ok(call > boot.indexOf('inspectWidgetsMeta(rawMeta) === "invalid"') && call < boot.indexOf("widgetsState = await widgetsService.getState();"));
+    assert.ok(call > boot.indexOf('metaKind === "invalid"') && call < boot.indexOf("widgetsState = await widgetsService.getState();"));
     // evaluated before the first render of the desk: the only renders before the call are the two early locks (the newer and the invalid meta), each returns
     const beforeCall = boot.slice(boot.indexOf("let rawMeta = {};"), call);
     assert.equal((beforeCall.match(/renderFavorites\(\)/g) ?? []).length, 2, "only the two early locks render before the call (each returns)");
@@ -1285,10 +1286,12 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     const segmented = fn(code, "createSegmentedControl");
     assert.match(segmented, /for \(const \[value, text, glyph, accessibleName\] of options\)/);
     assert.match(segmented, /if \(accessibleName\) input\.setAttribute\("aria-label", accessibleName\);/);
+    assert.match(controls, /\.segmented \{\s*--glyph-short: 5px;\s*--glyph-long: 11px;/); // the one place of the glyph sides
+    assert.match(controls, /\.segmented__glyph--size-1x1 \{ width: var\(--glyph-short\); height: var\(--glyph-short\); \}/);
     assert.match(controls, /\.segmented__glyph\s*\{[^}]*flex: none;[^}]*box-sizing: border-box;[^}]*border: 1\.5px solid currentColor;/s);
-    assert.match(controls, /\.segmented__glyph--size-1x2 \{ width: 5px; height: 11px; \}/);
-    assert.match(controls, /\.segmented__glyph--size-2x1 \{ width: 11px; height: 5px; \}/);
-    assert.match(controls, /\.segmented__glyph--size-2x2 \{ width: 11px; height: 11px; \}/);
+    assert.match(controls, /\.segmented__glyph--size-1x2 \{ width: var\(--glyph-short\); height: var\(--glyph-long\); \}/);
+    assert.match(controls, /\.segmented__glyph--size-2x1 \{ width: var\(--glyph-long\); height: var\(--glyph-short\); \}/);
+    assert.match(controls, /\.segmented__glyph--size-2x2 \{ width: var\(--glyph-long\); height: var\(--glyph-long\); \}/);
     // The segment rule lives in its own 451px block; the row wrapping stays in the row-stacking block (since run 49 its query is
     // `@media (max-width: 400px), (max-width: 25rem)`: 400 px at the default font size, 600 px at 150 %).
     const narrow = surfaces.slice(surfaces.indexOf("@media (max-width: 451px)"));
@@ -2903,8 +2906,34 @@ describe("typography and copy source pins (run 49)", () => {
     assert.doesNotMatch(css, /@media \(max-width: 400px\) \{/, "the bare 400 px query is replaced, not kept beside it");
     const stack = css.slice(css.indexOf("@media (max-width: 400px), (max-width: 25rem) {"), css.indexOf("@media (max-width: 451px)"));
     assert.match(stack, /\.desktop-dialog \.favorite-form__row \{\s*flex-wrap: wrap;\s*row-gap: 6px;\s*\}/);
-    assert.match(stack, /\.desktop-dialog \.favorite-form__row-label \{\s*width: 100%;\s*\}/);
+    // run 53 (docs/layers-weather-polish.md decision 12): the row label has 4 px of vertical room beside its control (controls.css), none where it stands above it
+    assert.match(stack, /\.desktop-dialog \.favorite-form__row-label \{\s*width: 100%;\s*padding-block: 0;\s*\}/);
     assert.doesNotMatch(stack, /segmented__option/, "the segment rule stays in the 451 px block");
+  });
+
+  it("a segmented option keeps a bold-face reserve above 451 px and 4 px of vertical room; the nowrap block has no reserve (run 53, decision 12)", async () => {
+    const controls = (await readFile(new URL("../src/controls.css", import.meta.url), "utf8")).replace(/\/\*[\s\S]*?\*\//g, "");
+    const surfaces = (await readFile(new URL("../src/surfaces.css", import.meta.url), "utf8")).replace(/\/\*[\s\S]*?\*\//g, "");
+    const segmented = topLevelFunction(await source(), "createSegmentedControl");
+    // the label is a grid whose one cell holds the visible text and the hidden bold copy; the text itself is one textContent node (createNode's third argument)
+    assert.match(segmented, /label\.dataset\.text = text;/);
+    assert.match(segmented, /createNode\("i", "segmented__content"\)/);
+    assert.match(segmented, /createNode\("b", glyph \? `segmented__label segmented__label--\$\{glyph\}` : "segmented__label"\)/);
+    assert.match(segmented, /content\.appendChild\(mark\);\s*\}\s*content\.appendChild\(createNode\("span", null, text\)\);/);
+    assert.doesNotMatch(segmented, /innerHTML/);
+    assert.match(controls, /\.segmented__label \{\s*display: grid;\s*font-weight: inherit;/);
+    assert.match(controls, /\.segmented__content \{\s*grid-area: 1 \/ 1;\s*font-style: normal;[^}]*display: flex;[^}]*justify-self: center;\s*align-self: center;/);
+    assert.match(controls, /\.segmented__label--size-1x1,\s*\.segmented__label--size-1x2 \{\s*--glyph-room: calc\(var\(--glyph-short\) \+ var\(--control-gap-icon\)\);/);
+    assert.match(controls, /\.segmented__label--size-2x1,\s*\.segmented__label--size-2x2 \{\s*--glyph-room: calc\(var\(--glyph-long\) \+ var\(--control-gap-icon\)\);/);
+    // the reserve: only outside the nowrap block, in the exact complement of its query, bold in every state, hidden, no alternative text
+    const reserve = controls.slice(controls.indexOf("@media not all and (max-width: 451px)"));
+    assert.match(reserve, /^@media not all and \(max-width: 451px\) \{\s*\.segmented__label::after \{\s*grid-area: 1 \/ 1;\s*content: attr\(data-text\);\s*content: attr\(data-text\) \/ "";\s*padding-inline-start: var\(--glyph-room, 0\);\s*visibility: hidden;\s*font-weight: var\(--font-weight-control\);\s*\}\s*\}/);
+    assert.equal(controls.split("segmented__label::after").length - 1, 1, "one reserve rule, inside the media query");
+    assert.doesNotMatch(surfaces, /segmented__label/, "the nowrap block (surfaces.css) has no rule of the reserve: it has no reserve");
+    // 4 px above and below a label that wraps: the option and, beside its control, the row label; 0 where the label stands above its control
+    assert.match(controls, /\.segmented__option \{[^}]*padding: 4px 8px;/s);
+    assert.match(controls, /\.favorite-form__row-label \{[^}]*padding-block: 4px;/s);
+    assert.match(surfaces, /@media \(max-width: 451px\) \{\s*\.desktop-dialog \.segmented__option \{\s*padding: 0 5px;\s*white-space: nowrap;\s*\}/);
   });
 
   it("the 1×1 hint sets data-tooltip-trigger and data-tooltip-label \"Set a city\" in a separate statement after the chain, only for 1×1 (decision 6)", async () => {
@@ -3225,7 +3254,7 @@ describe("run 51: the screen for an unreadable grid and the reset (AS-UGR-22)", 
     assert.match(close, /const wasResetConfirm = desktopUi\.dialog\?\.kind === "confirm-reset-grid";/);
     assert.match(close, /if \(wasResetConfirm\) \{\s*armPostCloseClickGuard\(\);\s*favoritesRoot\?\.querySelector\('\[data-grid-action="reset"\]'\)\?\.focus\(\{ preventScroll: true \}\);/);
     // Cancel, Escape and the backdrop all end in closeDesktopDialog, and so does the catch of resetGrid
-    assert.match(topLevelFunction(src, "resetGrid"), /catch \{\s*finishFavoritesAction\(generation, \(\) => \{\}\);\s*closeDesktopDialog\(\{ restoreFocusTo: null \}\);/);
+    assert.match(topLevelFunction(src, "resetGrid"), /catch \{[^\n]*\n\s*if \(generation === favoritesGeneration\) setFavoritesBusy\(false\);\s*closeDesktopDialog\(\{ restoreFocusTo: null \}\);/);
   });
 
   it("resetGrid begins with the busy check, marks the dialog busy, reloads on both results and shows the failure text only in its catch", async () => {
@@ -3236,7 +3265,7 @@ describe("run 51: the screen for an unreadable grid and the reset (AS-UGR-22)", 
     assert.match(reset, /await resetUnreadableWidgets\(syncStorageArea\);\s*location\.reload\(\);/);
     const tryPart = reset.slice(0, reset.indexOf("catch"));
     assert.doesNotMatch(tryPart, /RESET_FAILED_MESSAGE|showDesktopStatus/);
-    assert.match(reset.slice(reset.indexOf("catch")), /finishFavoritesAction\(generation, \(\) => \{\}\);\s*closeDesktopDialog\(\{ restoreFocusTo: null \}\);\s*showDesktopStatus\(RESET_FAILED_MESSAGE\);/);
+    assert.match(reset.slice(reset.indexOf("catch")), /if \(generation === favoritesGeneration\) setFavoritesBusy\(false\);\s*closeDesktopDialog\(\{ restoreFocusTo: null \}\);\s*showDesktopStatus\(RESET_FAILED_MESSAGE\);/);
     assert.match(src, /const RESET_FAILED_MESSAGE = "Couldn't reset your grid\. Try again in a moment\.";/);
     assert.equal(src.split("RESET_FAILED_MESSAGE").length - 1, 2, "defined once, used once");
   });
@@ -3271,5 +3300,135 @@ describe("run 51: the screen for an unreadable grid and the reset (AS-UGR-22)", 
       if (name === "widgetsStore.js" || name === "newtab.js" || !name.endsWith(".js")) continue;
       assert.doesNotMatch(stripComments(text), /resetUnreadableWidgets/, name);
     }
+  });
+});
+
+describe("run 53: code with no visible effect is pinned (AS-QDL-06, decision 6)", () => {
+  const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
+  const stripped = async (name) => topLevelFunction(stripComments(await source()), name);
+
+  it("healReadDesk holds the busy lock in a try and releases it in a finally", async () => {
+    const heal = await stripped("healReadDesk");
+    const start = heal.indexOf("startFavoritesAction({ render: false })");
+    const tryAt = heal.indexOf("try {");
+    const call = heal.indexOf("await healClearedDesk(state)");
+    const fin = heal.indexOf("} finally {");
+    const finish = heal.indexOf("finishFavoritesAction(generation");
+    assert.ok(start > -1 && start < tryAt && tryAt < call && call < fin && fin < finish, "locked, try, heal, finally, release");
+  });
+
+  it("the load computes const metaKind = inspectWidgetsMeta(rawMeta) once and has no second call on rawMeta", async () => {
+    const code = await source();
+    const boot = code.slice(code.indexOf("if (favoritesRoot) {\n  void (async () => {"), code.indexOf("})();", code.indexOf("if (favoritesRoot)")));
+    assert.equal(boot.split("inspectWidgetsMeta(rawMeta)").length - 1, 1, "one call in the load");
+    assert.equal(boot.split("const metaKind = inspectWidgetsMeta(rawMeta);").length - 1, 1);
+    assert.match(boot, /metaKind === "newer"/);
+    assert.match(boot, /metaKind === "invalid"/);
+    // refreshDeskOnReturn keeps its own call on its own variable
+    assert.match(await stripped("refreshDeskOnReturn"), /const kind = inspectWidgetsMeta\(rawMeta\);/);
+  });
+
+  it("downgrade is a boolean", async () => {
+    assert.match(await source(), /const downgrade = Boolean\(failed && result\?\.status === "error" && weatherResult\?\.data\);/);
+  });
+
+  it("the comments of centeredDefaultRow, viewportRows and resetUnreadableWidgets are the new text (pins on the strings, not on the logic)", async () => {
+    const layout = await read("../src/desktopLayout.js");
+    const centered = layout.slice(layout.indexOf("// The row of the first placement of the whole default block"), layout.indexOf("export function centeredDefaultRow"));
+    assert.ok(centered.length > 0);
+    assert.doesNotMatch(centered, /The same value is/);
+    assert.doesNotMatch(centered, /Callers:/);
+    assert.match(layout, /`centeredDefaultRow` counts a window of more than CEILING_REFERENCE_ROWS \(below\) rows as CEILING_REFERENCE_ROWS rows\./);
+    const store = await read("../src/widgetsStore.js");
+    const reset = store.slice(store.indexOf("// resetUnreadableWidgets:"), store.indexOf("export function resetUnreadableWidgets"));
+    assert.ok(reset.length > 0);
+    assert.doesNotMatch(reset, /Accepted exception 2/);
+    assert.match(reset, /The one window left open is between that `get` and the `remove`/);
+  });
+});
+
+describe("run 53 task 2: layers (AS-QDL-01, AS-QDL-02, AS-QDL-03, AS-QDL-05)", () => {
+  const stripped = async (name) => topLevelFunction(stripComments(await source()), name);
+  const surfaces = () => readFile(new URL("../src/surfaces.css", import.meta.url), "utf8");
+
+  it("decision 1: the resize listener calls followDialogErrorOnResize itself, before and outside the animation frame", async () => {
+    const code = stripComments(await source());
+    const start = code.indexOf('window.addEventListener("resize", () => {\n  cancelDrag();');
+    assert.ok(start > -1);
+    const handler = code.slice(start, code.indexOf("\n});\n", start));
+    assert.ok(handler.indexOf("followDialogErrorOnResize();") > handler.indexOf("cancelDrag();"), "after the drag is cancelled");
+    assert.ok(handler.indexOf("followDialogErrorOnResize();") < handler.indexOf("requestAnimationFrame("), "in the resize event itself, not in the frame callback");
+    assert.equal(code.split("followDialogErrorOnResize(").length - 1, 2, "defined once, called once");
+  });
+
+  it("decision 1: followDialogErrorOnResize works only on the open .desktop-dialog with a shown slot that scrolls and sits under the footer, with the remembered target", async () => {
+    const follow = await stripped("followDialogErrorOnResize");
+    assert.match(follow, /const root = desktopDialogRoot;\s*if \(!root\?\.isConnected\) return;\s*syncDialogScrolls\(root\);/);
+    assert.match(follow, /if \(!slot \|\| slot\.hidden \|\| root\.dataset\.scrolls !== "true"\) return;/);
+    assert.match(follow, /slot\.getBoundingClientRect\(\)\.bottom \+ DIALOG_SCROLL_MARGIN_PX <= footerTop\) return;/, "a slot above the footer moves nothing");
+    assert.match(follow, /dialogErrorTargets\.get\(root\)/, "the target is the remembered one");
+    assert.match(follow, /box\.width === 0 && box\.height === 0/, "a hidden target has a zero rectangle");
+    assert.equal(follow.split("getBoundingClientRect()").length - 1, 4, "the target's rectangle is read once");
+    assert.match(follow, /root\.querySelector\('button\[type="submit"\]'\)/, "the submit button replaces a hidden target");
+    assert.match(follow, /scrollDialogErrorIntoView\(root, slot, target\);/, "the same function as the error's first scroll");
+    assert.doesNotMatch(follow, /invalidFieldFor\(|focus\(|aria-invalid|setAttribute|textContent/, "no recomputing of the target, no focus, no attribute or text change");
+  });
+
+  it("decision 1: showDialogError remembers the target it focused and scrolls to it; the content observer (watchDialogScrolls) does not scroll", async () => {
+    const show = await stripped("showDialogError");
+    assert.match(show, /dialogErrorTargets\.set\(root, target\);\s*scrollDialogErrorIntoView\(root, slot, target\);/);
+    assert.match(stripComments(await source()), /const dialogErrorTargets = new WeakMap\(\);/);
+    assert.doesNotMatch(await stripped("watchDialogScrolls"), /scrollDialogErrorIntoView|followDialogErrorOnResize/);
+    assert.doesNotMatch(await stripped("syncDialogScrolls"), /scrollTop|scrollDialogErrorIntoView/);
+  });
+
+  it("decision 2: showDesktopStatus writes --status-reserve at once for a non-empty text, after the text and the unhide; the hide path writes nothing there", async () => {
+    const show = await stripped("showDesktopStatus");
+    const hide = show.indexOf("desktopStatus.hidden = text === \"\";");
+    const write = show.indexOf('if (text !== "") writeStatusReserve(desktopStatus.getBoundingClientRect().height);');
+    assert.ok(hide > -1 && write > hide, "the write comes after the unhide");
+    assert.ok(show.indexOf("keepHoldAcrossChipRelease();") < show.indexOf("desktopStatus.textContent = text;"), "the hold takes the reserve of the shown chip first");
+    assert.doesNotMatch(show, /--status-reserve|"0px"/, "no literal write of the reserve, no 0px before keepHoldAcrossChipRelease");
+    const writer = await stripped("writeStatusReserve");
+    assert.match(writer, /setProperty\("--status-reserve", desktopStatus\.hidden \|\| height <= 0 \? "0px" : `\$\{height \+ offset\}px`\)/);
+    assert.match(writer, /--status-chip-offset-bottom/);
+    const keep = await stripped("keepHoldAcrossChipRelease");
+    assert.match(keep, /dragHoldPx \+= reserve;[\s\S]*root\.style\.setProperty\("--status-reserve", "0px"\)/, "keepHoldAcrossChipRelease is unchanged");
+  });
+
+  it("decision 2: recoverFromGoneLink shows the chip before it closes the dialog or focuses the neighbour, in both branches", async () => {
+    const recover = await stripped("recoverFromGoneLink");
+    const chip = recover.indexOf('if (outcome.healed) showDesktopStatus(LAYOUT_RESET_MESSAGE, { tone: "info" });');
+    assert.ok(chip > -1);
+    assert.equal(recover.split("showDesktopStatus(").length - 1, 2, "one place shows the chip (the healed and the plain message)");
+    assert.ok(chip > recover.indexOf("if (outcome.failed) {\n    showLayoutRestoreFailure();"), "after the failed exit");
+    assert.ok(chip < recover.indexOf("closeDesktopDialog({ restoreFocusTo: neighbours, reveal: true })"), "before the dialog closes with a reveal");
+    assert.ok(chip < recover.indexOf("focusWidgetTarget(neighbours, { preventScroll: true, reveal: true })"), "before the focus without a dialog");
+  });
+
+  it("decision 2: the heal branch of runDesktopMutation shows the chip before the Add link handler closes the dialog and reveals the tile", async () => {
+    const code = stripComments(await source());
+    const run = topLevelFunction(code, "runDesktopMutation");
+    assert.match(run, /else if \(outcome\.healed\) showDesktopStatus\(LAYOUT_RESET_MESSAGE, \{ tone: "info" \}\);\s*return true;/);
+    const add = code.slice(code.indexOf('case "add-link": {'), code.indexOf('case "edit-link": {'));
+    assert.ok(add.indexOf("runDesktopMutation(") < add.indexOf("closeDesktopDialog();") && add.indexOf("closeDesktopDialog();") < add.indexOf("revealAddedTile(added.id)"), "the mutation (which shows the chip), then the close, then the reveal");
+  });
+
+  it("decision 3: the locked starter list has scroll-margin 5px, a literal, and its ring is unchanged", async () => {
+    const css = await surfaces();
+    const rule = css.match(/\.onboarding-wizard__starters\[data-starters-locked="true"\] \{([^}]*)\}/);
+    assert.ok(rule, "the locked-list rule");
+    assert.match(rule[1], /scroll-margin: 5px;/);
+    assert.doesNotMatch(css.match(/\.onboarding-wizard__starters\[data-starters-locked="true"\]:focus-visible \{([^}]*)\}/)[1], /scroll-margin/, "the margin is on the resting state");
+    assert.match(css, /\.onboarding-wizard__starters\[data-starters-locked="true"\]:focus-visible \{\s*outline: 2px solid var\(--focus-ring\);[^}]*outline-offset: 0;/);
+    assert.doesNotMatch(css.slice(css.indexOf(".onboarding-wizard__starters {"), css.indexOf("}", css.indexOf(".onboarding-wizard__starters {"))), /scroll-margin/, "the unlocked list has none");
+  });
+
+  it("decision 5: the catch of resetGrid releases the busy flag without a render", async () => {
+    const reset = await stripped("resetGrid");
+    const handler = reset.slice(reset.indexOf("catch"));
+    assert.doesNotMatch(handler, /renderFavorites\(|finishFavoritesAction\(|renderDesktop\(|startFavoritesAction\(/, "nothing is rebuilt");
+    assert.match(handler, /if \(generation === favoritesGeneration\) setFavoritesBusy\(false\);/);
+    assert.match(handler, /closeDesktopDialog\(\{ restoreFocusTo: null \}\);\s*showDesktopStatus\(RESET_FAILED_MESSAGE\);/, "the rest of the catch stays");
   });
 });

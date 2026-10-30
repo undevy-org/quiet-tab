@@ -242,10 +242,12 @@
   overflow-wrap: anywhere;
 }
 
-/* Locked list = keyboard scroll stop. The ring is an outline outside the list's box: the opaque rows cannot cover it and it does not
-   scroll with them. A locked row does not look busy (the list stays on the default cursor). */
+/* Locked list = keyboard scroll stop. The ring is an outline outside the list's box. A locked row does not look busy. scroll-margin keeps the
+   ring whole when focus scrolls the card: forced-colors outline 2px + 2px offset = 4px, plus one pixel for Chrome's integer scroll offsets
+   (a literal, as in the city modal's rule); on the resting state because the scroll happens at the moment of focus. */
 .onboarding-wizard__starters[data-starters-locked="true"] {
   cursor: default;
+  scroll-margin: 5px;
 }
 
 .onboarding-wizard__starters[data-starters-locked="true"]:focus-visible {
@@ -579,6 +581,7 @@ img.onboarding-wizard__starter-icon[data-icon-check="pending"] {
 
   .desktop-dialog .favorite-form__row-label {
     width: 100%;
+    padding-block: 0;
   }
 
   .desktop-dialog .favorite-form__row > .segmented,

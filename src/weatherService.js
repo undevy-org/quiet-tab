@@ -7,11 +7,13 @@ import {
 } from "./weatherApi.js";
 import { WEATHER_CACHE_TTL_MS } from "./weatherShared.js";
 
+// Fresh: 0 <= now - fetchedAt < WEATHER_CACHE_TTL_MS for the same city. A cache from the future (the clock moved back) is not fresh.
 function isCacheFresh(cache, location, now) {
   return (
     cache !== null &&
     location !== null &&
     cache.locationName === location.name &&
+    now - cache.fetchedAt >= 0 &&
     now - cache.fetchedAt < WEATHER_CACHE_TTL_MS
   );
 }
