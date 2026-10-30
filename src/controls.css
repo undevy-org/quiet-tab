@@ -41,8 +41,8 @@
 .favorite-form__row-label {
   flex: 0 0 auto;
   width: var(--form-label-width);
-  /* Room above and below a label that wraps at a larger browser font (docs/layers-weather-polish.md decision 12). It is invisible where the label
-     has one line: the field beside it is 40 px high. The stacking block of surfaces.css, where the label stands above its control, sets it to 0. */
+  /* Room above and below a label that wraps at a larger browser font (docs/layers-weather-polish.md decision 12). It is invisible for one line at the tested
+     sizes: the field beside it is 40 px high. The stacking block of surfaces.css, where the label stands above its control, sets it to 0. */
   padding-block: 4px;
   font-size: var(--font-size-sm);
   color: var(--muted);
@@ -102,7 +102,10 @@
   gap: var(--form-footer-gap);
 }
 
+/* The two sides of the Size shape glyph: the one place of the numbers, read by .segmented__glyph--size-* and by the reserve (--glyph-room). */
 .segmented {
+  --glyph-short: 5px;
+  --glyph-long: 11px;
   display: flex;
   min-height: var(--control-height);
   border: var(--control-border-width) solid var(--border-control);
@@ -155,12 +158,12 @@
 /* The room of the shape glyph in the reserve (the width of .segmented__glyph--size-* below plus the gap of .segmented__content). */
 .segmented__label--size-1x1,
 .segmented__label--size-1x2 {
-  --glyph-room: calc(5px + var(--control-gap-icon));
+  --glyph-room: calc(var(--glyph-short) + var(--control-gap-icon));
 }
 
 .segmented__label--size-2x1,
 .segmented__label--size-2x2 {
-  --glyph-room: calc(11px + var(--control-gap-icon));
+  --glyph-room: calc(var(--glyph-long) + var(--control-gap-icon));
 }
 
 /* Not in the nowrap block (451 px and narrower, surfaces.css): there a label cannot wrap, and the bold width as the minimum width of each option would let
@@ -183,10 +186,10 @@
   border-radius: 1.5px;
 }
 
-.segmented__glyph--size-1x1 { width: 5px; height: 5px; }
-.segmented__glyph--size-1x2 { width: 5px; height: 11px; }
-.segmented__glyph--size-2x1 { width: 11px; height: 5px; }
-.segmented__glyph--size-2x2 { width: 11px; height: 11px; }
+.segmented__glyph--size-1x1 { width: var(--glyph-short); height: var(--glyph-short); }
+.segmented__glyph--size-1x2 { width: var(--glyph-short); height: var(--glyph-long); }
+.segmented__glyph--size-2x1 { width: var(--glyph-long); height: var(--glyph-short); }
+.segmented__glyph--size-2x2 { width: var(--glyph-long); height: var(--glyph-long); }
 
 .segmented__option:last-child {
   border-right: none;

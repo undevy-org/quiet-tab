@@ -1286,10 +1286,12 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     const segmented = fn(code, "createSegmentedControl");
     assert.match(segmented, /for \(const \[value, text, glyph, accessibleName\] of options\)/);
     assert.match(segmented, /if \(accessibleName\) input\.setAttribute\("aria-label", accessibleName\);/);
+    assert.match(controls, /\.segmented \{\s*--glyph-short: 5px;\s*--glyph-long: 11px;/); // the one place of the glyph sides
+    assert.match(controls, /\.segmented__glyph--size-1x1 \{ width: var\(--glyph-short\); height: var\(--glyph-short\); \}/);
     assert.match(controls, /\.segmented__glyph\s*\{[^}]*flex: none;[^}]*box-sizing: border-box;[^}]*border: 1\.5px solid currentColor;/s);
-    assert.match(controls, /\.segmented__glyph--size-1x2 \{ width: 5px; height: 11px; \}/);
-    assert.match(controls, /\.segmented__glyph--size-2x1 \{ width: 11px; height: 5px; \}/);
-    assert.match(controls, /\.segmented__glyph--size-2x2 \{ width: 11px; height: 11px; \}/);
+    assert.match(controls, /\.segmented__glyph--size-1x2 \{ width: var\(--glyph-short\); height: var\(--glyph-long\); \}/);
+    assert.match(controls, /\.segmented__glyph--size-2x1 \{ width: var\(--glyph-long\); height: var\(--glyph-short\); \}/);
+    assert.match(controls, /\.segmented__glyph--size-2x2 \{ width: var\(--glyph-long\); height: var\(--glyph-long\); \}/);
     // The segment rule lives in its own 451px block; the row wrapping stays in the row-stacking block (since run 49 its query is
     // `@media (max-width: 400px), (max-width: 25rem)`: 400 px at the default font size, 600 px at 150 %).
     const narrow = surfaces.slice(surfaces.indexOf("@media (max-width: 451px)"));
@@ -2921,8 +2923,8 @@ describe("typography and copy source pins (run 49)", () => {
     assert.doesNotMatch(segmented, /innerHTML/);
     assert.match(controls, /\.segmented__label \{\s*display: grid;\s*font-weight: inherit;/);
     assert.match(controls, /\.segmented__content \{\s*grid-area: 1 \/ 1;\s*font-style: normal;[^}]*display: flex;[^}]*justify-self: center;\s*align-self: center;/);
-    assert.match(controls, /\.segmented__label--size-1x1,\s*\.segmented__label--size-1x2 \{\s*--glyph-room: calc\(5px \+ var\(--control-gap-icon\)\);/);
-    assert.match(controls, /\.segmented__label--size-2x1,\s*\.segmented__label--size-2x2 \{\s*--glyph-room: calc\(11px \+ var\(--control-gap-icon\)\);/);
+    assert.match(controls, /\.segmented__label--size-1x1,\s*\.segmented__label--size-1x2 \{\s*--glyph-room: calc\(var\(--glyph-short\) \+ var\(--control-gap-icon\)\);/);
+    assert.match(controls, /\.segmented__label--size-2x1,\s*\.segmented__label--size-2x2 \{\s*--glyph-room: calc\(var\(--glyph-long\) \+ var\(--control-gap-icon\)\);/);
     // the reserve: only outside the nowrap block, in the exact complement of its query, bold in every state, hidden, no alternative text
     const reserve = controls.slice(controls.indexOf("@media not all and (max-width: 451px)"));
     assert.match(reserve, /^@media not all and \(max-width: 451px\) \{\s*\.segmented__label::after \{\s*grid-area: 1 \/ 1;\s*content: attr\(data-text\);\s*content: attr\(data-text\) \/ "";\s*padding-inline-start: var\(--glyph-room, 0\);\s*visibility: hidden;\s*font-weight: var\(--font-weight-control\);\s*\}\s*\}/);
