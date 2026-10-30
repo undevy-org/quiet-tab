@@ -41,6 +41,9 @@
 .favorite-form__row-label {
   flex: 0 0 auto;
   width: var(--form-label-width);
+  /* Room above and below a label that wraps at a larger browser font (docs/layers-weather-polish.md decision 12). It is invisible where the label
+     has one line: the field beside it is 40 px high. The stacking block of surfaces.css, where the label stands above its control, sets it to 0. */
+  padding-block: 4px;
   font-size: var(--font-size-sm);
   color: var(--muted);
 }
@@ -117,7 +120,8 @@
   gap: var(--control-gap-icon);
   /* min-height, not height: a label that wraps at a larger browser font grows the whole group instead of being clipped by .segmented's overflow: hidden (docs/typography-copy.md decision 3). */
   min-height: calc(var(--control-height) - 2 * var(--control-border-width));
-  padding: 0 8px;
+  /* 4 px above and below a label that wraps (docs/layers-weather-polish.md decision 12); invisible for one line, which the min-height above is taller than. */
+  padding: 4px 8px;
   border-right: var(--control-border-width) solid var(--border);
   font-size: var(--font-size-sm);
   color: var(--muted);
@@ -127,6 +131,51 @@
 
 /* Size shape glyph (docs/tile-size-followups.md decision 1): an outline rectangle in the footprint's proportion, unit 5 px
    (width x height: 1x1 5x5, 1x2 5x11, 2x1 11x5, 2x2 11x11); the narrow block of surfaces.css switches to unit 4. */
+/* The label of an option: its visible content (the shape glyph and the text, one unit) and, above the nowrap block (451 px), the bold-face reserve. The
+   reserve is the same text, bold in every state and hidden, in the same grid cell as the visible content: the width the label wraps at and the height of
+   the option come from the bold face, so neither depends on which option is selected (docs/layers-weather-polish.md decision 12). The visible content
+   is centred in the room the bold face needs, glyph and text together, so at a size where nothing wraps it stands where it stood without the reserve. */
+.segmented__label {
+  display: grid;
+  font-weight: inherit; /* a <b>, see createSegmentedControl */
+}
+
+.segmented__content {
+  grid-area: 1 / 1;
+  font-style: normal; /* an <i> */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  justify-self: center;
+  align-self: center;
+  gap: var(--control-gap-icon);
+  max-width: 100%;
+}
+
+/* The room of the shape glyph in the reserve (the width of .segmented__glyph--size-* below plus the gap of .segmented__content). */
+.segmented__label--size-1x1,
+.segmented__label--size-1x2 {
+  --glyph-room: calc(5px + var(--control-gap-icon));
+}
+
+.segmented__label--size-2x1,
+.segmented__label--size-2x2 {
+  --glyph-room: calc(11px + var(--control-gap-icon));
+}
+
+/* Not in the nowrap block (451 px and narrower, surfaces.css): there a label cannot wrap, and the bold width as the minimum width of each option would let
+   the group's overflow: hidden cut a label that is whole without it. `not all and (max-width: 451px)` is the exact complement of that block's query. */
+@media not all and (max-width: 451px) {
+  .segmented__label::after {
+    grid-area: 1 / 1;
+    content: attr(data-text);
+    content: attr(data-text) / ""; /* no alternative text: a screen reader never reads the reserve */
+    padding-inline-start: var(--glyph-room, 0);
+    visibility: hidden;
+    font-weight: var(--font-weight-control);
+  }
+}
+
 .segmented__glyph {
   flex: none;
   box-sizing: border-box;

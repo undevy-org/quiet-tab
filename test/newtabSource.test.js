@@ -2904,8 +2904,34 @@ describe("typography and copy source pins (run 49)", () => {
     assert.doesNotMatch(css, /@media \(max-width: 400px\) \{/, "the bare 400 px query is replaced, not kept beside it");
     const stack = css.slice(css.indexOf("@media (max-width: 400px), (max-width: 25rem) {"), css.indexOf("@media (max-width: 451px)"));
     assert.match(stack, /\.desktop-dialog \.favorite-form__row \{\s*flex-wrap: wrap;\s*row-gap: 6px;\s*\}/);
-    assert.match(stack, /\.desktop-dialog \.favorite-form__row-label \{\s*width: 100%;\s*\}/);
+    // run 53 (docs/layers-weather-polish.md decision 12): the row label has 4 px of vertical room beside its control (controls.css), none where it stands above it
+    assert.match(stack, /\.desktop-dialog \.favorite-form__row-label \{\s*width: 100%;\s*padding-block: 0;\s*\}/);
     assert.doesNotMatch(stack, /segmented__option/, "the segment rule stays in the 451 px block");
+  });
+
+  it("a segmented option keeps a bold-face reserve above 451 px and 4 px of vertical room; the nowrap block has no reserve (run 53, decision 12)", async () => {
+    const controls = (await readFile(new URL("../src/controls.css", import.meta.url), "utf8")).replace(/\/\*[\s\S]*?\*\//g, "");
+    const surfaces = (await readFile(new URL("../src/surfaces.css", import.meta.url), "utf8")).replace(/\/\*[\s\S]*?\*\//g, "");
+    const segmented = topLevelFunction(await source(), "createSegmentedControl");
+    // the label is a grid whose one cell holds the visible text and the hidden bold copy; the text itself is one textContent node (createNode's third argument)
+    assert.match(segmented, /label\.dataset\.text = text;/);
+    assert.match(segmented, /createNode\("i", "segmented__content"\)/);
+    assert.match(segmented, /createNode\("b", glyph \? `segmented__label segmented__label--\$\{glyph\}` : "segmented__label"\)/);
+    assert.match(segmented, /content\.appendChild\(mark\);\s*\}\s*content\.appendChild\(createNode\("span", null, text\)\);/);
+    assert.doesNotMatch(segmented, /innerHTML/);
+    assert.match(controls, /\.segmented__label \{\s*display: grid;\s*font-weight: inherit;/);
+    assert.match(controls, /\.segmented__content \{\s*grid-area: 1 \/ 1;\s*font-style: normal;[^}]*display: flex;[^}]*justify-self: center;\s*align-self: center;/);
+    assert.match(controls, /\.segmented__label--size-1x1,\s*\.segmented__label--size-1x2 \{\s*--glyph-room: calc\(5px \+ var\(--control-gap-icon\)\);/);
+    assert.match(controls, /\.segmented__label--size-2x1,\s*\.segmented__label--size-2x2 \{\s*--glyph-room: calc\(11px \+ var\(--control-gap-icon\)\);/);
+    // the reserve: only outside the nowrap block, in the exact complement of its query, bold in every state, hidden, no alternative text
+    const reserve = controls.slice(controls.indexOf("@media not all and (max-width: 451px)"));
+    assert.match(reserve, /^@media not all and \(max-width: 451px\) \{\s*\.segmented__label::after \{\s*grid-area: 1 \/ 1;\s*content: attr\(data-text\);\s*content: attr\(data-text\) \/ "";\s*padding-inline-start: var\(--glyph-room, 0\);\s*visibility: hidden;\s*font-weight: var\(--font-weight-control\);\s*\}\s*\}/);
+    assert.equal(controls.split("segmented__label::after").length - 1, 1, "one reserve rule, inside the media query");
+    assert.doesNotMatch(surfaces, /segmented__label/, "the nowrap block (surfaces.css) has no rule of the reserve: it has no reserve");
+    // 4 px above and below a label that wraps: the option and, beside its control, the row label; 0 where the label stands above its control
+    assert.match(controls, /\.segmented__option \{[^}]*padding: 4px 8px;/s);
+    assert.match(controls, /\.favorite-form__row-label \{[^}]*padding-block: 4px;/s);
+    assert.match(surfaces, /@media \(max-width: 451px\) \{\s*\.desktop-dialog \.segmented__option \{\s*padding: 0 5px;\s*white-space: nowrap;\s*\}/);
   });
 
   it("the 1×1 hint sets data-tooltip-trigger and data-tooltip-label \"Set a city\" in a separate statement after the chain, only for 1×1 (decision 6)", async () => {

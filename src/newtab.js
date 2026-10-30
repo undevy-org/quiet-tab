@@ -498,12 +498,20 @@ function createSegmentedControl(name, options, selectedValue) {
     input.checked = value === selectedValue;
     if (accessibleName) input.setAttribute("aria-label", accessibleName); // starts with the visible text (WCAG 2.5.3)
     option.appendChild(input);
+    // The glyph and the text are one unit (content), centred in a label that is as wide as the bold face needs: data-text feeds the bold-face reserve
+    // (controls.css .segmented__label::after); the visible text stays one textContent node (docs/layers-weather-polish.md decision 12). The label and the
+    // unit are <b> and <i> (styled back to normal in controls.css), not <span>, so that the text span stays the option's first span and its only one.
+    const content = createNode("i", "segmented__content");
     if (glyph) {
       const mark = createNode("i", `segmented__glyph segmented__glyph--${glyph}`);
       mark.setAttribute("aria-hidden", "true");
-      option.appendChild(mark);
+      content.appendChild(mark);
     }
-    option.appendChild(createNode("span", null, text));
+    content.appendChild(createNode("span", null, text));
+    const label = createNode("b", glyph ? `segmented__label segmented__label--${glyph}` : "segmented__label");
+    label.dataset.text = text;
+    label.appendChild(content);
+    option.appendChild(label);
     group.appendChild(option);
   }
 

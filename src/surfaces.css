@@ -581,6 +581,7 @@ img.onboarding-wizard__starter-icon[data-icon-check="pending"] {
 
   .desktop-dialog .favorite-form__row-label {
     width: 100%;
+    padding-block: 0;
   }
 
   .desktop-dialog .favorite-form__row > .segmented,
