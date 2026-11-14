@@ -248,6 +248,7 @@ button.weather-tile {
   font-size: var(--font-size-md);
   line-height: var(--line-height-body);
   box-shadow: var(--shadow-status);
+  text-wrap: pretty; /* no lone word at the end of the message (docs/layers-weather-polish.md decision 8) */
 }
 
 .desktop-status[hidden] {
@@ -609,6 +610,7 @@ body:has(.desktop-dialog, .city-modal) #desktop-status {
   font-size: var(--font-size-sm);
   line-height: 1.35;
   text-align: center;
+  text-wrap: pretty; /* no lone word at the end of the tooltip (docs/layers-weather-polish.md decision 8) */
   pointer-events: none;
 }
 

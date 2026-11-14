@@ -145,6 +145,7 @@
   line-clamp: unset;
   overflow: visible;
   overflow-wrap: anywhere;
+  text-wrap: pretty; /* no lone word at the end of the error (docs/layers-weather-polish.md decision 8) */
 }
 
 /* No reserved room: the slot is empty (height 0) until an error shows; the card then grows (accepted). The 16px to the actions

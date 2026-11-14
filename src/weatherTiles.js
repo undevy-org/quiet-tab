@@ -19,15 +19,17 @@ const LABELS = {
 const STALE_PREFIX = "Couldn't refresh — showing saved data. ";
 const TRYING_AGAIN = "Trying again…";
 
-function readyModel(metricKey, data, size) {
+// `stale` only changes the temperature sentence: stale data is no longer "Currently" but "Last known" (docs/layers-weather-polish.md decision 7).
+function readyModel(metricKey, data, size, stale = false) {
   // A 2-wide tile and a 1×2 (tall) tile both have room for the secondary line (docs/tile-size-1x2.md decision 6).
   const wide = size === "wide" || size === "tall";
   if (metricKey === "temperature") {
+    const lead = stale ? "Last known:" : "Currently";
     return {
       primary: formatTemperature(data.temperature),
       secondary: null,
       tone: temperatureTone({ todayAt15: data.temperatureTodayAt15, yesterdayAt15: data.temperatureYesterdayAt15 }),
-      description: `Currently ${formatTemperature(data.temperature)}°. Today at 15:00 — ${formatTemperature(data.temperatureTodayAt15)}°, yesterday at 15:00 — ${formatTemperature(data.temperatureYesterdayAt15)}°.`
+      description: `${lead} ${formatTemperature(data.temperature)}°. Today at 15:00 — ${formatTemperature(data.temperatureTodayAt15)}°, yesterday at 15:00 — ${formatTemperature(data.temperatureYesterdayAt15)}°.`
     };
   }
   if (metricKey === "precipitation") {
@@ -84,8 +86,8 @@ export function describeWeatherMetric({ metricKey, result, size, retry = "ready"
     };
   }
 
-  const model = readyModel(metricKey, result.data, size);
   const isStale = result.status === "stale";
+  const model = readyModel(metricKey, result.data, size, isStale);
   if (!isStale) return { ...base, ...model, stale: false, description: model.description };
   const age = formatUpdatedAge(result.data?.fetchedAt, now);
   const staleDescription = age ? `${STALE_PREFIX}${age}. ${model.description}` : `${STALE_PREFIX}${model.description}`;

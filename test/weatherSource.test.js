@@ -92,7 +92,7 @@ describe("newtab weather source", () => {
     );
     assert.match(
       tiles,
-      /Currently \$\{formatTemperature\(data\.temperature\)\}°\. Today at 15:00 — \$\{formatTemperature\(data\.temperatureTodayAt15\)\}°, yesterday at 15:00 — \$\{formatTemperature\(data\.temperatureYesterdayAt15\)\}°\./
+      /\$\{lead\} \$\{formatTemperature\(data\.temperature\)\}°\. Today at 15:00 — \$\{formatTemperature\(data\.temperatureTodayAt15\)\}°, yesterday at 15:00 — \$\{formatTemperature\(data\.temperatureYesterdayAt15\)\}°\./
     );
     assert.match(tiles, /Chance of rain for the rest of the day — \$\{primary\}, expected from \$\{start\}\./);
     assert.match(tiles, /Chance of rain for the rest of the day — \$\{primary\}\./);
@@ -331,6 +331,13 @@ describe("newtab weather source", () => {
     const styles = await css();
     assert.match(styles, /\.weather-form__suggestions\s*\{/);
     assert.match(styles, /\.weather-form__suggestion\s*\{/);
+  });
+
+  it("keeps a lone word off the end of tooltips and status messages (text-wrap: pretty on three selectors, run 53 decision 8)", async () => {
+    const styles = await css();
+    assert.match(styles, /(?:^|\n)\.tooltip \{[^}]*\n  text-wrap: pretty;/);
+    assert.match(styles, /(?:^|\n)\.desktop-status \{[^}]*\n  text-wrap: pretty;/);
+    assert.match(styles, /(?:^|\n)\.city-modal \.status--full \{[^}]*\n  text-wrap: pretty;/);
   });
 });
 
