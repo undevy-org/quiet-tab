@@ -555,9 +555,10 @@ describe("newtab weather requests only while a weather tile is shown (run 53, do
     const retry = fn(code, "retryWeather");
     assert.match(retry, /^async function retryWeather\([^)]*\) \{\n  if \(!weatherService \|\| !weatherTileShownNow\(\)\) return;/, "the manual and the automatic path alike");
     assert.ok(retry.indexOf("weatherTileShownNow()") < retry.indexOf("effectiveWeatherResult()"), "the gate comes before anything is read or started");
-    for (const name of ["changeCity", "createCityForm", "selectLocation"]) {
+    for (const name of ["changeCity", "createCityForm"]) {
       const at = code.search(new RegExp(`function ${name}\\(`));
-      if (at > -1) assert.doesNotMatch(code.slice(at, code.indexOf("\n}\n", at)), /weatherTileShownNow|hasShownWeatherTile/, `${name} is not gated (Accepted exception 6)`);
+      assert.ok(at > -1, name);
+      assert.doesNotMatch(code.slice(at, code.indexOf("\n}\n", at)), /weatherTileShownNow|hasShownWeatherTile/, `${name} is not gated (Accepted exception 6)`);
     }
   });
 

@@ -304,7 +304,7 @@ describe("city modal state", () => {
       assert.deepEqual(weatherAppearanceDecision({ ...base, wasShown: false, shown: false, openLoadStarted: true }), { action: "none", openLoadStarted: true });
     });
 
-    it("the first appearance starts the load at open and sets the tab flag, also offline and with a load in flight", () => {
+    it("the first appearance starts the load at open and sets the tab flag, also offline", () => {
       assert.deepEqual(weatherAppearanceDecision(base), { action: "load", openLoadStarted: true });
       assert.deepEqual(weatherAppearanceDecision({ ...base, online: false }), { action: "load", openLoadStarted: true });
     });
