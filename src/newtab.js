@@ -64,6 +64,7 @@ import {
   closeCityModal as closeCityModalState,
   createInitialWeatherUiState,
   finishWeatherRetry,
+  hasShownWeatherTile,
   hideSuggestions,
   isCityModalOpen,
   isSuggestionsOpen,
@@ -71,6 +72,7 @@ import {
   resetWeatherRetry,
   showSuggestions,
   startWeatherRetry,
+  weatherAppearanceDecision,
   weatherRefreshDue,
   weatherRetryOutcome,
   weatherRetryPhase
@@ -315,6 +317,15 @@ let weatherChanging = false;
 let weatherGeneration = 0;
 let weatherRetryToken = 0; // a retry result applies only while this and weatherGeneration are the values it started with
 let weatherRetryTimer = 0; // the end of the cooldown (updates the existing retry nodes in place)
+// Weather requests only while a weather tile is shown (docs/layers-weather-polish.md decisions 9 and 10). The hook `checkWeatherTileAppeared`
+// remembers whether the displayed state had a shown tile at its last look (initially none, so the first render of a tab with a tile is the
+// change that starts the load at open), `weatherOpenLoadStarted` is the tab flag "the load at open has started" (set by the hook, never
+// cleared) and `weatherLoadInFlight` is the one flag shared by the load at open, the automatic attempt and the manual attempt: while it is set
+// the hook and an automatic attempt start nothing, a manual press supersedes (the pressed attempt owns the flag then).
+let weatherTileShown = false;
+let weatherOpenLoadStarted = false;
+let weatherLoadInFlight = false;
+let weatherAppearanceQueued = false;
 let widgetsEnsureFailed = false;
 let widgetsNewer = false;
 let widgetsUnreadable = false; // the meta is unreadable (docs/unreadable-grid-reset.md): the page shows the screen with Reset grid and does nothing else
@@ -3695,6 +3706,7 @@ function renderFavorites() {
   renderDesktop();
   applyPendingFocus();
   scheduleDeferredDeskRefresh();
+  scheduleWeatherAppearanceCheck();
 }
 function setFavoritesBusy(nextBusy) {
   favoritesBusy = nextBusy;
@@ -3796,7 +3808,8 @@ if (favoritesRoot) {
 
     renderFavorites();
     if (widgetsEnsureFailed) showDesktopStatus(ENSURE_FAILED_MESSAGE, { persist: true });
-    void startWeather();
+    // No call of startWeather here: the load at open starts from the hook of the render above (checkWeatherTileAppeared), and only when the
+    // displayed state has a shown weather tile (docs/layers-weather-polish.md decision 10).
   })();
 
   // Normal mode: a link tile opens its URL, the hint tile opens the city modal. A click on the background does
@@ -3999,11 +4012,58 @@ if (favoritesRoot) {
 const CITY_INPUT_SELECTOR = 'input[name="city"]';
 const HINT_TILE_SELECTOR = '[data-widget-id="weather:hint"]';
 
+// The displayed items: an unreadable or newer grid draws none (renderDesktop), so it has no shown weather tile.
+function displayedWidgetItems() {
+  return widgetsNewer || widgetsUnreadable || !widgetsState ? [] : widgetsState.items;
+}
+
+function weatherTileShownNow() {
+  return hasShownWeatherTile(displayedWidgetItems());
+}
+
+// The one hook of decision 10: every route of a changed state (the first render at open, restoring a metric through the Add menu, a re-read that
+// applies another tab's change, a heal, recoverFromGoneLink, a refresh on return) ends in renderFavorites, which schedules this once per
+// task, from a microtask, never synchronously inside the render. The remembered value is updated before anything starts.
+function scheduleWeatherAppearanceCheck() {
+  if (weatherAppearanceQueued) return;
+  weatherAppearanceQueued = true;
+  queueMicrotask(() => {
+    weatherAppearanceQueued = false;
+    checkWeatherTileAppeared();
+  });
+}
+
+function checkWeatherTileAppeared() {
+  if (!weatherService) return;
+  const shown = weatherTileShownNow();
+  const decision = weatherAppearanceDecision({
+    wasShown: weatherTileShown,
+    shown,
+    openLoadStarted: weatherOpenLoadStarted,
+    changing: weatherChanging,
+    online: navigator.onLine !== false,
+    loadInFlight: weatherLoadInFlight
+  });
+  weatherTileShown = shown;
+  weatherOpenLoadStarted = decision.openLoadStarted;
+  if (decision.action === "load") void startWeather();
+  else if (decision.action === "attempt") void retryWeather({ automatic: true });
+}
+
+// An attempt ends the shared flag only while it is still the current one: a manual press, a city change or a heal that superseded it raised
+// weatherGeneration, and then the flag belongs to whoever superseded it (the change clears it itself when its answer is applied).
+function endWeatherLoad(generation) {
+  if (generation === weatherGeneration) weatherLoadInFlight = false;
+}
+
+// The load at open (`weatherService.initialize()`: a cache younger than 30 minutes is served with no request). Started only by the hook, and
+// only while a weather tile is shown (docs/layers-weather-polish.md decision 9).
 async function startWeather() {
-  if (!weatherService) {
+  if (!weatherService || !weatherTileShownNow()) {
     return;
   }
 
+  weatherLoadInFlight = true;
   const generation = weatherGeneration;
   let result;
   try {
@@ -4017,6 +4077,7 @@ async function startWeather() {
     };
   }
 
+  endWeatherLoad(generation);
   // A city chosen while the first load was in flight already produced a newer result.
   if (generation !== weatherGeneration) {
     return;
@@ -4041,10 +4102,11 @@ async function startWeather() {
 // is silent: it never writes the status line, never announces, and a ready tile (which has no retry control, so no busy state) is not
 // rendered at its start.
 async function retryWeather({ automatic = false, ignorePause = false } = {}) {
-  if (!weatherService) return;
+  if (!weatherService || !weatherTileShownNow()) return; // no shown weather tile, no request (a press needs a tile; a return and `online` come here)
   const shown = effectiveWeatherResult();
   const due = automatic ? weatherRefreshDue(shown, Date.now()) : shown?.status === "error" || shown?.status === "stale";
   if (!due) return;
+  if (automatic && weatherLoadInFlight) return; // a return or `online` never supersedes a load that is running; a manual press does
   const started = startWeatherRetry(weatherUi, Date.now(), { ignorePause });
   if (started === weatherUi) return;
   // Automatic only; read before the first render (a render recreates the tile): where the focus is as the attempt starts decides whether
@@ -4055,6 +4117,7 @@ async function retryWeather({ automatic = false, ignorePause = false } = {}) {
   const token = ++weatherRetryToken;
   weatherGeneration += 1; // supersedes a boot load that is still in flight (a failed city read leaves one running)
   const generation = weatherGeneration;
+  weatherLoadInFlight = true; // the pressed or automatic attempt owns the shared flag now (a superseded load does not clear it)
   const silentStart = automatic && shown?.status === "ready";
   if (!silentStart) renderFavorites();
 
@@ -4066,6 +4129,7 @@ async function retryWeather({ automatic = false, ignorePause = false } = {}) {
   } catch (error) {
     outcome = { failed: weatherErrorMessage(error) };
   }
+  endWeatherLoad(generation);
   if (token !== weatherRetryToken || generation !== weatherGeneration) return;
 
   if (outcome === "gone") {
@@ -4187,6 +4251,7 @@ function changeCity(run, { onSuccess = null } = {}) {
       weatherLocationError = ""; // a successful selection clears an earlier read error
       weatherRetryToken += 1; // a late retry result belongs to the old city
       weatherUi = resetWeatherRetry(weatherUi);
+      weatherLoadInFlight = false; // the change superseded an open load or attempt: its answer is applied, a late answer of the old one does not touch the flag
       clearTimeout(weatherRetryTimer);
       ok = true;
     } catch (error) {

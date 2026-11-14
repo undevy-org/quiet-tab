@@ -80,6 +80,27 @@ export function weatherRefreshDue(result, now) {
   return Number.isFinite(fetchedAt) && now - fetchedAt >= WEATHER_CACHE_TTL_MS;
 }
 
+// ---- weather requests only while a weather tile is shown (docs/layers-weather-polish.md decisions 9 and 10) ---------------------------
+// A shown weather tile: an item of type "weather-metric" that is enabled. The city hint tile is drawn in the cell of the first enabled
+// metric, so it counts; the weather result is never asked. An unreadable or newer grid has no items, so no shown tile (the caller passes none).
+export function hasShownWeatherTile(items) {
+  return Array.isArray(items) && items.some((item) => item?.type === "weather-metric" && item.enabled === true);
+}
+
+// What the one hook (newtab.js) does after a render, from the facts of that moment. `wasShown` is the hook's remembered value (initially false:
+// the first render of a tab that has a shown tile is the change "none to some", so the load at open starts from the hook), `shown` the displayed
+// state now. Only "no shown tile -> a shown tile" starts anything. While a city change runs (`changing`) the change owns the tiles: nothing
+// starts and the tab flag is not set. The branch is chosen by the tab flag `openLoadStarted` (never cleared), not by the weather result: the
+// first appearance starts the load at open (also offline: it serves the cache or shows the error; also after a failed read of the city), every
+// later one asks for the automatic attempt, which does not start offline or while a load is in flight (and `retryWeather` itself filters by
+// `weatherRefreshDue` and the 3 s pause). Returns the action ("none" | "load" | "attempt") and the new value of the tab flag.
+export function weatherAppearanceDecision({ wasShown, shown, openLoadStarted, changing, online, loadInFlight }) {
+  const appeared = shown === true && wasShown !== true;
+  if (!appeared || changing) return { action: "none", openLoadStarted };
+  if (!openLoadStarted) return { action: "load", openLoadStarted: true };
+  return { action: online && !loadInFlight ? "attempt" : "none", openLoadStarted };
+}
+
 export function finishWeatherRetry(state, now, ok) {
   return { ...state, retry: { inFlight: false, availableAt: ok ? 0 : now + WEATHER_RETRY_COOLDOWN_MS } };
 }

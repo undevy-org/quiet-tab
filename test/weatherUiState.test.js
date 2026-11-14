@@ -16,7 +16,9 @@ import {
   resetWeatherRetry,
   weatherRetryPhase,
   weatherRetryOutcome,
-  weatherRefreshDue
+  weatherRefreshDue,
+  hasShownWeatherTile,
+  weatherAppearanceDecision
 } from "../src/weatherUiState.js";
 import { WEATHER_CACHE_TTL_MS } from "../src/weatherShared.js";
 
@@ -258,6 +260,70 @@ describe("city modal state", () => {
 
     it("a non-finite clock is not due", () => {
       assert.equal(weatherRefreshDue(ready(40 * MIN), NaN), false);
+    });
+  });
+  describe("hasShownWeatherTile (run 53, AS-WTF-03)", () => {
+    const metric = (id, enabled) => ({ id, type: "weather-metric", enabled, grid: { x: 0, y: 0, w: 1, h: 1 } });
+    const link = { id: "f1", type: "favorite", label: "A", url: "https://a.test/" };
+    const settings = { id: "chrome:settings", type: "chrome", role: "settings" };
+
+    it("an empty list, a missing list and a list with no metric have no shown tile", () => {
+      assert.equal(hasShownWeatherTile([]), false);
+      assert.equal(hasShownWeatherTile(null), false);
+      assert.equal(hasShownWeatherTile(undefined), false);
+      assert.equal(hasShownWeatherTile([link, settings]), false);
+    });
+
+    it("metrics that are all disabled have no shown tile", () => {
+      assert.equal(hasShownWeatherTile([metric("weather:temperature", false), metric("weather:uv", false), link]), false);
+    });
+
+    it("one enabled metric is a shown tile, wherever it stands in the list", () => {
+      assert.equal(hasShownWeatherTile([metric("weather:temperature", true)]), true);
+      assert.equal(hasShownWeatherTile([link, metric("weather:uv", false), metric("weather:precipitation", true), settings]), true);
+    });
+
+    it("the city hint tile stands for an enabled metric, so it counts (the items are the same; no city is not asked)", () => {
+      // the hint is drawn in the cell of the first enabled metric: the rule reads items only, never the weather result
+      assert.equal(hasShownWeatherTile([metric("weather:airQuality", true)]), true);
+    });
+
+    it("only an enabled flag that is exactly true counts", () => {
+      assert.equal(hasShownWeatherTile([{ id: "weather:uv", type: "weather-metric" }]), false);
+      assert.equal(hasShownWeatherTile([{ id: "weather:uv", type: "weather-metric", enabled: "true" }]), false);
+      assert.equal(hasShownWeatherTile([{ id: "x", type: "favorite", enabled: true }]), false);
+    });
+  });
+
+  describe("weatherAppearanceDecision (run 53, AS-WTF-04, decision 10)", () => {
+    const base = { wasShown: false, shown: true, openLoadStarted: false, changing: false, online: true, loadInFlight: false };
+
+    it("no change, or a change to no tile, starts nothing", () => {
+      assert.deepEqual(weatherAppearanceDecision({ ...base, wasShown: true, shown: true }), { action: "none", openLoadStarted: false });
+      assert.deepEqual(weatherAppearanceDecision({ ...base, wasShown: true, shown: false }), { action: "none", openLoadStarted: false });
+      assert.deepEqual(weatherAppearanceDecision({ ...base, wasShown: false, shown: false, openLoadStarted: true }), { action: "none", openLoadStarted: true });
+    });
+
+    it("the first appearance starts the load at open and sets the tab flag, also offline and with a load in flight", () => {
+      assert.deepEqual(weatherAppearanceDecision(base), { action: "load", openLoadStarted: true });
+      assert.deepEqual(weatherAppearanceDecision({ ...base, online: false }), { action: "load", openLoadStarted: true });
+    });
+
+    it("an appearance while a city change runs starts nothing and does not set the flag", () => {
+      assert.deepEqual(weatherAppearanceDecision({ ...base, changing: true }), { action: "none", openLoadStarted: false });
+      // a later one is still the first one
+      assert.deepEqual(weatherAppearanceDecision({ ...base, changing: false }), { action: "load", openLoadStarted: true });
+      // after the load at open has started, a change still starts nothing and keeps the flag
+      assert.deepEqual(weatherAppearanceDecision({ ...base, changing: true, openLoadStarted: true }), { action: "none", openLoadStarted: true });
+    });
+
+    it("every later appearance asks for the automatic attempt (which filters by due itself) and keeps the flag", () => {
+      assert.deepEqual(weatherAppearanceDecision({ ...base, openLoadStarted: true }), { action: "attempt", openLoadStarted: true });
+    });
+
+    it("the automatic attempt does not start offline or while a load is in flight", () => {
+      assert.deepEqual(weatherAppearanceDecision({ ...base, openLoadStarted: true, online: false }), { action: "none", openLoadStarted: true });
+      assert.deepEqual(weatherAppearanceDecision({ ...base, openLoadStarted: true, loadInFlight: true }), { action: "none", openLoadStarted: true });
     });
   });
 });

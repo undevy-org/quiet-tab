@@ -680,12 +680,13 @@ describe("newtab onboarding wizard boot source", () => {
     const call = boot.indexOf("maybeShowOnboardingWizard(flags);");
     const firstRender = boot.indexOf("\n    renderFavorites();\n", call);
     const status = boot.indexOf("if (widgetsEnsureFailed) showDesktopStatus(ENSURE_FAILED_MESSAGE, { persist: true });", firstRender);
-    const startWeather = boot.indexOf("void startWeather();", firstRender);
     assert.ok(stateRead > 0 && location > stateRead, "state and city are read first");
     assert.ok(early > location, "the early check follows the city read");
     assert.ok(flag > early && call > flag, "early check, then the local read, then the decision");
     assert.ok(firstRender > call, "the first render comes after the decision");
-    assert.ok(status > firstRender && startWeather > status, "render, then the ensure-failure status, then weather");
+    assert.ok(status > firstRender, "render, then the ensure-failure status");
+    // run 53 (docs/layers-weather-polish.md decision 10): the boot no longer starts the weather by a call of its own; the hook of the render does
+    assert.equal(boot.includes("startWeather("), false, "the load at open starts from the hook of the first render, not from the boot");
     assert.equal(boot.indexOf("readOnboardingLocalFlags", firstRender), -1, "no local boot read after the first render");
     assert.doesNotMatch(code, /\.isDismissed\(\)/);
     assert.match(

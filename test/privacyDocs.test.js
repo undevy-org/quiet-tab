@@ -22,7 +22,7 @@ describe("privacy documentation (AS-UL-22)", () => {
     assert.doesNotMatch(text, /no other request is made/i);
   });
 
-  it("docs/privacy.md Background Activity names the return and online triggers and still says no polling (run 50)", async () => {
+  it("docs/privacy.md Background Activity names the shown-tile condition, the return, online and shown-again triggers and still says no polling (runs 50 and 53)", async () => {
     const text = normalize(await readRepoFile("docs/privacy.md"));
     const heading = "## Background Activity";
     const start = text.indexOf(heading);
@@ -36,15 +36,17 @@ describe("privacy documentation (AS-UL-22)", () => {
     assert.match(section, /no background polling/i);
     assert.match(section, /nothing is polled or repeated on a timer/i);
     assert.match(section, /once a tab has loaded, a hidden tab starts no request/i);
-    // every way a weather request leaves is named: the return (with its 30 minute condition), online (while the tab is visible), the retry press,
-    // and the two that always were
-    assert.match(section, /A weather request happens only in these cases:/i);
-    assert.match(section, /when a new tab opens with a chosen city and no saved weather for it from the last 30 minutes/i);
-    assert.match(section, /come back to a tab/i);
+    // run 53 (docs/layers-weather-polish.md decision 11): a weather request needs a shown weather tile, and every way one then leaves is named:
+    // the open, the return (with its 30 minute condition), online (while the tab is visible), a tile shown again, the retry press and the city change
+    assert.match(section, /A weather request happens only while at least one weather tile is shown, and then only in these cases:/i);
+    assert.doesNotMatch(section, /A weather request happens only in these cases:/i, "the old sentence has no shown-tile condition and is false");
+    assert.match(section, /a new tab opens with a chosen city and no saved weather for it from the last 30 minutes/i);
+    assert.match(section, /you come back to a tab that is already open and its weather failed to load or is 30 minutes old or more/i);
     assert.match(section, /30 minutes old or more/i);
-    assert.match(section, /network is back while the tab is visible/i);
-    assert.match(section, /press a weather tile/i);
-    assert.match(section, /when you explicitly change the city/i);
+    assert.match(section, /the browser reports that the network is back while the tab is visible and its weather is in that state/i);
+    assert.match(section, /a weather tile is shown again and its weather is missing, failed to load, or is 30 minutes old or more/i);
+    assert.match(section, /you press a weather tile to try again/i);
+    assert.match(section, /you explicitly change the city/i);
     // the requests go to the endpoints already listed and send nothing new; the Nominatim sentence is kept
     assert.match(section, /Open-Meteo endpoints listed under Data Sent/i);
     assert.match(section, /send nothing new/i);
