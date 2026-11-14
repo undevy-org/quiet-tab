@@ -368,7 +368,8 @@ export function ensureWidgetsLayout(storageArea, { now = () => new Date().toISOS
 // the data, or the grid is a newer version's, which is never erased). For `invalid` ONE `remove` takes `quietTabWidgetsMeta` and every key
 // of the snapshot that starts with `quietTabWidget:`, the item keys the unreadable meta does not list included (its `order` cannot be
 // trusted, and a leftover system item would come back through ensureWidgetsLayout). Every other key stays, the city and the first-run flags
-// included. The window between the `get` and the `remove` is Accepted exception 2 of the spec.
+// included. The one window left open is between that `get` and the `remove` (the lock is local to the
+// extension's pages): a readable meta that Chrome Sync brings in meanwhile is erased with the rest, and nothing closes it.
 // ---------------------------------------------------------------------------
 export function resetUnreadableWidgets(storageArea) {
   return withWidgetsMutationLock(async () => {

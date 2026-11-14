@@ -4,6 +4,7 @@ import { createMemoryStorageArea } from "./memoryStorageArea.js";
 import { createWeatherCacheStore, createWeatherLocationStore } from "../src/weatherStore.js";
 import { WeatherApiError } from "../src/weatherApi.js";
 import { createWeatherService } from "../src/weatherService.js";
+import { WEATHER_CACHE_TTL_MS } from "../src/weatherShared.js";
 
 const TBILISI = { name: "Springfield", country: "Georgia", latitude: 41.72, longitude: 44.78 };
 const WEATHER_READING = {
@@ -807,5 +808,92 @@ describe("createWeatherService run 48: foreign cache guard and storage error", (
       () => service.selectLocation(BERLIN, { persist: "after-forecast" }),
       (error) => error instanceof WeatherApiError && error.details.kind === "network"
     );
+  });
+});
+
+describe("isCacheFresh through initialize(): a cache from the future is not fresh (run 53, decision 4)", () => {
+  const NOW = 5_000_000;
+  const MIN = 60 * 1000;
+  const cacheAt = (fetchedAt) => ({ ...WEATHER_READING, temperature: 11, ...AIR_READING, locationName: TBILISI.name, fetchedAt });
+
+  async function open({ fetchedAt, fail = false }) {
+    let weatherCalls = 0;
+    let airCalls = 0;
+    const harness = createHarness({
+      now: () => NOW,
+      fetchWeather: async () => {
+        weatherCalls += 1;
+        if (fail) throw new WeatherApiError("offline", { kind: "network" });
+        return WEATHER_READING;
+      },
+      fetchAirQuality: async () => {
+        airCalls += 1;
+        return AIR_READING;
+      }
+    });
+    await harness.locationStore.setLocation(TBILISI);
+    await harness.cacheStore.setCache(cacheAt(fetchedAt));
+    const result = await harness.service.initialize();
+    return { harness, result, weatherCalls, airCalls };
+  }
+
+  for (const [name, delta] of [["now + 1 ms", 1], ["now + 10 min", 10 * MIN], ["now + 2 h", 120 * MIN], ["now - 30 min", -30 * MIN], ["now - 2 h", -120 * MIN]]) {
+    it(`fetchedAt = ${name} is fetched again: one forecast and one air-quality request, cache rewritten with fetchedAt = now, ready`, async () => {
+      const { harness, result, weatherCalls, airCalls } = await open({ fetchedAt: NOW + delta });
+      assert.equal(result.status, "ready");
+      assert.equal(result.data.temperature, 24, "the fresh value, not the cached 11");
+      assert.equal(weatherCalls, 1);
+      assert.equal(airCalls, 1);
+      assert.equal((await harness.cacheStore.getCache()).fetchedAt, NOW);
+    });
+
+    it(`fetchedAt = ${name} with a failing fetch is stale with that cache`, async () => {
+      const { result } = await open({ fetchedAt: NOW + delta, fail: true });
+      assert.equal(result.status, "stale");
+      assert.equal(result.data.temperature, 11);
+      assert.equal(result.data.fetchedAt, NOW + delta);
+    });
+  }
+
+  for (const [name, delta] of [["now", 0], ["now - 29 min 59 s", -(29 * MIN + 59 * 1000)]]) {
+    it(`fetchedAt = ${name} is fresh: ready with the cache and no request`, async () => {
+      const { result, weatherCalls, airCalls } = await open({ fetchedAt: NOW + delta });
+      assert.equal(result.status, "ready");
+      assert.equal(result.data.temperature, 11);
+      assert.equal(weatherCalls + airCalls, 0);
+    });
+  }
+
+  it("the boundary: now - fetchedAt === WEATHER_CACHE_TTL_MS is fetched again, one millisecond less is still fresh", async () => {
+    const edge = await open({ fetchedAt: NOW - WEATHER_CACHE_TTL_MS });
+    assert.equal(NOW - (NOW - WEATHER_CACHE_TTL_MS), WEATHER_CACHE_TTL_MS, "the age is exactly the TTL");
+    assert.equal(edge.result.status, "ready");
+    assert.equal(edge.result.data.temperature, 24, "the fresh value, not the cached 11");
+    assert.equal(edge.weatherCalls + edge.airCalls, 2);
+    const inside = await open({ fetchedAt: NOW - WEATHER_CACHE_TTL_MS + 1 });
+    assert.equal(inside.result.data.temperature, 11);
+    assert.equal(inside.weatherCalls + inside.airCalls, 0);
+  });
+
+  it("probe (row R55 owns it, printed and not asserted beyond the result on RUN53_BASE): the city changes during the fetch, then the fetch fails", async () => {
+    let release;
+    const gate = new Promise((resolve) => {
+      release = resolve;
+    });
+    const harness = createHarness({
+      now: () => NOW,
+      fetchWeather: async () => {
+        await gate;
+        throw new WeatherApiError("offline", { kind: "network" });
+      }
+    });
+    await harness.locationStore.setLocation(TBILISI);
+    await harness.cacheStore.setCache(cacheAt(NOW - 2 * 60 * MIN));
+    const pending = harness.service.initialize();
+    await harness.locationStore.setLocation({ ...TBILISI, name: "Elsewhere" });
+    release();
+    const result = await pending;
+    console.log(`# probe city-change-then-fail: ${result.status}, data ${result.data ? result.data.locationName : "none"}`);
+    assert.ok(["stale", "error"].includes(result.status));
   });
 });

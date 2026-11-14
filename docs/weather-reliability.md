@@ -6,13 +6,15 @@
 
 > **Changed by run 50** (`docs/tab-return-refresh.md`): the Non-goal "Re-fetching on tab visibility or `online`" is done. Accepted exception 1 (the age sentence is not refreshed while the tab stays open) now reads: it is recomputed by every render, including the render of a refresh on return. Accepted exception 8 now reads "until its next mutation, its next return when the weather is due, or reload".
 
+> **Changed by run 53** (`docs/layers-weather-polish.md` decisions 4, 7, 9 and 10): a stale tile's temperature sentence reads `Last known: 21°.`, not `Currently 21°.` (row 14 of the table and AS-WRL-04 are updated below; a ready tile keeps `Currently`); the boot load is no longer a call at the end of the bootstrap: the hook that `renderFavorites` schedules starts `startWeather` once per tab, and only while a weather tile is shown (the guard, the generation rule and the success path of this spec stand as written); a cached forecast whose `fetchedAt` is later than `now` is not fresh (`isCacheFresh` needs `0 <= now - fetchedAt < 30 minutes`).
+
 **Data compatibility: not required** (no-users policy, `agent-config/CLAUDE.md`). No key or field changes; the cache and the city are written exactly as today.
 
 Related: `docs/weather-tile-retry.md` (the retry tile, `retryWeather`, `withTimeout`, generation and token rules), `docs/city-modal-focus-copy.md` (persist-after-forecast, `changeCity`), `docs/network-error.md` (classified error texts), `src/newtab.js` (`startWeather`, `retryWeather`, `changeCity`, `withTimeout`, `weatherLocationError`), `src/weatherService.js` (`initialize`, `persistAfterForecast`, `persistAndFetch`, `fetchAndCache`), `src/weatherApi.js` (`ERROR_MESSAGES`, `weatherErrorMessage`), `src/weatherTiles.js` (`describeWeatherMetric`, `STALE_PREFIX`), `src/weatherPresentation.js`.
 
 ## Terms
 
-- **Boot load**: the `startWeather()` call at the end of the bootstrap, one `weatherService.initialize()`.
+- **Boot load**: the `startWeather()` call at the end of the bootstrap, one `weatherService.initialize()`. *Changed by run 53: it is started by the tile-appears hook, only while a weather tile is shown (`docs/layers-weather-polish.md` decisions 9 and 10).*
 - **Hang**: a forecast or air-quality request that never settles (no network error either).
 - **Stale tile**: a `weatherResult` with `status: "stale"` (cache older than 30 min, refresh failed).
 - **Foreign cache write**: `initialize()` writing a forecast fetched for city A into `chrome.storage.local` after the stored city became B.
@@ -39,7 +41,7 @@ Measured on `origin/main` `e1e85eb` (2026-10-19, Mac, throw-away profile, Open-M
 |------|----------|
 | 10 | Stored city, no cache, forecast and air-quality requests held forever. At 1.0 s, 16.0 s and 30.0 s all four tiles are identical: `aria-busy="true"`, text `…`, description `Loading weather…`, no retry control, `#desktop-status` empty, no page error. |
 | 16 | First read of the city key rejects, second passes. The tiles show values (21 / 10% / 40 9.0 PM2.5 / 3). The weather dialog city field is `Set a city` (empty state, hint hidden); the city modal input is empty (`""`) with Save disabled. |
-| 14 | Cache `fetchedAt` 2 h old, fetch aborted: tiles `stale`, retry `ready`; description and tooltip `Couldn't refresh - showing saved data. Currently 21°. Today at 15:00 — 24°, yesterday at 15:00 — 22°.` No `Updated`/`ago` anywhere. (Hover measured; `:focus-visible` uses the same text.) |
+| 14 | Cache `fetchedAt` 2 h old, fetch aborted: tiles `stale`, retry `ready`; description and tooltip `Couldn't refresh - showing saved data. Last known: 21°. Today at 15:00 — 24°, yesterday at 15:00 — 22°.` No `Updated`/`ago` anywhere. (Hover measured; `:focus-visible` uses the same text.) *Changed by run 53: this row said `Currently 21°.`; a stale tile now says `Last known: 21°.` (decision 7 of `docs/layers-weather-polish.md`).* |
 | 111 | Stored Tbilisi, boot requests held, city changed to Berlin (stored city and cache `Berlin`), held requests released: stored city `Berlin`, cache `locationName` = `Tbilisi`, `fetchedAt` 1503 ms old; tiles keep their values. |
 | 112 | `storage.sync.set` on the city key rejects once: the modal stays open, input `Berlin`, `role="alert"` text `Couldn't load weather. Try again in a moment.`, Save enabled, stored city still `Tbilisi`. |
 
@@ -86,7 +88,7 @@ Measured on `origin/main` `e1e85eb` (2026-10-19, Mac, throw-away profile, Open-M
 ### AS-WRL-04 A stale tile's tooltip and description carry the age (decision 3, item 14)
 - Given: a cache `fetchedAt` 2 h 10 min ago for the stored city, forecast aborted (stale result); also 45 min, 26 h and the boundary 30 min 10 s ago (and, for the boundary, 29 min 50 s: a fresh cache, `ready`, no age sentence).
 - When: hover (pointer) and `:focus-visible` (keyboard) on each of the four tiles, normal mode; read `aria-describedby` text.
-- Then: the text is `Couldn't refresh - showing saved data. Updated 2 h ago. Currently …` per the table (`Updated 45 min ago`, `Updated 1 d ago`, `Updated 30 min ago`); the tile face (values, dashed border, size, retry glyph) is identical to `main`; a ready tile and an error tile have no age sentence; during `Trying again…` the description is the existing one; edit mode unchanged. The rows `Updated just now`, a future `fetchedAt` and N < 30 min are unit-only (decision 3).
+- Then: the text is `Couldn't refresh - showing saved data. Updated 2 h ago. Last known: …` per the table (`Updated 45 min ago`, `Updated 1 d ago`, `Updated 30 min ago`); the tile face (values, dashed border, size, retry glyph) is identical to `main`; a ready tile and an error tile have no age sentence; during `Trying again…` the description is the existing one; edit mode unchanged. The rows `Updated just now`, a future `fetchedAt` and N < 30 min are unit-only (decision 3). *Changed by run 53: the temperature sentence of a stale tile is `Last known: <t>°.`, not `Currently <t>°.`*
 - Verified by: E2E `dg-88` and unit `test/weatherTiles.test.js`, `test/weatherPresentation.test.js` (table incl. the boundaries 59 s / 60 s, 59 min / 60 min, 23 h 59 min / 24 h, negative and non-finite).
 
 ### AS-WRL-05 A late boot answer does not write the old city's forecast (decision 4, item 111)

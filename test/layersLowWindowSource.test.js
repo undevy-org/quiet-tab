@@ -140,10 +140,13 @@ describe("layers and the low window source (run 46, docs/layers-low-window.md)",
     const target = block.match(/\.observe\(\s*(\w+)\s*\)/);
     assert.ok(target, "it observes one element");
     assert.match(code, new RegExp(`const ${target[1]} = document\\.(?:querySelector\\(["']#desktop-status["']\\)|getElementById\\(["']desktop-status["']\\))`), "that element is #desktop-status");
-    assert.match(block, /setProperty\(\s*"--status-reserve"/, "it writes --status-reserve");
+    // since run 53 (docs/layers-weather-polish.md decision 2) the observer and showDesktopStatus share one writer, writeStatusReserve
+    assert.match(block, /writeStatusReserve\(/, "it writes --status-reserve through the shared writer");
+    const writer = code.slice(code.indexOf("function writeStatusReserve("), code.indexOf("\n}\n", code.indexOf("function writeStatusReserve(")));
+    assert.match(writer, /setProperty\(\s*"--status-reserve"/, "it writes --status-reserve");
     assert.match(block, /borderBoxSize|offsetHeight/, "height is the border box, not contentRect");
-    assert.doesNotMatch(block, /contentRect/, "contentRect leaves out padding and border");
-    assert.match(block, /--status-chip-offset-bottom|STATUS_CHIP_OFFSET/, "the chip offset is added");
+    assert.doesNotMatch(block + writer, /contentRect/, "contentRect leaves out padding and border");
+    assert.match(writer, /--status-chip-offset-bottom|STATUS_CHIP_OFFSET/, "the chip offset is added");
   });
 
   it("decision 12: .desktop padding-bottom and html scroll-padding-bottom come from --status-reserve (no layout input is touched)", async () => {

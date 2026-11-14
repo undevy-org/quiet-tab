@@ -136,7 +136,7 @@ describe("describeWeatherMetric", () => {
     }
   });
 
-  it("stale keeps the data, tone and secondary of ready and only prefixes the description", () => {
+  it("stale keeps the data, tone and secondary of ready and only prefixes the description (the temperature says Last known instead of Currently, run 53)", () => {
     for (const k of keys) for (const z of sizes) {
       const r = describeWeatherMetric({ metricKey: k, result: ready, size: z });
       const s = describeWeatherMetric({ metricKey: k, result: stale, size: z });
@@ -145,7 +145,12 @@ describe("describeWeatherMetric", () => {
       assert.equal(s.tone, expectedTone[k]);
       assert.equal(s.primary, r.primary);
       assert.equal(s.secondary, r.secondary);
-      assert.equal(s.description, `Couldn't refresh — showing saved data. ${r.description}`);
+      let readyText = r.description;
+      if (k === "temperature") {
+        readyText = r.description.replace("Currently ", "Last known: ");
+        assert.notEqual(readyText, r.description, k); // the swap really happened
+      }
+      assert.equal(s.description, `Couldn't refresh — showing saved data. ${readyText}`);
     }
   });
 
@@ -213,6 +218,75 @@ describe("describeWeatherMetric", () => {
   });
 });
 
+// Run 53 (docs/layers-weather-polish.md decision 7, item 140): the temperature of stale data reads "Last known", never "Currently".
+describe("the stale temperature says Last known (run 53)", () => {
+  const NOW = 1_700_000_000_000;
+  const HOUR = 60 * 60 * 1000;
+  const REST = "Today at 15:00 — 24°, yesterday at 15:00 — 22°.";
+  const PREFIX = "Couldn't refresh — showing saved data. ";
+  const staleAt = (fetchedAt) => ({ status: "stale", data: { ...data, fetchedAt }, error: "offline" });
+  const temp = (result, extra = {}) => describeWeatherMetric({ metricKey: "temperature", result, size: "square", ...extra });
+
+  it("stale with an age: prefix, age sentence, Last known, then the rest", () => {
+    assert.equal(temp(staleAt(NOW - 2 * HOUR), { now: NOW }).description, `${PREFIX}Updated 2 h ago. Last known: 21°. ${REST}`);
+  });
+
+  it("stale without now or without a finite fetchedAt: prefix, Last known, the rest", () => {
+    assert.equal(temp(staleAt(NOW - 2 * HOUR)).description, `${PREFIX}Last known: 21°. ${REST}`);
+    for (const fetchedAt of [undefined, NaN, "x", Infinity]) {
+      assert.equal(temp(staleAt(fetchedAt), { now: NOW }).description, `${PREFIX}Last known: 21°. ${REST}`);
+    }
+  });
+
+  it("stale while an attempt retries: Trying again…, then the data sentence alone with Last known", () => {
+    for (const now of [undefined, NOW]) {
+      assert.equal(temp(staleAt(NOW - 2 * HOUR), { retry: "retrying", now }).description, `Trying again… Last known: 21°. ${REST}`);
+    }
+  });
+
+  it("stale in a cooldown reads like a stale tile that is ready", () => {
+    assert.equal(temp(staleAt(NOW - 2 * HOUR), { retry: "cooldown", now: NOW }).description, `${PREFIX}Updated 2 h ago. Last known: 21°. ${REST}`);
+  });
+
+  it("ready keeps Currently; error and loading carry neither word", () => {
+    assert.equal(temp({ status: "ready", data, error: null }, { now: NOW }).description, `Currently 21°. ${REST}`);
+    assert.equal(temp(failed).description, "Weather unavailable: boom");
+    assert.equal(temp(failed, { retry: "retrying" }).description, "Trying again…");
+    assert.equal(temp(null).description, "Loading weather…");
+    assert.equal(temp({ status: "no-location" }), null);
+  });
+
+  it("no state other than stale says Last known, and a stale one never says Currently", () => {
+    for (const result of [{ status: "ready", data, error: null }, failed, null]) {
+      for (const retry of ["ready", "retrying", "cooldown"]) assert.doesNotMatch(temp(result, { retry, now: NOW }).description, /Last known/);
+    }
+    for (const retry of ["ready", "retrying", "cooldown"]) {
+      for (const now of [undefined, NOW]) assert.doesNotMatch(temp(staleAt(NOW - HOUR), { retry, now }).description, /Currently/);
+    }
+  });
+
+  it("the other three metrics describe a stale tile as before: the ready sentence behind the same lead-in, UV keeps Current UV index", () => {
+    for (const k of ["precipitation", "airQuality", "uv"]) {
+      const ready = describeWeatherMetric({ metricKey: k, result: { status: "ready", data, error: null }, size: "square" }).description;
+      assert.equal(describeWeatherMetric({ metricKey: k, result: staleAt(NOW - 2 * HOUR), size: "square", now: NOW }).description, `${PREFIX}Updated 2 h ago. ${ready}`, k);
+      assert.equal(describeWeatherMetric({ metricKey: k, result: staleAt(NOW - 2 * HOUR), size: "square", retry: "retrying" }).description, `Trying again… ${ready}`, k);
+      assert.doesNotMatch(ready, /Last known|Currently/, k);
+    }
+    const uv = describeWeatherMetric({ metricKey: "uv", result: staleAt(NOW - 2 * HOUR), size: "square", now: NOW });
+    assert.match(uv.description, /^Couldn't refresh — showing saved data\. Updated 2 h ago\. Current UV index 3 \(Moderate\)\. Today's peak — 6 \(High\)\.$/);
+  });
+
+  it("the primary value, secondary line and tone of a stale tile are those of a ready one", () => {
+    for (const k of keys) {
+      for (const z of ["square", "wide"]) {
+        const r = describeWeatherMetric({ metricKey: k, result: { status: "ready", data, error: null }, size: z });
+        const s = describeWeatherMetric({ metricKey: k, result: staleAt(NOW - 2 * HOUR), size: z, now: NOW });
+        assert.deepEqual([s.primary, s.secondary, s.tone], [r.primary, r.secondary, r.tone], `${k} ${z}`);
+      }
+    }
+  });
+});
+
 describe("describeWeatherMetric stale age (run 48)", () => {
   const NOW = 1_700_000_000_000;
   const HOUR = 60 * 60 * 1000;
@@ -221,7 +295,7 @@ describe("describeWeatherMetric stale age (run 48)", () => {
 
   it("puts the age sentence between the prefix and the values when now and fetchedAt are given", () => {
     const m = describeWeatherMetric({ metricKey: "temperature", result: staleAt(2 * HOUR), size: "square", now: NOW });
-    assert.equal(m.description, `${PREFIX}Updated 2 h ago. Currently 21°. Today at 15:00 — 24°, yesterday at 15:00 — 22°.`);
+    assert.equal(m.description, `${PREFIX}Updated 2 h ago. Last known: 21°. Today at 15:00 — 24°, yesterday at 15:00 — 22°.`);
     assert.equal(m.stale, true);
     assert.equal(m.primary, "21");
   });
@@ -275,7 +349,7 @@ describe("the stale description uses an em dash, not a hyphen (run 49)", () => {
 
   it("the description reads as the spec gives it: prefix, age, then the values (the em dash of the values is the existing one)", () => {
     const m = describeWeatherMetric({ metricKey: "temperature", result: stale, size: "square", now: 1_700_000_000_000 });
-    assert.equal(m.description, "Couldn't refresh — showing saved data. Updated 2 h ago. Currently 21°. Today at 15:00 — 24°, yesterday at 15:00 — 22°.");
+    assert.equal(m.description, "Couldn't refresh — showing saved data. Updated 2 h ago. Last known: 21°. Today at 15:00 — 24°, yesterday at 15:00 — 22°.");
   });
 
   it("no description of any state holds a hyphen with spaces on both sides", () => {

@@ -64,6 +64,7 @@ import {
   closeCityModal as closeCityModalState,
   createInitialWeatherUiState,
   finishWeatherRetry,
+  hasShownWeatherTile,
   hideSuggestions,
   isCityModalOpen,
   isSuggestionsOpen,
@@ -71,6 +72,7 @@ import {
   resetWeatherRetry,
   showSuggestions,
   startWeatherRetry,
+  weatherAppearanceDecision,
   weatherRefreshDue,
   weatherRetryOutcome,
   weatherRetryPhase
@@ -87,9 +89,21 @@ let desktopStatusTimer = 0;
 let layoutFailureChipShown = false; // the chip with the Reload button is up: Escape dismisses it (the `status` layer)
 let desktopStatusPersistent = false; // the shown message is a `persist` one (the ensure failure): a retry failure must not displace it
 
+// docs/layers-low-window.md decision 12: --status-reserve (px) on :root is the distance from the window bottom to the chip's
+// top while the chip exists (border box height + --status-chip-offset-bottom), 0 when it is hidden. The chip is
+// position: fixed, so it takes no room by itself; the CSS uses the property for .desktop padding-bottom and the root
+// scroll-padding-bottom only, never for any layout input (columns, viewportRows) and nothing is written to storage.
+function writeStatusReserve(height) {
+  const offset = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--status-chip-offset-bottom")) || 0;
+  document.documentElement.style.setProperty("--status-reserve", desktopStatus.hidden || height <= 0 ? "0px" : `${height + offset}px`);
+}
+
 // Page-level status line (role="alert"), text only. It clears after 8 s or at the next action. `persist` skips the
 // 8 s clear (the ensure failure: a Settings/Add tile may be missing, so its explanation stays until the next action).
 // `tone: "info"` is the neutral look (a reset notice); every other call is the danger look, set on each call so it never sticks.
+// docs/layers-weather-polish.md decision 2: a non-empty text writes the reserve at once (a forced layout), so a caller that reveals something right
+// after showing the chip reads the reserve of the chip it shows; the observer below writes the same value one tick later. The hide path writes
+// nothing here: keepHoldAcrossChipRelease runs first and reads the reserve of the shown chip.
 function showDesktopStatus(text, { persist = false, tone = "error" } = {}) {
   if (!desktopStatus) return;
   if (text === "" && !desktopStatus.hidden) keepHoldAcrossChipRelease();
@@ -99,18 +113,11 @@ function showDesktopStatus(text, { persist = false, tone = "error" } = {}) {
   desktopStatus.textContent = text;
   desktopStatus.hidden = text === ""; // the only place the chip is hidden: keepHoldAcrossChipRelease depends on the call above
   desktopStatusPersistent = persist && text !== "";
+  if (text !== "") writeStatusReserve(desktopStatus.getBoundingClientRect().height); // the observer's border-box height, so both writes agree to the pixel (offsetHeight rounds)
   if (text !== "" && !persist) desktopStatusTimer = setTimeout(() => showDesktopStatus(""), DESKTOP_STATUS_MS);
 }
 
-// docs/layers-low-window.md decision 12: --status-reserve (px) on :root is the distance from the window bottom to the chip's
-// top while the chip exists (border box height + --status-chip-offset-bottom), 0 when it is hidden. The chip is
-// position: fixed, so it takes no room by itself; the CSS uses the property for .desktop padding-bottom and the root
-// scroll-padding-bottom only, never for any layout input (columns, viewportRows) and nothing is written to storage.
 if (desktopStatus && typeof ResizeObserver === "function") {
-  const writeStatusReserve = (height) => {
-    const offset = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--status-chip-offset-bottom")) || 0;
-    document.documentElement.style.setProperty("--status-reserve", desktopStatus.hidden || height <= 0 ? "0px" : `${height + offset}px`);
-  };
   new ResizeObserver((entries) => {
     const entry = entries[entries.length - 1];
     writeStatusReserve(entry.borderBoxSize?.[0]?.blockSize ?? desktopStatus.offsetHeight);
@@ -310,6 +317,15 @@ let weatherChanging = false;
 let weatherGeneration = 0;
 let weatherRetryToken = 0; // a retry result applies only while this and weatherGeneration are the values it started with
 let weatherRetryTimer = 0; // the end of the cooldown (updates the existing retry nodes in place)
+// Weather requests only while a weather tile is shown (docs/layers-weather-polish.md decisions 9 and 10). The hook `checkWeatherTileAppeared`
+// remembers whether the displayed state had a shown tile at its last look (initially none, so the first render of a tab with a tile is the
+// change that starts the load at open), `weatherOpenLoadStarted` is the tab flag "the load at open has started" (set by the hook, never
+// cleared) and `weatherLoadInFlight` is the one flag shared by the load at open, the automatic attempt and the manual attempt: while it is set
+// the hook and an automatic attempt start nothing, a manual press supersedes (the pressed attempt owns the flag then).
+let weatherTileShown = false;
+let weatherOpenLoadStarted = false;
+let weatherLoadInFlight = false;
+let weatherAppearanceQueued = false;
 let widgetsEnsureFailed = false;
 let widgetsNewer = false;
 let widgetsUnreadable = false; // the meta is unreadable (docs/unreadable-grid-reset.md): the page shows the screen with Reset grid and does nothing else
@@ -493,12 +509,20 @@ function createSegmentedControl(name, options, selectedValue) {
     input.checked = value === selectedValue;
     if (accessibleName) input.setAttribute("aria-label", accessibleName); // starts with the visible text (WCAG 2.5.3)
     option.appendChild(input);
+    // The glyph and the text are one unit (content), centred in a label that is as wide as the bold face needs: data-text feeds the bold-face reserve
+    // (controls.css .segmented__label::after); the visible text stays one textContent node (docs/layers-weather-polish.md decision 12). The label and the
+    // unit are <b> and <i> (styled back to normal in controls.css), not <span>, so that the text span stays the option's first span and its only one.
+    const content = createNode("i", "segmented__content");
     if (glyph) {
       const mark = createNode("i", `segmented__glyph segmented__glyph--${glyph}`);
       mark.setAttribute("aria-hidden", "true");
-      option.appendChild(mark);
+      content.appendChild(mark);
     }
-    option.appendChild(createNode("span", null, text));
+    content.appendChild(createNode("span", null, text));
+    const label = createNode("b", glyph ? `segmented__label segmented__label--${glyph}` : "segmented__label");
+    label.dataset.text = text;
+    label.appendChild(content);
+    option.appendChild(label);
     group.appendChild(option);
   }
 
@@ -2558,7 +2582,8 @@ async function resetGrid() {
     await resetUnreadableWidgets(syncStorageArea);
     location.reload();
   } catch {
-    finishFavoritesAction(generation, () => {});
+    // The busy flag is released without a render (docs/layers-weather-polish.md decision 5): the screen is not rebuilt and its alert is not inserted again.
+    if (generation === favoritesGeneration) setFavoritesBusy(false);
     closeDesktopDialog({ restoreFocusTo: null }); // the close of this kind focuses the screen's button itself
     showDesktopStatus(RESET_FAILED_MESSAGE);
   }
@@ -2791,6 +2816,9 @@ function invalidFieldFor(message) {
   return 'button[type="submit"]';
 }
 
+// The target `showDialogError` used for the error a dialog shows now (docs/layers-weather-polish.md decision 1): the resize scrolls to it again.
+const dialogErrorTargets = new WeakMap();
+
 // `field` is the service error's `field` (docs/link-dialog-validation.md decision 3): that input gets aria-invalid and
 // aria-describedby = the alert slot. An error without a field (a Sync failure, the links limit) only focuses the submit button.
 function showDialogError(root, message, field) {
@@ -2810,6 +2838,27 @@ function showDialogError(root, message, field) {
   }
   const target = named ?? root.querySelector(invalidFieldFor(message)) ?? root.querySelector('button[type="submit"]');
   if (target instanceof HTMLElement && !target.matches(":disabled")) target.focus({ preventScroll: true });
+  dialogErrorTargets.set(root, target);
+  scrollDialogErrorIntoView(root, slot, target);
+}
+
+// A window resize (a zoom fires it too) while the open `.desktop-dialog` shows its error slot (docs/layers-weather-polish.md decision 1): `data-scrolls`
+// is synchronised at once (the size observer runs a frame later) and, when the slot's bottom plus its 5px margin lies below the footer's top, the dialog
+// scrolls by the rule of `scrollDialogErrorIntoView` to the remembered target (the submit button when that target is hidden). A slot already above
+// the footer moves nothing; the wizard, the city modal alone, the Reset grid screen and a drag are not a `.desktop-dialog`.
+function followDialogErrorOnResize() {
+  const root = desktopDialogRoot;
+  if (!root?.isConnected) return;
+  syncDialogScrolls(root);
+  const slot = root.querySelector("[data-dialog-error]");
+  if (!slot || slot.hidden || root.dataset.scrolls !== "true") return;
+  const footer = root.querySelector(".favorite-form__footer");
+  const portBottom = root.getBoundingClientRect().top + root.clientTop + root.clientHeight;
+  const footerTop = footer ? Math.min(footer.getBoundingClientRect().top, portBottom) : portBottom;
+  if (slot.getBoundingClientRect().bottom + DIALOG_SCROLL_MARGIN_PX <= footerTop) return;
+  let target = dialogErrorTargets.get(root);
+  const box = target instanceof HTMLElement ? target.getBoundingClientRect() : null;
+  if (!box || (box.width === 0 && box.height === 0)) target = root.querySelector('button[type="submit"]');
   scrollDialogErrorIntoView(root, slot, target);
 }
 
@@ -2878,6 +2927,7 @@ async function dropCityClearedElsewhere() {
   weatherGeneration += 1;
   weatherRetryToken += 1;
   weatherUi = resetWeatherRetry(weatherUi);
+  weatherLoadInFlight = false; // the drop supersedes an open load or attempt: its late answer is dropped and must not leave the shared flag set
   clearTimeout(weatherRetryTimer);
   weatherResult = { status: "no-location", location: null, data: null, error: null };
   weatherLocation = null;
@@ -2947,10 +2997,11 @@ async function recoverFromGoneLink(generation, error) {
     showLayoutRestoreFailure();
     return;
   }
-  if (desktopDialogRoot) closeDesktopDialog({ restoreFocusTo: neighbours, reveal: true });
-  else focusWidgetTarget(neighbours, { preventScroll: true, reveal: true });
+  // The chip first (docs/layers-weather-polish.md decision 2): its reserve is current when the reveal below reads it, so the neighbour ends above the chip.
   if (outcome.healed) showDesktopStatus(LAYOUT_RESET_MESSAGE, { tone: "info" });
   else showDesktopStatus(error.message);
+  if (desktopDialogRoot) closeDesktopDialog({ restoreFocusTo: neighbours, reveal: true });
+  else focusWidgetTarget(neighbours, { preventScroll: true, reveal: true });
 }
 
 // Every explicit mutation goes through here. On failure nothing is persisted and the UI returns to the stored state.
@@ -3087,11 +3138,16 @@ function applyReadDesk(fresh) {
 async function healReadDesk(state) {
   const focused = focusedWidgetId();
   const generation = startFavoritesAction({ render: false });
-  const outcome = await healClearedDesk(state);
-  if (outcome.failed) leaveEditModeAfterFailedHeal();
-  finishFavoritesAction(generation, () => {
-    widgetsState = outcome.state;
-  });
+  let outcome;
+  try {
+    outcome = await healClearedDesk(state);
+    if (outcome.failed) leaveEditModeAfterFailedHeal();
+  } finally {
+    // the busy lock is released whatever happened above
+    finishFavoritesAction(generation, () => {
+      if (outcome) widgetsState = outcome.state;
+    });
+  }
   if (outcome.failed) {
     showLayoutRestoreFailure();
     return;
@@ -3266,6 +3322,7 @@ function renderDesktop() {
 let resizeFrame = 0;
 window.addEventListener("resize", () => {
   cancelDrag(); // Review focus 1: a viewport change cancels an active drag (tile returns, nothing written)
+  followDialogErrorOnResize();
   cancelAnimationFrame(resizeFrame);
   resizeFrame = requestAnimationFrame(() => {
     if (!widgetsState || widgetsNewer || renderedColumns === 0) return; // nothing is rendered yet: the first render (after the first-run decision) lays the grid out
@@ -3650,6 +3707,7 @@ function renderFavorites() {
   renderDesktop();
   applyPendingFocus();
   scheduleDeferredDeskRefresh();
+  scheduleWeatherAppearanceCheck();
 }
 function setFavoritesBusy(nextBusy) {
   favoritesBusy = nextBusy;
@@ -3691,13 +3749,14 @@ if (favoritesRoot) {
     } catch {
       rawMeta = {};
     }
-    if (inspectWidgetsMeta(rawMeta) === "newer") {
+    const metaKind = inspectWidgetsMeta(rawMeta);
+    if (metaKind === "newer") {
       widgetsNewer = true;
       renderFavorites();
       return;
     }
     // An unreadable meta shows the screen and nothing else is done: no write, no first read, no weather, no wizard (the same shape as the lock above).
-    if (inspectWidgetsMeta(rawMeta) === "invalid") {
+    if (metaKind === "invalid") {
       widgetsUnreadable = true;
       renderFavorites();
       return;
@@ -3750,7 +3809,8 @@ if (favoritesRoot) {
 
     renderFavorites();
     if (widgetsEnsureFailed) showDesktopStatus(ENSURE_FAILED_MESSAGE, { persist: true });
-    void startWeather();
+    // No call of startWeather here: the load at open starts from the hook of the render above (checkWeatherTileAppeared), and only when the
+    // displayed state has a shown weather tile (docs/layers-weather-polish.md decision 10).
   })();
 
   // Normal mode: a link tile opens its URL, the hint tile opens the city modal. A click on the background does
@@ -3953,11 +4013,58 @@ if (favoritesRoot) {
 const CITY_INPUT_SELECTOR = 'input[name="city"]';
 const HINT_TILE_SELECTOR = '[data-widget-id="weather:hint"]';
 
+// The displayed items: an unreadable or newer grid draws none (renderDesktop), so it has no shown weather tile.
+function displayedWidgetItems() {
+  return widgetsNewer || widgetsUnreadable || !widgetsState ? [] : widgetsState.items;
+}
+
+function weatherTileShownNow() {
+  return hasShownWeatherTile(displayedWidgetItems());
+}
+
+// The one hook of decision 10: every route of a changed state (the first render at open, restoring a metric through the Add menu, a re-read that
+// applies another tab's change, a heal, recoverFromGoneLink, a refresh on return) ends in renderFavorites, which schedules this once per
+// task, from a microtask, never synchronously inside the render. The remembered value is updated before anything starts.
+function scheduleWeatherAppearanceCheck() {
+  if (weatherAppearanceQueued) return;
+  weatherAppearanceQueued = true;
+  queueMicrotask(() => {
+    weatherAppearanceQueued = false;
+    checkWeatherTileAppeared();
+  });
+}
+
+function checkWeatherTileAppeared() {
+  if (!weatherService) return;
+  const shown = weatherTileShownNow();
+  const decision = weatherAppearanceDecision({
+    wasShown: weatherTileShown,
+    shown,
+    openLoadStarted: weatherOpenLoadStarted,
+    changing: weatherChanging,
+    online: navigator.onLine !== false,
+    loadInFlight: weatherLoadInFlight
+  });
+  weatherTileShown = shown;
+  weatherOpenLoadStarted = decision.openLoadStarted;
+  if (decision.action === "load") void startWeather();
+  else if (decision.action === "attempt") void retryWeather({ automatic: true });
+}
+
+// An attempt ends the shared flag only while it is still the current one: a manual press, a city change or a heal that superseded it raised
+// weatherGeneration, and then the flag belongs to whoever superseded it (the change clears it itself when its answer is applied).
+function endWeatherLoad(generation) {
+  if (generation === weatherGeneration) weatherLoadInFlight = false;
+}
+
+// The load at open (`weatherService.initialize()`: a cache younger than 30 minutes is served with no request). Started only by the hook, and
+// only while a weather tile is shown (docs/layers-weather-polish.md decision 9).
 async function startWeather() {
-  if (!weatherService) {
+  if (!weatherService || !weatherTileShownNow()) {
     return;
   }
 
+  weatherLoadInFlight = true;
   const generation = weatherGeneration;
   let result;
   try {
@@ -3971,6 +4078,7 @@ async function startWeather() {
     };
   }
 
+  endWeatherLoad(generation);
   // A city chosen while the first load was in flight already produced a newer result.
   if (generation !== weatherGeneration) {
     return;
@@ -3995,10 +4103,11 @@ async function startWeather() {
 // is silent: it never writes the status line, never announces, and a ready tile (which has no retry control, so no busy state) is not
 // rendered at its start.
 async function retryWeather({ automatic = false, ignorePause = false } = {}) {
-  if (!weatherService) return;
+  if (!weatherService || !weatherTileShownNow()) return; // no shown weather tile, no request (a press needs a tile; a return and `online` come here)
   const shown = effectiveWeatherResult();
   const due = automatic ? weatherRefreshDue(shown, Date.now()) : shown?.status === "error" || shown?.status === "stale";
   if (!due) return;
+  if (automatic && weatherLoadInFlight) return; // a return or `online` never supersedes a load that is running; a manual press does
   const started = startWeatherRetry(weatherUi, Date.now(), { ignorePause });
   if (started === weatherUi) return;
   // Automatic only; read before the first render (a render recreates the tile): where the focus is as the attempt starts decides whether
@@ -4009,6 +4118,7 @@ async function retryWeather({ automatic = false, ignorePause = false } = {}) {
   const token = ++weatherRetryToken;
   weatherGeneration += 1; // supersedes a boot load that is still in flight (a failed city read leaves one running)
   const generation = weatherGeneration;
+  weatherLoadInFlight = true; // the pressed or automatic attempt owns the shared flag now (a superseded load does not clear it)
   const silentStart = automatic && shown?.status === "ready";
   if (!silentStart) renderFavorites();
 
@@ -4020,6 +4130,7 @@ async function retryWeather({ automatic = false, ignorePause = false } = {}) {
   } catch (error) {
     outcome = { failed: weatherErrorMessage(error) };
   }
+  endWeatherLoad(generation);
   if (token !== weatherRetryToken || generation !== weatherGeneration) return;
 
   if (outcome === "gone") {
@@ -4041,7 +4152,7 @@ async function retryWeather({ automatic = false, ignorePause = false } = {}) {
   weatherUi = finishWeatherRetry(weatherUi, Date.now(), !failed);
   // The service's own answer replaces the result, except that a failed read never downgrades a tile that still has data
   // (a stale one, or a ready one that an automatic attempt could not refresh).
-  const downgrade = failed && result?.status === "error" && weatherResult?.data;
+  const downgrade = Boolean(failed && result?.status === "error" && weatherResult?.data);
   const replaced = Boolean(result) && !downgrade;
   if (replaced) {
     weatherResult = result;
@@ -4141,6 +4252,7 @@ function changeCity(run, { onSuccess = null } = {}) {
       weatherLocationError = ""; // a successful selection clears an earlier read error
       weatherRetryToken += 1; // a late retry result belongs to the old city
       weatherUi = resetWeatherRetry(weatherUi);
+      weatherLoadInFlight = false; // the change superseded an open load or attempt: its answer is applied, a late answer of the old one does not touch the flag
       clearTimeout(weatherRetryTimer);
       ok = true;
     } catch (error) {

@@ -42,7 +42,9 @@ describe("newtab weather source", () => {
     // run 48: the boot load has the same 15 s guard as the retry and the city change
     assert.match(code, /result = await withTimeout\(weatherService\.initialize\(\)\);/);
     assert.match(code, /weatherResult = result;/);
-    assert.match(code, /void startWeather\(\);/);
+    // run 53: the call moved from the boot to the one hook that every route of a changed state passes (decision 10)
+    assert.match(code, /if \(decision\.action === "load"\) void startWeather\(\);/);
+    assert.equal(code.match(/\bvoid startWeather\(/g).length, 1, "only the hook starts the load at open");
   });
 
   it("submits the modal's city form through setCity and keeps the modal open with the error on failure", async () => {
@@ -92,7 +94,7 @@ describe("newtab weather source", () => {
     );
     assert.match(
       tiles,
-      /Currently \$\{formatTemperature\(data\.temperature\)\}°\. Today at 15:00 — \$\{formatTemperature\(data\.temperatureTodayAt15\)\}°, yesterday at 15:00 — \$\{formatTemperature\(data\.temperatureYesterdayAt15\)\}°\./
+      /\$\{lead\} \$\{formatTemperature\(data\.temperature\)\}°\. Today at 15:00 — \$\{formatTemperature\(data\.temperatureTodayAt15\)\}°, yesterday at 15:00 — \$\{formatTemperature\(data\.temperatureYesterdayAt15\)\}°\./
     );
     assert.match(tiles, /Chance of rain for the rest of the day — \$\{primary\}, expected from \$\{start\}\./);
     assert.match(tiles, /Chance of rain for the rest of the day — \$\{primary\}\./);
@@ -332,6 +334,13 @@ describe("newtab weather source", () => {
     assert.match(styles, /\.weather-form__suggestions\s*\{/);
     assert.match(styles, /\.weather-form__suggestion\s*\{/);
   });
+
+  it("keeps a lone word off the end of tooltips and status messages (text-wrap: pretty on three selectors, run 53 decision 8)", async () => {
+    const styles = await css();
+    assert.match(styles, /(?:^|\n)\.tooltip \{[^}]*\n  text-wrap: pretty;/);
+    assert.match(styles, /(?:^|\n)\.desktop-status \{[^}]*\n  text-wrap: pretty;/);
+    assert.match(styles, /(?:^|\n)\.city-modal \.status--full \{[^}]*\n  text-wrap: pretty;/);
+  });
 });
 
 describe("newtab weather retry source (AS-WR-13)", () => {
@@ -381,7 +390,7 @@ describe("newtab weather retry source (AS-WR-13)", () => {
     assert.ok(retry.includes("catch (error)"));
     assert.doesNotMatch(handler.split("}")[0], /weatherResult =/);
     // run 50 (decision 3): a failed read never downgrades a tile that still has data (a stale one as before, now also a ready one)
-    assert.match(retry, /const downgrade = failed && result\?\.status === "error" && weatherResult\?\.data;/);
+    assert.match(retry, /const downgrade = Boolean\(failed && result\?\.status === "error" && weatherResult\?\.data\);/);
   });
 
   it("the gone outcome clears a non-persist status line and the cooldown timer", async () => {
@@ -459,7 +468,7 @@ describe("newtab weather on return (run 50, docs/tab-return-refresh.md, AS-TRR-0
     const code = await source();
     assert.match(code, /async function retryWeather\(\{ automatic = false, ignorePause = false \} = \{\}\) \{/);
     assert.match(code, /action === "retry-weather"\) \{\s*void retryWeather\(\);/);
-    assert.equal(code.match(/\bvoid retryWeather\(/g).length, 3, "the click branch and the two automatic calls start an attempt, nothing else does");
+    assert.equal(code.match(/\bvoid retryWeather\(/g).length, 4, "the click branch, the two automatic calls and the tile-appears hook start an attempt, nothing else does");
   });
 
   it("the gate of an automatic attempt is weatherRefreshDue on the shown result, the manual one stays error or stale", async () => {
@@ -524,5 +533,72 @@ describe("newtab weather on return (run 50, docs/tab-return-refresh.md, AS-TRR-0
     assert.match(service, /import \{ WEATHER_CACHE_TTL_MS \} from "\.\/weatherShared\.js";/);
     assert.match(uiState, /import \{ WEATHER_CACHE_TTL_MS \} from "\.\/weatherShared\.js";/);
     assert.doesNotMatch(uiState, /weatherService\.js|weatherApi\.js/, "the pure UI state does not pull in the service or the HTTP client");
+  });
+});
+
+describe("newtab weather requests only while a weather tile is shown (run 53, docs/layers-weather-polish.md decisions 9 and 10, AS-WTF-03..05)", () => {
+  const fn = (code, name) => {
+    const start = code.search(new RegExp(`^(?:async )?function ${name}\\(`, "m"));
+    assert.ok(start > -1, name);
+    return code.slice(start, code.indexOf("\n}\n", start));
+  };
+
+  it("the shown-tile rule reads the displayed items only: an unreadable or newer grid draws none", async () => {
+    const code = await source();
+    assert.match(fn(code, "displayedWidgetItems"), /widgetsNewer \|\| widgetsUnreadable \|\| !widgetsState \? \[\] : widgetsState\.items/);
+    assert.match(fn(code, "weatherTileShownNow"), /return hasShownWeatherTile\(displayedWidgetItems\(\)\);/);
+  });
+
+  it("the load at open and every attempt start with the shown-tile gate; the city flows are not gated", async () => {
+    const code = await source();
+    assert.match(fn(code, "startWeather"), /^async function startWeather\(\) \{\n  if \(!weatherService \|\| !weatherTileShownNow\(\)\) \{\n    return;\n  \}/);
+    const retry = fn(code, "retryWeather");
+    assert.match(retry, /^async function retryWeather\([^)]*\) \{\n  if \(!weatherService \|\| !weatherTileShownNow\(\)\) return;/, "the manual and the automatic path alike");
+    assert.ok(retry.indexOf("weatherTileShownNow()") < retry.indexOf("effectiveWeatherResult()"), "the gate comes before anything is read or started");
+    for (const name of ["changeCity", "createCityForm"]) {
+      const at = code.search(new RegExp(`function ${name}\\(`));
+      assert.ok(at > -1, name);
+      assert.doesNotMatch(code.slice(at, code.indexOf("\n}\n", at)), /weatherTileShownNow|hasShownWeatherTile/, `${name} is not gated (Accepted exception 6)`);
+    }
+  });
+
+  it("the one hook: scheduled from renderFavorites by a microtask, the remembered value updated before anything starts, the tab flag set from the decision", async () => {
+    const code = await source();
+    assert.match(fn(code, "renderFavorites"), /renderDesktop\(\);\n  applyPendingFocus\(\);\n  scheduleDeferredDeskRefresh\(\);\n  scheduleWeatherAppearanceCheck\(\);/);
+    const schedule = fn(code, "scheduleWeatherAppearanceCheck");
+    assert.match(schedule, /queueMicrotask\(\(\) => \{\s*weatherAppearanceQueued = false;\s*checkWeatherTileAppeared\(\);/);
+    const hook = fn(code, "checkWeatherTileAppeared");
+    assert.match(hook, /changing: weatherChanging,/);
+    assert.match(hook, /online: navigator\.onLine !== false,/);
+    assert.match(hook, /loadInFlight: weatherLoadInFlight/);
+    const remembered = hook.indexOf("weatherTileShown = shown;");
+    assert.ok(remembered > hook.indexOf("weatherAppearanceDecision(") && remembered < hook.indexOf("void startWeather()") && remembered < hook.indexOf("void retryWeather("), "updated before it starts anything");
+    assert.match(hook, /weatherOpenLoadStarted = decision\.openLoadStarted;/);
+    assert.match(code, /^let weatherTileShown = false;$/m, "the initial value is none: the first render of a tab with a tile is the change that starts the load at open");
+    assert.match(code, /^let weatherOpenLoadStarted = false;$/m);
+    assert.equal(code.match(/\bvoid startWeather\(/g).length, 1);
+    assert.doesNotMatch(code, /weatherOpenLoadStarted = true/, "the flag is only ever set from the pure decision, never cleared");
+  });
+
+  it("the shared flag: set by the load at open and by every attempt, cleared by the attempt that still owns it, by a city change when its answer is applied; an automatic attempt respects it, a manual press does not", async () => {
+    const code = await source();
+    assert.match(fn(code, "endWeatherLoad"), /if \(generation === weatherGeneration\) weatherLoadInFlight = false;/);
+    const start = fn(code, "startWeather");
+    assert.ok(start.indexOf("weatherLoadInFlight = true;") < start.indexOf("await withTimeout(") && start.indexOf("endWeatherLoad(generation);") > start.indexOf("await withTimeout(") && start.indexOf("endWeatherLoad(generation);") < start.indexOf("generation !== weatherGeneration"));
+    const retry = fn(code, "retryWeather");
+    assert.match(retry, /if \(automatic && weatherLoadInFlight\) return;/);
+    assert.ok(retry.indexOf("if (automatic && weatherLoadInFlight) return;") > retry.indexOf("if (!due) return;") && retry.indexOf("if (automatic && weatherLoadInFlight) return;") < retry.indexOf("startWeatherRetry("), "after the due test, before the in-flight guard of the retry state");
+    assert.ok(retry.indexOf("weatherLoadInFlight = true;") > retry.indexOf("const generation = weatherGeneration;") && retry.indexOf("weatherLoadInFlight = true;") < retry.indexOf("await withTimeout("), "the attempt owns the flag from its own generation");
+    assert.ok(retry.indexOf("endWeatherLoad(generation);") > retry.indexOf("await withTimeout(") && retry.indexOf("endWeatherLoad(generation);") < retry.indexOf("token !== weatherRetryToken"), "released when the attempt ends, before its result is dropped or applied");
+    const drop = fn(code, "dropCityClearedElsewhere");
+    assert.match(drop, /weatherGeneration \+= 1;[\s\S]*weatherLoadInFlight = false;[\s\S]*weatherResult = \{ status: "no-location"/, "a heal that drops the city supersedes an open load and clears the flag itself");
+    const change = fn(code, "changeCity");
+    assert.match(change, /weatherRetryToken \+= 1;[^\n]*\n\s*weatherUi = resetWeatherRetry\(weatherUi\);\n\s*weatherLoadInFlight = false;/);
+  });
+
+  it("the boot no longer calls startWeather: the hook of its first render does", async () => {
+    const code = await source();
+    const boot = code.slice(code.indexOf("if (favoritesRoot) {"), code.indexOf("function handleFavoritesClick"));
+    assert.doesNotMatch(boot, /startWeather\(/);
   });
 });

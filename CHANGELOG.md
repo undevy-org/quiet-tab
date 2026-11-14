@@ -56,6 +56,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - City suggestion list (modal and wizard step 1) is an ARIA 1.2 combobox with a listbox of options. Tab skips the
   suggestions (clear, Cancel or Skip, Save); arrow keys enter the list. The focus ring of "use your location" now
   reaches 3 px beyond the link text and no longer covers a neighbouring character (`docs/city-suggestion-list.md`).
+- A stale temperature tile's tooltip and screen-reader description say `Last known: 21°.` instead of `Currently 21°.` (a fresh tile keeps
+  `Currently`). Tooltips and status messages (the city modal's error, the page status line) no longer end on a lone word
+  (`text-wrap: pretty`, `docs/layers-weather-polish.md`).
+- The weather is requested only while a weather tile is shown. With all four weather tiles hidden a new tab, a return to the tab and the
+  browser's `online` event send nothing to Open-Meteo; a tile shown again (through the Add menu, or by a change from another tab) asks once, when
+  its weather is missing, failed to load, or 30 minutes old or more. Choosing or changing the city is not affected. `docs/privacy.md` lists
+  the cases (`docs/layers-weather-polish.md`, `docs/tab-return-refresh.md`).
+- A segmented group (Icon, Color, Size) keeps its height whatever is chosen at a large browser font: above 451 px every option lays its label out
+  in the bold face, so the dialog no longer grows or shrinks with the choice, and a label that wraps has 4 px above and below its text. At the
+  default font nothing looks different (`docs/layers-weather-polish.md`).
 
 ### Added
 
@@ -194,6 +204,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   margins, above the grid or below the last row targets the nearest allowed cell.
   Only an occupied cell is invalid, and a drop inside the window never makes the
   page scroll. E2E: `dg-55-drag-whole-window.mjs`.
+- An error shown in a dialog that scrolls follows a window resize or a zoom: it is scrolled back above the footer instead of staying under it
+  (`docs/layers-weather-polish.md`, `docs/layers-low-window.md`).
+- After a link that another tab deleted is recovered, the tile that takes focus, and the new tile after an Add link that healed a cleared grid,
+  end above the status message instead of under it.
+- The focus ring of the locked starter list in the first-run wizard is whole when focus scrolls the card in a low window, where the list fits.
+- A saved forecast whose time is in the future (the computer's clock was moved back) is no longer treated as fresh: it is fetched again.
+- A refused Reset grid keeps the screen as it is, without rebuilding it, and says so in the status message
+  (`docs/unreadable-grid-reset.md`).
 
 ### Changed
 
