@@ -2927,6 +2927,7 @@ async function dropCityClearedElsewhere() {
   weatherGeneration += 1;
   weatherRetryToken += 1;
   weatherUi = resetWeatherRetry(weatherUi);
+  weatherLoadInFlight = false; // the drop supersedes an open load or attempt: its late answer is dropped and must not leave the shared flag set
   clearTimeout(weatherRetryTimer);
   weatherResult = { status: "no-location", location: null, data: null, error: null };
   weatherLocation = null;

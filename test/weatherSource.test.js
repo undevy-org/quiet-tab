@@ -589,6 +589,8 @@ describe("newtab weather requests only while a weather tile is shown (run 53, do
     assert.ok(retry.indexOf("if (automatic && weatherLoadInFlight) return;") > retry.indexOf("if (!due) return;") && retry.indexOf("if (automatic && weatherLoadInFlight) return;") < retry.indexOf("startWeatherRetry("), "after the due test, before the in-flight guard of the retry state");
     assert.ok(retry.indexOf("weatherLoadInFlight = true;") > retry.indexOf("const generation = weatherGeneration;") && retry.indexOf("weatherLoadInFlight = true;") < retry.indexOf("await withTimeout("), "the attempt owns the flag from its own generation");
     assert.ok(retry.indexOf("endWeatherLoad(generation);") > retry.indexOf("await withTimeout(") && retry.indexOf("endWeatherLoad(generation);") < retry.indexOf("token !== weatherRetryToken"), "released when the attempt ends, before its result is dropped or applied");
+    const drop = fn(code, "dropCityClearedElsewhere");
+    assert.match(drop, /weatherGeneration \+= 1;[\s\S]*weatherLoadInFlight = false;[\s\S]*weatherResult = \{ status: "no-location"/, "a heal that drops the city supersedes an open load and clears the flag itself");
     const change = fn(code, "changeCity");
     assert.match(change, /weatherRetryToken \+= 1;[^\n]*\n\s*weatherUi = resetWeatherRetry\(weatherUi\);\n\s*weatherLoadInFlight = false;/);
   });
