@@ -6,6 +6,8 @@
 
 > **Changed by run 50** (`docs/tab-return-refresh.md`): the Non-goals "retry on `online`/`visibilitychange`/focus" and "`navigator.onLine` detection" are done for a return of the tab and for `online`: the same attempt now starts by itself when the weather is an error, is stale or is 30 minutes old or more (nothing is polled or repeated on a timer, a visible tab only, silent, no try while `navigator.onLine` is `false`, `online` ignores the 3 s pause). Timers, backoff, notifications, a force refresh and `chrome.storage.onChanged` stay Non-goals; "cross-tab live updates" stay a Non-goal except that a tab shown again re-reads the grid. AS-WR-12 ("tab B stays in its error state until its own press") holds for a tab that is not shown again.
 
+> **Changed by run 53** (`docs/layers-weather-polish.md` decisions 7, 9 and 10): a weather request needs a shown weather tile, so `retryWeather` returns at once while none is shown (a press needs a tile; the automatic attempt of a return or `online` is the other entry); the temperature sentence of a stale tile reads `Last known: 21°.`, not `Currently 21°.`; one flag `weatherLoadInFlight` is shared by the load at open and every attempt: an automatic attempt never starts while it is set, a manual press supersedes an open load as before.
+
 Decision: **do it, differently from the backlog wording**. Backlog item 7 ("retry on the weather tile; large; new state in `weatherUiState.js` and `weatherTiles.js`") was checked against the code and measured. It is feasible without a new architecture: the retry action already exists in the service (`weatherService.initialize()` reads the location, serves a fresh cache or fetches in parallel, falls back to a stale cache) and the page already re-renders from one `weatherResult`. What is missing is only a control, a state for it and a guard. "Large" is therefore wrong for the code and right for the surface (a tile that is read-only today becomes a control in two states, and every state needs names, focus, motion and contrast). The part of the intake that is **not** done is listed under Non-goals (timers, backoff, `online` events, notifications, refreshing a *fresh* tile).
 
 ## Intake log
@@ -53,7 +55,7 @@ Chromium via Playwright (`.private/e2e/lib/harness.mjs`), unpacked extension, st
    |-------|------|----------|
    | Accessible name of a retry tile | `Retry <Metric>` (`Retry Temperature`, `Retry Precipitation`, `Retry Air quality`, `Retry UV index`) | error and stale, normal mode, in every phase |
    | Description while an attempt runs (error) | `Trying again…` | `aria-describedby`, tooltip |
-   | Description while an attempt runs (stale) | `Trying again… ` followed by the stale values sentence without the stale prefix (`Currently 21°. Today at 15:00 ...`) | same |
+   | Description while an attempt runs (stale) | `Trying again… ` followed by the stale values sentence without the stale prefix (`Last known: 21°. Today at 15:00 ...`) | same |
    | Page status line after a failed attempt | the existing user-safe text of the result (`Can't reach the weather service. Check your connection and try again.`, the timeout text, the `http`/`unknown` texts) | `#desktop-status` (`role="alert"`, clears after 8 s or at the next action) |
    | Polite announcement after success from error or stale | `Weather updated` | `#desktop-live` |
 

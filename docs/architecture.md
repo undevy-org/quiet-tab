@@ -177,7 +177,8 @@ the forecast arrives. A 2-wide tile shows the primary and secondary values, a
    metrics are hidden); the other metrics' cells stay reserved. In normal mode the
    hint opens the city modal; in edit mode it stands for its metric.
 2. If the cache belongs to the same location and is under 30 minutes old, it
-   is shown without any network request.
+   is shown without any network request (`isCacheFresh`: `0 <= now - fetchedAt < 30
+   minutes`; a cache stamped in the future, the clock having moved back, is not fresh).
 3. Otherwise the service fetches the forecast and air quality in parallel and
    caches the result. If that fails but an older cache for the same location
    exists, the tiles show it marked as stale (dashed border). With no cache the
@@ -191,7 +192,8 @@ the forecast arrives. A 2-wide tile shows the primary and secondary values, a
    The boot load runs under the same 15 s guard as the city change and the retry: a hung
    request ends in the retryable error tiles. A stale tile's tooltip and description say how
    old the data is (`Couldn't refresh — showing saved data. Updated 2 h ago. ...`; relative,
-   computed at render, the tile face is unchanged). Before the cache is written, `initialize()`
+   computed at render, the tile face is unchanged), and the temperature sentence of a stale
+   tile reads `Last known: 21°.` (a ready tile: `Currently 21°.`). Before the cache is written, `initialize()`
    re-reads the stored city and skips the write when it is no longer the one the forecast was
    fetched for (no foreign cache). `docs/weather-reliability.md`.
 4. Setting a city, from the city modal, geocodes the typed name (Open-Meteo returns English place
@@ -209,6 +211,24 @@ the forecast arrives. A 2-wide tile shows the primary and secondary values, a
    failure the modal stays open, keeps the typed text and shows the error. Save is
    always visible and is disabled while the field is empty; Enter in an empty field
    shows "Enter a city name" without a request.
+
+### Weather requests need a shown tile
+
+A request to Open-Meteo for the stored city is made only while the displayed state has a shown
+weather tile (an enabled `weather-metric` item, `hasShownWeatherTile`; the "Set a city" hint stands
+in a metric's cell, so it counts). The boot does not start the load itself: `renderFavorites`
+schedules, from a microtask, one hook (`checkWeatherTileAppeared`) that asks the pure
+`weatherAppearanceDecision` whether a shown tile has appeared since its last look (the first render
+of a tab with a tile is that change). The first appearance starts the load at open (`startWeather`,
+also offline and after a failed read of the city); every later one (a metric restored through the
+Add menu, a re-read that applies another tab's change, a heal) starts the automatic attempt of a
+return, which asks `weatherRefreshDue` and the 3 s pause itself, so a held `ready` result that is not
+due is shown with no request. Nothing starts while a city change runs, and an automatic attempt never
+starts while another load is in flight (`weatherLoadInFlight`, one flag of the load at open and of
+every attempt; a manual Retry press supersedes). `startWeather` and `retryWeather` both return at
+once with no shown tile. Choosing or changing the city is the user's own act and is not gated; a
+request already in flight when the last tile is hidden finishes and keeps its cache write.
+`docs/layers-weather-polish.md` decisions 9 and 10, `docs/privacy.md`.
 
 ### Retry from a tile
 
@@ -232,7 +252,7 @@ retry; a retry only writes the cache that `initialize()` already writes.
 ### Refresh on return
 
 When a tab becomes visible again (`visibilitychange` to `visible`), and when the browser reports `online` while the tab is
-visible, `newtab.js` starts the same attempt as a retry press if the shown weather is due: an error, a stale result, or a
+visible, `newtab.js` starts the same attempt as a retry press, but only while a weather tile is shown (see above), if the shown weather is due: an error, a stale result, or a
 `ready` result whose data is 30 minutes old or more (`weatherRefreshDue`; the 30 minutes is `WEATHER_CACHE_TTL_MS` in
 `weatherShared.js`). Nothing is polled or repeated on a timer, and once a tab has loaded, a hidden tab starts no attempt. A
 return does not try while `navigator.onLine` is `false`; an `online` event ignores the 3 s pause after a failed attempt; an
@@ -357,7 +377,8 @@ Tiles take one of four footprints (1×1, 1×2, 2×1, 2×2; chrome tiles 1×1 onl
   dialog, the city modal, the wizard): `body:has(.desktop-dialog, .city-modal)`
   makes it `opacity: 0; pointer-events: none`, so it stays in the accessibility
   tree and keeps its box. While it exists, `newtab.js` writes `--status-reserve`
-  (its height plus the bottom offset, 0 when hidden) from a `ResizeObserver`; it
+  (its height plus the bottom offset, 0 when hidden) from a `ResizeObserver` and, at once, from
+  `showDesktopStatus` when it shows a text (the same value, so a reveal that follows reads it); it
   feeds only the `.desktop` bottom padding and the root `scroll-padding-bottom`,
   never a layout input or storage. A dialog taller than the window scrolls
   (`data-scrolls="true"`, kept by a `ResizeObserver` on the dialog and its form):
@@ -366,7 +387,7 @@ Tiles take one of four footprints (1×1, 1×2, 2×1, 2×2; chrome tiles 1×1 onl
   and a 1px divider; a dialog that fits is unchanged. `scroll-padding-bottom` of
   the dialog is the footer's box and `scroll-margin: 5px` keeps a focused control's
   ring in view; a shown error is scrolled above the footer without moving the
-  field's focus. A dialog closes in one of two modes: without a write that moves
+  field's focus, and again after a window resize while it is shown. A dialog closes in one of two modes: without a write that moves
   anything (Cancel, Escape, backdrop, failure, Add link) focus returns with
   `preventScroll`; after a successful Save, Delete, Hide or a gone-link recovery
   the target is also brought in by the nearest edge when it is not safely inside
@@ -388,7 +409,8 @@ node, its `data-tooltip-label` (`docs/typography-copy.md` decision 6), and is
 placed by `placeTooltip`: above the tile when there is room, otherwise below,
 centered on the tile and clamped to an 8px margin inside the viewport. It hides on leave,
 blur, Escape, grid scroll (except the scroll caused by focusing a tile), wheel,
-touch scroll, window resize, entering edit mode or a drag, and every grid render.
+touch scroll, window resize, entering edit mode or a drag, and every grid render. Its text, like
+the city modal's error and the status chip, is set with `text-wrap: pretty`, so no lone word ends it.
 
 ## Concurrency
 
@@ -407,7 +429,7 @@ The new tab page loads CSS in dependency order from `src/newtab.html`:
 | File | Role |
 | --- | --- |
 | `design-tokens.css` | Color, typography, spacing, radius, shadow, and focus tokens (light/dark), including Phase 2 grid/page chrome tokens (`--radius-tile`, `--space-grid-*`, status chip, weather cell type). |
-| `controls.css` | Overlay controls: buttons, inputs, segmented groups, add-menu rows, city field, and each control's own base focus style. |
+| `controls.css` | Overlay controls: buttons, inputs, segmented groups (above 451 px each option lays its label out in the bold face in every state, so the group keeps its height whatever is chosen; `docs/layers-weather-polish.md` decision 12), add-menu rows, city field, and each control's own base focus style. |
 | `surfaces.css` | Dialog and modal shells, backdrops, popovers, and the focus rings scoped to `.desktop-dialog` / `.city-modal`. |
 | `newtab.css` | Desktop grid, tiles, weather presentation, tooltip, page chrome (Phase 2: grid radii, shadows, spacing, and typography via tokens). |
 
