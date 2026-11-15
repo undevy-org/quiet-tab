@@ -938,9 +938,11 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     const tile = fn(await source(), "createFavoriteTile");
     assert.match(tile, /editing \? `Edit \$\{item\.label\}` : `Open \$\{item\.label\}`/);
     assert.match(tile, /button\.dataset\.favoriteAction = editing \? "edit" : "open";/);
-    assert.match(tile, /if \(cell\.w === 2 \|\| cell\.h === 2\) \{/); // 1×1 tiles carry no label text (the label is the accessible name); 2-wide and 1×2 tiles do
-    assert.match(tile, /createNode\("span", "favorite-tile__label", item\.label\)/);
-    assert.match(tile, /if \(cell\.h === 2\) text\.appendChild\(createNode\("span", "favorite-tile__host", item\.domain\)\);/);
+    // what the tile draws is decided by favoriteTileText (docs/tile-text-options.md decision 2); 1×1 tiles carry no text (the label is the accessible name)
+    assert.match(tile, /const lines = favoriteTileText\(item, cell\);/);
+    assert.match(tile, /if \(lines\.name\) text\.appendChild\(createNode\("span", "favorite-tile__label", item\.label\)\);/);
+    assert.match(tile, /if \(lines\.host\) text\.appendChild\(createNode\("span", "favorite-tile__host", item\.domain\)\);/);
+    assert.match(tile, /if \(lines\.name \|\| lines\.host\) \{/);
   });
 
   it("renders from displayLayout of the current column count, skips cell-less (hidden) metrics and sorts the DOM by (y, x)", async () => {
@@ -1269,9 +1271,27 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
   it("pins the 1×2 link tile (docs/tile-size-1x2.md)", async () => {
     const code = await source();
     const styles = await css();
-    assert.match(fn(code, "createFavoriteTile"), /if \(cell\.w === 2 \|\| cell\.h === 2\) \{/);
-    assert.match(fn(code, "createFavoriteTile"), /if \(cell\.h === 2\) text\.appendChild\(createNode\("span", "favorite-tile__host", item\.domain\)\);/);
+    assert.match(fn(code, "createFavoriteTile"), /const lines = favoriteTileText\(item, cell\);/);
+    assert.match(fn(code, "createFavoriteTile"), /if \(lines\.host\) text\.appendChild\(createNode\("span", "favorite-tile__host", item\.domain\)\);/);
     assert.match(styles, /\.favorite-tile\[data-w="1"\]\[data-h="2"\] \.favorite-tile__label\s*\{[^}]*-webkit-line-clamp: 3;/s);
+  });
+
+  it("draws the text of a link tile from favoriteTileText and marks a tile with no text (docs/tile-text-options.md decisions 2 and 3)", async () => {
+    const code = await source();
+    assert.match(code, /import \{[^}]*\bfavoriteTileText\b[^}]*\} from "\.\/favoritesShared\.js";/);
+    const tile = fn(code, "createFavoriteTile");
+    assert.match(tile, /\} else if \(cell\.w === 2 \|\| cell\.h === 2\) \{\s*button\.dataset\.tileText = "none";\s*\}/, "only a size that has a text box and draws no line is marked");
+    assert.doesNotMatch(tile, /item\.showName|item\.showLink/, "the tile never reads the switches itself: favoriteTileText decides");
+    assert.doesNotMatch(tile, /cell\.h === 2\) text\.appendChild/, "the old size-only rule for the host line is gone");
+  });
+
+  it("centers the icon of a 2x1 tile with no text with one rule and adds none for 1x2 and 2x2 (docs/tile-text-options.md decision 3)", async () => {
+    const styles = await css();
+    const rules = [...styles.matchAll(/([^{}]*\[data-tile-text="none"\][^{}]*)\{([^}]*)\}/g)];
+    assert.equal(rules.length, 1, "one rule names data-tile-text");
+    assert.match(rules[0][1], /\.favorite-tile\[data-w="2"\]\[data-h="1"\]\[data-tile-text="none"\]/);
+    assert.match(rules[0][2], /justify-content:\s*center;/);
+    assert.match(styles, /\.favorite-tile\[data-w="2"\]\s*\{\s*justify-content:\s*flex-start;/, "the left alignment of a 2-wide tile with text is unchanged");
   });
 
   it("pins the 1×2 weather tile (docs/tile-size-1x2.md)", async () => {

@@ -10,6 +10,7 @@ import {
   createDefaultFaviconChecker
 } from "./defaultFavicon.js";
 import { FAVICON_SIZE, getFaviconUrl, getFavoriteIconModel, getFavoriteLetter } from "./favoriteIcon.js";
+import { favoriteTileText } from "./favoritesShared.js";
 import { createIconNode } from "./icons.js";
 import {
   canPlace, cellFromPoint, clampDropCell, displayLayout, effectiveColumns, gridMetrics, maxDropRow, viewportRows
@@ -488,12 +489,17 @@ function createFavoriteTile(item, cell) {
     hexToRgbChannels(normalizeAccentLightness(item.backgroundColor))
   );
   button.appendChild(createFavoriteIconNode(iconModel, item));
-  // 2-wide tiles and 1×2 tiles show the label; 2-high tiles (2×2, 1×2) also show the host (docs/tile-size-1x2.md decision 3).
-  if (cell.w === 2 || cell.h === 2) {
+  // Which lines the tile draws is decided by favoriteTileText (docs/tile-text-options.md decision 2): a 1×1 tile none, a 2×1 tile one line
+  // (the name, or the host in its place), a 1×2 and a 2×2 tile the name and the host as the switches allow. A size that has a text box
+  // and draws no line is marked, so its icon is centered (decision 3).
+  const lines = favoriteTileText(item, cell);
+  if (lines.name || lines.host) {
     const text = createNode("span", "favorite-tile__text");
-    text.appendChild(createNode("span", "favorite-tile__label", item.label));
-    if (cell.h === 2) text.appendChild(createNode("span", "favorite-tile__host", item.domain));
+    if (lines.name) text.appendChild(createNode("span", "favorite-tile__label", item.label));
+    if (lines.host) text.appendChild(createNode("span", "favorite-tile__host", item.domain));
     button.appendChild(text);
+  } else if (cell.w === 2 || cell.h === 2) {
+    button.dataset.tileText = "none";
   }
 
   button.disabled = favoritesBusy;
