@@ -67,7 +67,7 @@ function typedHost(typed) {
   const rest = (schemeRest(typed) ?? typed).replace(/^[\\/]+/, "");
   const end = rest.search(/[\\/?#]/);
   const authority = end === -1 ? rest : rest.slice(0, end);
-  return authority.slice(authority.lastIndexOf("@") + 1).replace(/:\d*$/, "").toLowerCase();
+  return authority.slice(authority.lastIndexOf("@") + 1).replace(/:\d*$/, "");
 }
 
 // Can this parsed host name a site? An IPv6 literal in brackets: yes. Four decimal parts: only when the person typed exactly that
@@ -131,6 +131,10 @@ export function normalizeNullableImageUrl(input) {
   if (value.length > LINK_URL_MAX_LENGTH) {
     throw fieldError(ICON_LINK_TOO_LONG, "customIconUrl");
   }
+  // Same rule as the main link (docs/tile-text-options.md decision 7): a space needs its %20, the parser no longer encodes it for us.
+  if (/\s/.test(value)) {
+    throw fieldError("Enter a valid image URL", "customIconUrl");
+  }
 
   let parsed;
   try {
@@ -152,7 +156,8 @@ export function normalizeNullableImageUrl(input) {
 // The typed name is limited; the fallback (the host) is cut instead, so the stored label always fits the Name limit.
 function normalizeLabel(label, domain) {
   const typed = trimString(label);
-  if (typed.length > LINK_LABEL_MAX_LENGTH) {
+  // Code points, not UTF-16 units: an emoji is one character (docs/tile-text-options.md decision 8).
+  if ([...typed].length > LINK_LABEL_MAX_LENGTH) {
     throw fieldError(LABEL_TOO_LONG, "label");
   }
   return typed || domain.slice(0, LINK_LABEL_MAX_LENGTH);
@@ -200,6 +205,41 @@ function normalizeBackgroundColor(backgroundColor, domain, defaultBackgroundColo
   }
 
   return color.toLowerCase();
+}
+
+// The optional booleans of an item, stored only when false (docs/tile-text-options.md decision 1). `field` names the dialog field the
+// error is about; the weather tile's `showCity` has no field of its own and throws a plain Error like `enabled`.
+const LINK_SHOW_FIELDS = [
+  ["showName", "Choose whether the tile shows its name"],
+  ["showLink", "Choose whether the tile shows its link"]
+];
+
+function checkedBoolean(value, message, field) {
+  if (typeof value !== "boolean") {
+    throw field ? fieldError(message, field) : new Error(message);
+  }
+  return value;
+}
+
+// New item: the keys of the payload that are false (a payload without the key, or with true, writes no key).
+function newShowFields(payload) {
+  const fields = {};
+  for (const [key, message] of LINK_SHOW_FIELDS) {
+    if (Object.hasOwn(payload, key) && !checkedBoolean(payload[key], message, key)) {
+      fields[key] = false;
+    }
+  }
+  return fields;
+}
+
+// Existing item: a payload without the key leaves the stored value, false is stored, true removes the key.
+function applyShowField(item, payload, key, message, field) {
+  if (!Object.hasOwn(payload, key)) return;
+  if (checkedBoolean(payload[key], message, field)) {
+    delete item[key];
+  } else {
+    item[key] = false;
+  }
 }
 
 function inputObject(input) {
@@ -356,6 +396,7 @@ export function createWidgetsService({
               defaultBackgroundColor
             ),
             backgroundColorSource: deriveBackgroundColorSource(payload, "auto"),
+            ...newShowFields(payload),
             grid: toStored(placeNew(layout, size, columns), columns),
             createdAt: updatedAt,
             updatedAt
@@ -399,6 +440,7 @@ export function createWidgetsService({
             defaultBackgroundColor
           ),
           backgroundColorSource: deriveBackgroundColorSource(payload, "auto"),
+          ...newShowFields(payload),
           grid: toStored(placeNew(layout, size, columns), columns),
           createdAt: updatedAt,
           updatedAt
@@ -443,6 +485,9 @@ export function createWidgetsService({
         } else if (Object.hasOwn(payload, "backgroundColor")) {
           nextItem.backgroundColorSource = deriveBackgroundColorSource(payload, "auto");
         }
+        for (const [key, message] of LINK_SHOW_FIELDS) {
+          applyShowField(nextItem, payload, key, message, key);
+        }
         if (Object.hasOwn(payload, "w") || Object.hasOwn(payload, "h")) {
           const size = {
             w: normalizeSpan(payload.w ?? nextItem.grid.w, "width"),
@@ -464,7 +509,7 @@ export function createWidgetsService({
       });
     },
 
-    // payload: { enabled?: boolean, w?: 1|2, h?: 1|2 }. Hiding keeps the placeholder grid; restoring takes the free
+    // payload: { enabled?: boolean, showCity?: boolean, w?: 1|2, h?: 1|2 }. Hiding keeps the placeholder grid; restoring takes the free
     // block nearest to the center for its size.
     updateWeatherMetric(id, input, options) {
       const payload = inputObject(input);
@@ -492,6 +537,7 @@ export function createWidgetsService({
           }
           next.enabled = payload.enabled;
         }
+        applyShowField(next, payload, "showCity", "Choose whether the weather tile shows the city");
 
         const layout = displayLayout(base.items, columns);
         if (next.enabled && !current.enabled) {

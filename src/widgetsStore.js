@@ -66,6 +66,11 @@ function isCustomIconUrl(value) {
   return value === null || isHttpUrl(value);
 }
 
+// An optional boolean field (docs/tile-text-options.md decision 1): absent, `true` or `false`; any other value is not a widget item.
+function isOptionalBoolean(value, key) {
+  return !Object.hasOwn(value, key) || typeof value[key] === "boolean";
+}
+
 function isFavoriteWidgetItem(value) {
   const requiredFields = [
     "id",
@@ -95,7 +100,9 @@ function isFavoriteWidgetItem(value) {
     HEX_COLOR_VALIDATION_PATTERN.test(value.backgroundColor) &&
     BACKGROUND_COLOR_SOURCES.has(value.backgroundColorSource) &&
     isParseableTimestamp(value.createdAt) &&
-    isParseableTimestamp(value.updatedAt)
+    isParseableTimestamp(value.updatedAt) &&
+    isOptionalBoolean(value, "showName") &&
+    isOptionalBoolean(value, "showLink")
   );
 }
 
@@ -104,7 +111,8 @@ function isWeatherMetricItem(value) {
     hasOwnFields(value, ["id", "type", "enabled"]) &&
     value.type === "weather-metric" &&
     WEATHER_METRIC_IDS.includes(value.id) &&
-    typeof value.enabled === "boolean"
+    typeof value.enabled === "boolean" &&
+    isOptionalBoolean(value, "showCity")
   );
 }
 
