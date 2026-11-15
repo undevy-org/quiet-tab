@@ -3502,3 +3502,73 @@ describe("Add menu restore guard source pins (run 57, docs/wizard-trap-add-dblcl
     assert.match(listener, /if \(addMenuRoot\.contains\(event\.target\) \|\| event\.target\.closest\(ADD_TILE_SELECTOR\)\) return;/);
   });
 });
+
+describe("run 58 task 3: the `On tile` switches of the link dialogs (docs/tile-text-options.md decision 4, AS-TTO-06..08, 20)", () => {
+  const read = (name) => readFile(new URL(`../src/${name}`, import.meta.url), "utf8");
+  const stripCss = (text) => text.replace(/\/\*[\s\S]*?\*\//g, "");
+
+  it("createFavoriteForm adds the `On tile` row after Size with its own push; Edit link preselects from the item, Add link from `true`", async () => {
+    const form = stripComments(topLevelFunction(await source(), "createFavoriteForm"));
+    assert.ok(form.indexOf('createFormRow("Size"') !== -1 && form.indexOf('createFormRow("On tile"') > form.indexOf('createFormRow("Size"'), "the order is Size, then On tile");
+    assert.match(form, /rows\.push\(createFormRow\("On tile", createToggleGroup\(\[/);
+    assert.match(form, /\["showName", "Name", "Name on tile", isEdit \? item\.showName !== false : true\]/);
+    assert.match(form, /\["showLink", "Link", "Link on tile", isEdit \? item\.showLink !== false : true\]/);
+    assert.match(form, /form\.append\(\.\.\.rows, createDialogErrorSlot\(\), footer\);/, "the alert slot and the footer still follow the rows");
+  });
+
+  it("readFavoriteFormPayload reads the two checkboxes as booleans with data.has, never as undefined", async () => {
+    const payload = stripComments(topLevelFunction(await source(), "readFavoriteFormPayload"));
+    assert.match(payload, /showName: data\.has\("showName"\)/);
+    assert.match(payload, /showLink: data\.has\("showLink"\)/);
+    assert.doesNotMatch(payload, /showName: data\.get|showLink: data\.get/);
+  });
+
+  it("createToggleGroup builds div.segmented.segmented--toggle[role=group] of checkbox options with a check glyph, a data-text reserve and an accessible name", async () => {
+    const code = await source();
+    const group = stripComments(topLevelFunction(code, "createToggleGroup"));
+    assert.match(group, /createNode\("div", "segmented segmented--toggle"\)/);
+    assert.match(group, /group\.setAttribute\("role", "group"\)/);
+    assert.match(group, /input\.type = "checkbox";/);
+    assert.match(group, /input\.setAttribute\("aria-label", accessibleName\);/);
+    assert.match(group, /segmented__glyph segmented__glyph--check/);
+    assert.match(group, /mark\.setAttribute\("aria-hidden", "true"\);/);
+    assert.match(group, /label\.dataset\.text = text;/);
+    assert.match(group, /createNode\("b", "segmented__label segmented__label--check"\)/);
+    assert.match(group, /content\.append\(mark, createNode\("span", null, text\)\);|content\.appendChild\(mark\);\s*content\.appendChild\(createNode\("span", null, text\)\);/);
+    assert.doesNotMatch(group, /innerHTML/);
+    assert.doesNotMatch(group, /radio/);
+    // a parallel builder: the pins on createSegmentedControl (the loop head, the aria-label line, the label class) keep reading that function
+    assert.match(stripComments(topLevelFunction(code, "createSegmentedControl")), /for \(const \[value, text, glyph, accessibleName\] of options\)/);
+    assert.ok(code.indexOf("function createToggleGroup(") > code.indexOf("function createSegmentedControl("), "next to createSegmentedControl");
+  });
+
+  it("createFormRow names a role=group control by the row label, as it names a radiogroup, so the label never lands on the first checkbox", async () => {
+    const row = stripComments(topLevelFunction(await source(), "createFormRow"));
+    assert.match(row, /control\.getAttribute\("role"\) === "radiogroup" \|\| control\.getAttribute\("role"\) === "group"/);
+    assert.match(row, /control\.querySelector\('input, \[role="radiogroup"\]'\)/);
+  });
+
+  it("the check glyph is a 12 px box with a 3 px radius, its mark is a pseudo-element shown only while checked, and the reserve counts its room (controls.css)", async () => {
+    const controls = stripCss(await read("controls.css"));
+    assert.match(controls, /\.segmented__glyph--check \{[^}]*width: 12px;[^}]*height: 12px;[^}]*border-radius: 3px;/s);
+    assert.match(controls, /\.segmented__option:has\(input:checked\) \.segmented__glyph--check::after \{[^}]*content: "";[^}]*border: solid currentColor;[^}]*transform: [^;]*rotate\(45deg\);/s);
+    const glyphRules = [...controls.matchAll(/(\.segmented__glyph--check[^{]*)\{([^}]*)\}/g)];
+    assert.equal(glyphRules.length, 2, "the glyph rule and the mark rule");
+    for (const [, selector, body] of glyphRules) assert.doesNotMatch(body, /background|mask|url\(/, `no image, mask or background in ${selector.trim()}`);
+    assert.match(controls, /\.segmented__label--check \{\s*--glyph-room: calc\(12px \+ var\(--control-gap-icon\)\);\s*\}/);
+  });
+
+  it("the own ring of the focused option of a toggle group: 2 px solid --focus-ring, 4 px inside the option, with a HighlightText rule for a checked option in forced colors (surfaces.css)", async () => {
+    const surfaces = stripCss(await read("surfaces.css"));
+    assert.match(surfaces, /\.desktop-dialog \.segmented--toggle \.segmented__option:has\(input:focus-visible\) \{\s*outline: 2px solid var\(--focus-ring\);\s*outline-offset: -4px;\s*\}/);
+    assert.match(surfaces, /@media \(forced-colors: active\) \{\s*\.desktop-dialog \.segmented--toggle \.segmented__option:has\(input:checked\):has\(input:focus-visible\) \{\s*outline-color: HighlightText;\s*\}\s*\}/);
+    // the old rule of a radio option stays (focusTokens.test.js pins it) and is less specific than the new one
+    assert.match(surfaces, /\.desktop-dialog \.segmented__option:has\(input:focus-visible\) \{\s*outline: none;\s*\}/);
+    assert.doesNotMatch(surfaces.slice(surfaces.indexOf(".segmented--toggle")), /--focus:|var\(--focus\)/, "the translucent --focus token cannot reach 3:1");
+  });
+
+  it("the strings of the row: `On tile`, `Name`, `Link`, `Name on tile`, `Link on tile`", async () => {
+    const code = await source();
+    for (const text of ['"On tile"', '"Name on tile"', '"Link on tile"']) assert.ok(code.includes(text), text);
+  });
+});

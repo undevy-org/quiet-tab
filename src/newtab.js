@@ -540,6 +540,36 @@ function createSegmentedControl(name, options, selectedValue) {
   return group;
 }
 
+// A group of independent on/off options (docs/tile-text-options.md decision 4): the look of a segmented control with a checkbox in each option. It is a parallel of
+// createSegmentedControl on purpose: the pins on that function keep reading it, and two checkboxes are a role=group, not a radiogroup. Items: [name, visible text,
+// accessible name (starts with the visible text, WCAG 2.5.3), checked]. The glyph box is always there (the width does not change with the state); its mark is CSS.
+function createToggleGroup(items) {
+  const group = createNode("div", "segmented segmented--toggle");
+  group.setAttribute("role", "group");
+
+  for (const [name, text, accessibleName, checked] of items) {
+    const option = createNode("label", "segmented__option");
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.name = name;
+    input.checked = checked;
+    input.setAttribute("aria-label", accessibleName);
+    option.appendChild(input);
+    const content = createNode("i", "segmented__content");
+    const mark = createNode("i", "segmented__glyph segmented__glyph--check");
+    mark.setAttribute("aria-hidden", "true");
+    content.appendChild(mark);
+    content.appendChild(createNode("span", null, text));
+    const label = createNode("b", "segmented__label segmented__label--check");
+    label.dataset.text = text;
+    label.appendChild(content);
+    option.appendChild(label);
+    group.appendChild(option);
+  }
+
+  return group;
+}
+
 let formRowIdSeq = 0;
 
 function createFormRow(labelText, control) {
@@ -556,8 +586,9 @@ function createFormRow(labelText, control) {
     return row;
   }
 
+  // A control that is itself a labelled container (an input, a radiogroup, a role=group of checkboxes) takes the row label as its own name.
   const labelTarget =
-    control.tagName === "INPUT" || control.getAttribute("role") === "radiogroup"
+    control.tagName === "INPUT" || control.getAttribute("role") === "radiogroup" || control.getAttribute("role") === "group"
       ? control
       : control.querySelector('input, [role="radiogroup"]');
   labelTarget?.setAttribute("aria-labelledby", labelSpan.id);
@@ -638,6 +669,11 @@ function createFavoriteForm(item) {
   rows.push(
     createFormRow("Size", createSizeControl(isEdit ? displayedSize(item) : { w: 1, h: 1 }))
   );
+  // What the tile shows (docs/tile-text-options.md decisions 2 and 4); the row stays at 1×1, where it changes nothing and is remembered for a later size.
+  rows.push(createFormRow("On tile", createToggleGroup([
+    ["showName", "Name", "Name on tile", isEdit ? item.showName !== false : true],
+    ["showLink", "Link", "Link on tile", isEdit ? item.showLink !== false : true]
+  ])));
 
   const cancel = createIconButton("button", "Cancel", "x");
   cancel.type = "button";
@@ -703,7 +739,10 @@ function readFavoriteFormPayload(data) {
     label: data.get("label"),
     iconMode: data.get("iconMode"),
     customIconUrl: data.get("customIconUrl"),
-    backgroundColorSource
+    backgroundColorSource,
+    // A checkbox is in the form data only while it is checked: always a boolean, never undefined (the service stores false and drops true).
+    showName: data.has("showName"),
+    showLink: data.has("showLink")
   };
 
   if (backgroundColorSource === "manual") {

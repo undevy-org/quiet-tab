@@ -667,6 +667,23 @@ img.onboarding-wizard__starter-icon[data-icon-check="pending"] {
   outline: none;
 }
 
+/* A toggle group (the `On tile` row, docs/tile-text-options.md decision 4): its options are two independent checkboxes, so the focused option is not always the
+   checked one and the ring of the whole group cannot say which of the two holds the focus. The focused option also draws its own ring: 2 px, from 2 to 4 px
+   inside the option (the group clips with overflow: hidden). The solid --focus-ring, not --focus (24 % alpha cannot reach 3:1). One class more than the rule
+   above, so it wins over `outline: none` and the pin on that rule stays. */
+.desktop-dialog .segmented--toggle .segmented__option:has(input:focus-visible) {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -4px;
+}
+
+/* A checked option keeps its authored colours in forced colors (forced-color-adjust: none, Highlight as its background), so the ring it draws is HighlightText;
+   an unchecked option gets its system colour from the browser. */
+@media (forced-colors: active) {
+  .desktop-dialog .segmented--toggle .segmented__option:has(input:checked):has(input:focus-visible) {
+    outline-color: HighlightText;
+  }
+}
+
 /* Confirm dialogs (delete, hide): no bottom margin, the 16px to the actions comes from --modal-actions-margin-top. */
 .desktop-dialog__body {
   margin: 0;
