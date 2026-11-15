@@ -360,6 +360,11 @@ function armPostCloseClickGuard() {
   postCloseGuardUntil = performance.now() + POST_CLOSE_CLICK_GUARD_MS;
 }
 
+// True while the window after a close or a pick runs: the one read of `postCloseGuardUntil` that is not a listener (`backgroundPressed`).
+function postCloseGuardActive() {
+  return performance.now() < postCloseGuardUntil;
+}
+
 // A modal that opens again means the person is acting on purpose: its own buttons must not be swallowed by the guard of the previous close.
 function clearPostCloseClickGuard() {
   postCloseGuardUntil = 0;
@@ -2791,7 +2796,11 @@ function onAddMenuClick(event) {
   }
   closeAddMenu();
   if (action === "add-link") openDesktopDialog({ kind: "add-link" }, { opener: { id: "chrome:add", badge: false } });
-  else if (action === "restore") void restoreWeatherMetric(entry.dataset.metricId);
+  else if (action === "restore") {
+    // The second press of a double click lands on the tile or the background under the closed menu (docs/wizard-trap-add-dblclick.md decision 2).
+    armPostCloseClickGuard();
+    void restoreWeatherMetric(entry.dataset.metricId);
+  }
 }
 
 // An outside press closes the menu and returns focus to Add (after the press's own focus change). A press on the Add
@@ -3873,7 +3882,7 @@ if (favoritesRoot) {
   const isPrimaryPress = (event) => event.button === 0 && event.isPrimary;
   let backgroundPressed = false;
   favoritesRoot.addEventListener("pointerdown", (event) => {
-    backgroundPressed = desktopUi.editMode && event !== addMenuDismissPress && isPrimaryPress(event) && isBackground(event.target);
+    backgroundPressed = desktopUi.editMode && event !== addMenuDismissPress && !postCloseGuardActive() && isPrimaryPress(event) && isBackground(event.target);
   });
   favoritesRoot.addEventListener("pointerup", (event) => {
     if (backgroundPressed && isPrimaryPress(event) && isBackground(event.target) && !desktopUi.drag) setEditMode(false);
