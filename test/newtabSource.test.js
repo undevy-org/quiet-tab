@@ -139,7 +139,8 @@ describe("newtab favorites source", () => {
     const code = await source();
     assert.match(code, /const isPrimaryPress = \(event\) => event\.button === 0 && event\.isPrimary;/);
     // The press that closed the Add menu never also exits edit mode (Task 10).
-    assert.match(code, /backgroundPressed = desktopUi\.editMode && event !== addMenuDismissPress && isPrimaryPress\(event\) && isBackground\(event\.target\);/);
+    // Run 57 (docs/wizard-trap-add-dblclick.md decision 3): a background press inside the post-close window does not start an exit either.
+    assert.match(code, /backgroundPressed = desktopUi\.editMode && event !== addMenuDismissPress && !postCloseGuardActive\(\) && isPrimaryPress\(event\) && isBackground\(event\.target\);/);
     assert.match(code, /favoritesRoot\.addEventListener\("pointercancel", \(\) => \{\s*backgroundPressed = false;/);
     assert.match(code, /\?\? \(target\.badge \? favoritesRoot\.querySelector\(SETTINGS_TILE_SELECTOR\) : null\)/);
   });
@@ -2759,7 +2760,18 @@ describe("city suggestion list source pins (run 45, docs/city-suggestion-list.md
   it("AS-CSL-04: tabTrapFocusables excludes role=option buttons from its candidates by selector", async () => {
     const code = await strippedSource();
     const trap = topLevelFunction(code, "tabTrapFocusables");
-    assert.match(trap, /querySelectorAll\(['"]input, button:not\(\[role="option"\]\)['"]\)/, "options are not trap candidates");
+    // Run 57 (docs/wizard-trap-add-dblclick.md decision 1): the locked starter list joins the selector; the option exclusion stays.
+    assert.match(trap, /querySelectorAll\(['"]input, button:not\(\[role="option"\]\), \[data-starters-locked="true"\]['"]\)/, "options are not trap candidates");
+  });
+
+  it("AS-WTA-01/04: the locked starter list is the one part added to the trap candidates; the disabled, hidden and inert filter stays", async () => {
+    const code = await strippedSource();
+    const trap = topLevelFunction(code, "tabTrapFocusables");
+    const selector = trap.match(/querySelectorAll\('([^']*)'\)/);
+    assert.ok(selector, "the candidate selector is a single-quoted literal");
+    assert.equal(selector[1], 'input, button:not([role="option"]), [data-starters-locked="true"]', "exactly the old selector plus the locked list, no tabindex selector");
+    assert.match(trap, /if \(el\.disabled \|\| el\.hidden\) return false;/);
+    assert.match(trap, /if \(node\.inert \|\| node\.hidden\) return false;/);
   });
 
   it("AS-CSL-12: .city-location-link:focus-visible pads the text by 1px with an equal negative margin, so the ring reaches 3px", async () => {
@@ -3431,5 +3443,42 @@ describe("run 53 task 2: layers (AS-QDL-01, AS-QDL-02, AS-QDL-03, AS-QDL-05)", (
     assert.doesNotMatch(handler, /renderFavorites\(|finishFavoritesAction\(|renderDesktop\(|startFavoritesAction\(/, "nothing is rebuilt");
     assert.match(handler, /if \(generation === favoritesGeneration\) setFavoritesBusy\(false\);/);
     assert.match(handler, /closeDesktopDialog\(\{ restoreFocusTo: null \}\);\s*showDesktopStatus\(RESET_FAILED_MESSAGE\);/, "the rest of the catch stays");
+  });
+});
+
+describe("Add menu restore guard source pins (run 57, docs/wizard-trap-add-dblclick.md decisions 2 and 3)", () => {
+  it("AS-WTA-05: postCloseGuardActive is a read-only helper of the one guard window", async () => {
+    const code = stripComments(await source());
+    const helper = topLevelFunction(code, "postCloseGuardActive");
+    assert.match(helper, /return performance\.now\(\) < postCloseGuardUntil;/);
+    assert.doesNotMatch(helper, /postCloseGuardUntil =/, "it only reads");
+    assert.equal(code.split("const POST_CLOSE_CLICK_GUARD_MS =").length, 2, "no second window constant");
+  });
+
+  it("AS-WTA-05: the restore branch of onAddMenuClick arms the guard exactly once, before the restore", async () => {
+    const code = stripComments(await source());
+    const handler = topLevelFunction(code, "onAddMenuClick");
+    assert.equal(handler.split("armPostCloseClickGuard();").length, 2, "armed exactly once in the handler");
+    assert.match(handler, /else if \(action === "restore"\) \{\s*armPostCloseClickGuard\(\);\s*void restoreWeatherMetric\(entry\.dataset\.metricId\);\s*\}/);
+  });
+
+  it("AS-WTA-06/07: the add-weather and add-link branches do not arm the guard", async () => {
+    const code = stripComments(await source());
+    const handler = topLevelFunction(code, "onAddMenuClick");
+    const addWeather = handler.slice(handler.indexOf('if (action === "add-weather") {'), handler.indexOf("closeAddMenu();"));
+    assert.match(addWeather, /fillAddMenu\("restore-weather"\);\s*return;/);
+    assert.doesNotMatch(addWeather, /armPostCloseClickGuard/);
+    const addLink = handler.slice(handler.indexOf('if (action === "add-link")'), handler.indexOf('else if (action === "restore")'));
+    assert.match(addLink, /openDesktopDialog\(\{ kind: "add-link" \}/);
+    assert.doesNotMatch(addLink, /armPostCloseClickGuard/);
+  });
+
+  it("AS-WTA-05: the outside-press listener of the Add menu is unchanged (no guard in it)", async () => {
+    const code = stripComments(await source());
+    const start = code.indexOf("addMenuDismissPress = event;");
+    assert.notEqual(start, -1, "the outside press listener exists");
+    const listener = code.slice(code.lastIndexOf("document.addEventListener(", start), code.indexOf("\n);", start));
+    assert.doesNotMatch(listener, /postCloseGuard|armPostCloseClickGuard/);
+    assert.match(listener, /if \(addMenuRoot\.contains\(event\.target\) \|\| event\.target\.closest\(ADD_TILE_SELECTOR\)\) return;/);
   });
 });

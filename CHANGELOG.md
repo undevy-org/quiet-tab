@@ -212,6 +212,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A saved forecast whose time is in the future (the computer's clock was moved back) is no longer treated as fresh: it is fetched again.
 - A refused Reset grid keeps the screen as it is, without rebuilding it, and says so in the status message
   (`docs/unreadable-grid-reset.md`).
+- First-run wizard: once the starter links are written and the completion flag could not be saved, the locked starter list is a stop of
+  the Tab trap in both directions (the cycle is the list, Back, Finish); before, Tab and Shift+Tab from Back and Finish never reached it
+  (`docs/wizard-trap-add-dblclick.md`).
+- Add menu in edit mode: a double click on a hidden weather tile's item restores that tile once and edit mode stays on; before, the second
+  click fell through to the tile or the grid behind the closed menu, opening that link's Edit link dialog or leaving edit mode. A click on
+  the grid or a tile within 300 ms after a pick is ignored, like after the wizard closes (`docs/wizard-trap-add-dblclick.md`).
 
 ### Changed
 
