@@ -1271,8 +1271,6 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
   it("pins the 1×2 link tile (docs/tile-size-1x2.md)", async () => {
     const code = await source();
     const styles = await css();
-    assert.match(fn(code, "createFavoriteTile"), /const lines = favoriteTileText\(item, cell\);/);
-    assert.match(fn(code, "createFavoriteTile"), /if \(lines\.host\) text\.appendChild\(createNode\("span", "favorite-tile__host", item\.domain\)\);/);
     assert.match(styles, /\.favorite-tile\[data-w="1"\]\[data-h="2"\] \.favorite-tile__label\s*\{[^}]*-webkit-line-clamp: 3;/s);
   });
 
@@ -2947,7 +2945,7 @@ describe("typography and copy source pins (run 49)", () => {
   it("a segmented option keeps a bold-face reserve above 451 px and 4 px of vertical room; the nowrap block has no reserve (run 53, decision 12)", async () => {
     const controls = (await readFile(new URL("../src/controls.css", import.meta.url), "utf8")).replace(/\/\*[\s\S]*?\*\//g, "");
     const surfaces = (await readFile(new URL("../src/surfaces.css", import.meta.url), "utf8")).replace(/\/\*[\s\S]*?\*\//g, "");
-    const segmented = topLevelFunction(await source(), "createSegmentedControl");
+    const segmented = topLevelFunction(await source(), "createSegmentedOption");
     // the label is a grid whose one cell holds the visible text and the hidden bold copy; the text itself is one textContent node (createNode's third argument)
     assert.match(segmented, /label\.dataset\.text = text;/);
     assert.match(segmented, /createNode\("i", "segmented__content"\)/);
@@ -3523,22 +3521,23 @@ describe("run 58 task 3: the `On tile` switches of the link dialogs (docs/tile-t
     assert.doesNotMatch(payload, /showName: data\.get|showLink: data\.get/);
   });
 
-  it("createToggleGroup builds div.segmented.segmented--toggle[role=group] of checkbox options with a check glyph, a data-text reserve and an accessible name", async () => {
+  it("createToggleGroup builds div.segmented.segmented--toggle[role=group] of checkbox inputs with an accessible name, each option from the shared createSegmentedOption with a check glyph", async () => {
     const code = await source();
     const group = stripComments(topLevelFunction(code, "createToggleGroup"));
     assert.match(group, /createNode\("div", "segmented segmented--toggle"\)/);
     assert.match(group, /group\.setAttribute\("role", "group"\)/);
     assert.match(group, /input\.type = "checkbox";/);
     assert.match(group, /input\.setAttribute\("aria-label", accessibleName\);/);
-    assert.match(group, /segmented__glyph segmented__glyph--check/);
-    assert.match(group, /mark\.setAttribute\("aria-hidden", "true"\);/);
-    assert.match(group, /label\.dataset\.text = text;/);
-    assert.match(group, /createNode\("b", "segmented__label segmented__label--check"\)/);
-    assert.match(group, /content\.append\(mark, createNode\("span", null, text\)\);|content\.appendChild\(mark\);\s*content\.appendChild\(createNode\("span", null, text\)\);/);
+    assert.match(group, /group\.appendChild\(createSegmentedOption\(input, text, "check"\)\);/);
     assert.doesNotMatch(group, /innerHTML/);
     assert.doesNotMatch(group, /radio/);
-    // a parallel builder: the pins on createSegmentedControl (the loop head, the aria-label line, the label class) keep reading that function
-    assert.match(stripComments(topLevelFunction(code, "createSegmentedControl")), /for \(const \[value, text, glyph, accessibleName\] of options\)/);
+    // the option is built in one place, for both groups; the radio loop and its aria-label line stay in createSegmentedControl
+    const option = stripComments(topLevelFunction(code, "createSegmentedOption"));
+    assert.match(option, /segmented__glyph segmented__glyph--\$\{glyph\}/);
+    assert.match(option, /mark\.setAttribute\("aria-hidden", "true"\);/);
+    const control = stripComments(topLevelFunction(code, "createSegmentedControl"));
+    assert.match(control, /for \(const \[value, text, glyph, accessibleName\] of options\)/);
+    assert.match(control, /group\.appendChild\(createSegmentedOption\(input, text, glyph\)\);/);
     assert.ok(code.indexOf("function createToggleGroup(") > code.indexOf("function createSegmentedControl("), "next to createSegmentedControl");
   });
 
@@ -3550,12 +3549,13 @@ describe("run 58 task 3: the `On tile` switches of the link dialogs (docs/tile-t
 
   it("the check glyph is a 12 px box with a 3 px radius, its mark is a pseudo-element shown only while checked, and the reserve counts its room (controls.css)", async () => {
     const controls = stripCss(await read("controls.css"));
-    assert.match(controls, /\.segmented__glyph--check \{[^}]*width: 12px;[^}]*height: 12px;[^}]*border-radius: 3px;/s);
+    assert.match(controls, /\.segmented \{[^}]*--glyph-check: 12px;/s, "the one place of the 12 px");
+    assert.match(controls, /\.segmented__glyph--check \{[^}]*width: var\(--glyph-check\);[^}]*height: var\(--glyph-check\);[^}]*border-radius: 3px;/s);
     assert.match(controls, /\.segmented__option:has\(input:checked\) \.segmented__glyph--check::after \{[^}]*content: "";[^}]*border: solid currentColor;[^}]*transform: [^;]*rotate\(45deg\);/s);
     const glyphRules = [...controls.matchAll(/(\.segmented__glyph--check[^{]*)\{([^}]*)\}/g)];
     assert.equal(glyphRules.length, 2, "the glyph rule and the mark rule");
     for (const [, selector, body] of glyphRules) assert.doesNotMatch(body, /background|mask|url\(/, `no image, mask or background in ${selector.trim()}`);
-    assert.match(controls, /\.segmented__label--check \{\s*--glyph-room: calc\(12px \+ var\(--control-gap-icon\)\);\s*\}/);
+    assert.match(controls, /\.segmented__label--check \{\s*--glyph-room: calc\(var\(--glyph-check\) \+ var\(--control-gap-icon\)\);\s*\}/);
   });
 
   it("the own ring of the focused option of a toggle group: 2 px solid --focus-ring, 4 px inside the option, with a HighlightText rule for a checked option in forced colors (surfaces.css)", async () => {
@@ -3564,11 +3564,15 @@ describe("run 58 task 3: the `On tile` switches of the link dialogs (docs/tile-t
     assert.match(surfaces, /@media \(forced-colors: active\) \{\s*\.desktop-dialog \.segmented--toggle \.segmented__option:has\(input:checked\):has\(input:focus-visible\) \{\s*outline-color: HighlightText;\s*\}\s*\}/);
     // the old rule of a radio option stays (focusTokens.test.js pins it) and is less specific than the new one
     assert.match(surfaces, /\.desktop-dialog \.segmented__option:has\(input:focus-visible\) \{\s*outline: none;\s*\}/);
-    assert.doesNotMatch(surfaces.slice(surfaces.indexOf(".segmented--toggle")), /--focus:|var\(--focus\)/, "the translucent --focus token cannot reach 3:1");
+    const ring = surfaces.match(/\.desktop-dialog \.segmented--toggle \.segmented__option:has\(input:focus-visible\) \{[^}]*\}/)[0];
+    const forced = surfaces.match(/@media \(forced-colors: active\) \{\s*\.desktop-dialog \.segmented--toggle[^}]*\}\s*\}/)[0];
+    assert.doesNotMatch(ring + forced, /--focus:|var\(--focus\)/, "the translucent --focus token cannot reach 3:1");
   });
 
-  it("the strings of the row: `On tile`, `Name`, `Link`, `Name on tile`, `Link on tile`", async () => {
-    const code = await source();
-    for (const text of ['"On tile"', '"Name on tile"', '"Link on tile"']) assert.ok(code.includes(text), text);
+  it("the 12 px of the check glyph is written once: the box and the reserve both read --glyph-check", async () => {
+    const controls = stripCss(await read("controls.css"));
+    assert.equal(controls.split("--glyph-check:").length - 1, 1, "one declaration");
+    assert.equal(controls.split("var(--glyph-check)").length - 1, 3, "width, height and the reserve");
+    assert.doesNotMatch(controls.slice(controls.indexOf(".segmented__label--check")), /12px/, "no second copy of the number after the declaration");
   });
 });

@@ -102,10 +102,12 @@
   gap: var(--form-footer-gap);
 }
 
-/* The two sides of the Size shape glyph: the one place of the numbers, read by .segmented__glyph--size-* and by the reserve (--glyph-room). */
+/* The two sides of the Size shape glyph and the side of the toggle check box: the one place of the numbers, read by .segmented__glyph--size-*,
+   .segmented__glyph--check and by the reserve (--glyph-room). */
 .segmented {
   --glyph-short: 5px;
   --glyph-long: 11px;
+  --glyph-check: 12px;
   display: flex;
   min-height: var(--control-height);
   border: var(--control-border-width) solid var(--border-control);
@@ -166,9 +168,9 @@
   --glyph-room: calc(var(--glyph-long) + var(--control-gap-icon));
 }
 
-/* The glyph of a toggle option is 12 px wide (.segmented__glyph--check below) whatever the window is. */
+/* The glyph of a toggle option is --glyph-check wide (.segmented__glyph--check below) whatever the window is. */
 .segmented__label--check {
-  --glyph-room: calc(12px + var(--control-gap-icon));
+  --glyph-room: calc(var(--glyph-check) + var(--control-gap-icon));
 }
 
 /* Not in the nowrap block (451 px and narrower, surfaces.css): there a label cannot wrap, and the bold width as the minimum width of each option would let
@@ -201,8 +203,8 @@
    option in forced colors, which paints HighlightText, keeps the mark visible. No transition: reduced motion changes nothing. */
 .segmented__glyph--check {
   position: relative;
-  width: 12px;
-  height: 12px;
+  width: var(--glyph-check);
+  height: var(--glyph-check);
   border-radius: 3px;
 }
 

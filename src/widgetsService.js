@@ -231,7 +231,7 @@ function newShowFields(payload) {
   return fields;
 }
 
-// Existing item: a payload without the key leaves the stored value, false is stored, true removes the key.
+// An item or a fresh fields object: a payload without the key leaves the target as it is, false is stored, true removes the key.
 function applyShowField(item, payload, key, message, field) {
   if (!Object.hasOwn(payload, key)) return;
   if (checkedBoolean(payload[key], message, field)) {

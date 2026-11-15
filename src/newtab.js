@@ -471,8 +471,7 @@ function createFavoriteIconNode(model, item) {
   return createFavoriteLetterNode(item, "letter");
 }
 
-// Spec § Tile content by size: 1-wide shows the icon only (the label is the accessible name), 2×1 adds a one-line
-// label, 2×2 a 40 px icon, a two-line label and the host name. Text only via text nodes.
+// Spec § Tile content by size: the lines come from favoriteTileText (docs/tile-text-options.md decision 2); text only via text nodes.
 function createFavoriteTile(item, cell) {
   const button = createNode("button", "favorite-tile");
   const iconModel = getFavoriteIconModel(item, { faviconBaseUrl });
@@ -507,64 +506,58 @@ function createFavoriteTile(item, cell) {
   return button;
 }
 
+// One option of a segmented control or a toggle group: label.segmented__option > input + b.segmented__label[data-text] > i.segmented__content (glyph + the one text span).
+// The glyph and the text are one unit (content), centred in a label that is as wide as the bold face needs: data-text feeds the bold-face reserve
+// (controls.css .segmented__label::after); the visible text stays one textContent node (docs/layers-weather-polish.md decision 12). The label and the
+// unit are <b> and <i> (styled back to normal in controls.css), not <span>, so that the text span stays the option's first span and its only one.
+function createSegmentedOption(input, text, glyph) {
+  const option = createNode("label", "segmented__option");
+  option.appendChild(input);
+  const content = createNode("i", "segmented__content");
+  if (glyph) {
+    const mark = createNode("i", `segmented__glyph segmented__glyph--${glyph}`);
+    mark.setAttribute("aria-hidden", "true");
+    content.appendChild(mark);
+  }
+  content.appendChild(createNode("span", null, text));
+  const label = createNode("b", glyph ? `segmented__label segmented__label--${glyph}` : "segmented__label");
+  label.dataset.text = text;
+  label.appendChild(content);
+  option.appendChild(label);
+  return option;
+}
+
 function createSegmentedControl(name, options, selectedValue) {
   const group = createNode("div", "segmented");
   group.setAttribute("role", "radiogroup");
 
   for (const [value, text, glyph, accessibleName] of options) {
-    const option = createNode("label", "segmented__option");
     const input = document.createElement("input");
     input.type = "radio";
     input.name = name;
     input.value = value;
     input.checked = value === selectedValue;
     if (accessibleName) input.setAttribute("aria-label", accessibleName); // starts with the visible text (WCAG 2.5.3)
-    option.appendChild(input);
-    // The glyph and the text are one unit (content), centred in a label that is as wide as the bold face needs: data-text feeds the bold-face reserve
-    // (controls.css .segmented__label::after); the visible text stays one textContent node (docs/layers-weather-polish.md decision 12). The label and the
-    // unit are <b> and <i> (styled back to normal in controls.css), not <span>, so that the text span stays the option's first span and its only one.
-    const content = createNode("i", "segmented__content");
-    if (glyph) {
-      const mark = createNode("i", `segmented__glyph segmented__glyph--${glyph}`);
-      mark.setAttribute("aria-hidden", "true");
-      content.appendChild(mark);
-    }
-    content.appendChild(createNode("span", null, text));
-    const label = createNode("b", glyph ? `segmented__label segmented__label--${glyph}` : "segmented__label");
-    label.dataset.text = text;
-    label.appendChild(content);
-    option.appendChild(label);
-    group.appendChild(option);
+    group.appendChild(createSegmentedOption(input, text, glyph));
   }
 
   return group;
 }
 
-// A group of independent on/off options (docs/tile-text-options.md decision 4): the look of a segmented control with a checkbox in each option. It is a parallel of
-// createSegmentedControl on purpose: the pins on that function keep reading it, and two checkboxes are a role=group, not a radiogroup. Items: [name, visible text,
+// A group of independent on/off options (docs/tile-text-options.md decision 4): the look of a segmented control with a checkbox in each option. Two checkboxes
+// are a role=group, not a radiogroup, so it is its own function; the option itself comes from createSegmentedOption. Items: [name, visible text,
 // accessible name (starts with the visible text, WCAG 2.5.3), checked]. The glyph box is always there (the width does not change with the state); its mark is CSS.
 function createToggleGroup(items) {
   const group = createNode("div", "segmented segmented--toggle");
   group.setAttribute("role", "group");
 
   for (const [name, text, accessibleName, checked] of items) {
-    const option = createNode("label", "segmented__option");
     const input = document.createElement("input");
     input.type = "checkbox";
     input.name = name;
     input.checked = checked;
     input.setAttribute("aria-label", accessibleName);
-    option.appendChild(input);
-    const content = createNode("i", "segmented__content");
-    const mark = createNode("i", "segmented__glyph segmented__glyph--check");
-    mark.setAttribute("aria-hidden", "true");
-    content.appendChild(mark);
-    content.appendChild(createNode("span", null, text));
-    const label = createNode("b", "segmented__label segmented__label--check");
-    label.dataset.text = text;
-    label.appendChild(content);
-    option.appendChild(label);
-    group.appendChild(option);
+    group.appendChild(createSegmentedOption(input, text, "check"));
   }
 
   return group;
