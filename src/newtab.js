@@ -3649,7 +3649,7 @@ function cancelDrag() {
 }
 
 function tabTrapFocusables(trapRoot) {
-  const controls = [...trapRoot.querySelectorAll('input, button:not([role="option"])')].filter((el) => {
+  const controls = [...trapRoot.querySelectorAll('input, button:not([role="option"]), [data-starters-locked="true"]')].filter((el) => {
     if (el.disabled || el.hidden) return false;
     for (let node = el; node !== trapRoot; node = node.parentElement) {
       if (!node) return false;

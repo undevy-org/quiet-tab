@@ -2759,7 +2759,18 @@ describe("city suggestion list source pins (run 45, docs/city-suggestion-list.md
   it("AS-CSL-04: tabTrapFocusables excludes role=option buttons from its candidates by selector", async () => {
     const code = await strippedSource();
     const trap = topLevelFunction(code, "tabTrapFocusables");
-    assert.match(trap, /querySelectorAll\(['"]input, button:not\(\[role="option"\]\)['"]\)/, "options are not trap candidates");
+    // Run 57 (docs/wizard-trap-add-dblclick.md decision 1): the locked starter list joins the selector; the option exclusion stays.
+    assert.match(trap, /querySelectorAll\(['"]input, button:not\(\[role="option"\]\), \[data-starters-locked="true"\]['"]\)/, "options are not trap candidates");
+  });
+
+  it("AS-WTA-01/04: the locked starter list is the one part added to the trap candidates; the disabled, hidden and inert filter stays", async () => {
+    const code = await strippedSource();
+    const trap = topLevelFunction(code, "tabTrapFocusables");
+    const selector = trap.match(/querySelectorAll\('([^']*)'\)/);
+    assert.ok(selector, "the candidate selector is a single-quoted literal");
+    assert.equal(selector[1], 'input, button:not([role="option"]), [data-starters-locked="true"]', "exactly the old selector plus the locked list, no tabindex selector");
+    assert.match(trap, /if \(el\.disabled \|\| el\.hidden\) return false;/);
+    assert.match(trap, /if \(node\.inert \|\| node\.hidden\) return false;/);
   });
 
   it("AS-CSL-12: .city-location-link:focus-visible pads the text by 1px with an equal negative margin, so the ring reaches 3px", async () => {
