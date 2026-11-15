@@ -1522,6 +1522,22 @@ describe("widgetsService tile text options (run 58)", () => {
       assert.equal(itemOf(state, "weather:temperature").showCity, false);
     });
 
+    it("a size and a flag in one call: the flags and the grid are both right", async () => {
+      const { service, store } = await createHarness();
+      await seed(store, [link({ showName: false })]);
+      let state = await service.updateFavorite("f0", { w: 2, h: 2, showName: true, showLink: false }, COLS);
+      let item = itemOf(state, "f0");
+      assert.equal(Object.hasOwn(item, "showName"), false, "true removes the key");
+      assert.equal(item.showLink, false);
+      assert.deepEqual(shown(item.grid), g(0, 0, 2, 2));
+      const metrics = await serviceWithMetrics();
+      state = await metrics.service.updateWeatherMetric("weather:temperature", { h: 2, enabled: true, showCity: false }, COLS);
+      item = itemOf(state, "weather:temperature");
+      assert.equal(item.showCity, false);
+      assert.equal(item.enabled, true);
+      assert.equal(shown(item.grid).h, 2);
+    });
+
     it("another link's change and a re-base to another column count keep the fields of every item", async () => {
       const { service, store } = await createHarness();
       await seed(store, [link({ showName: false }), link({ id: "f1", url: "https://f1.example.com/", domain: "f1.example.com", grid: g(1, 0), showLink: false })]);

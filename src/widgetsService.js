@@ -131,7 +131,7 @@ export function normalizeNullableImageUrl(input) {
   if (value.length > LINK_URL_MAX_LENGTH) {
     throw fieldError(ICON_LINK_TOO_LONG, "customIconUrl");
   }
-  // Same rule as the main link (docs/tile-text-options.md decision 7): a space needs its %20, the parser no longer encodes it for us.
+  // Same rule as the main link (docs/tile-text-options.md decision 7): whitespace is refused before parsing, so a space must be typed as %20.
   if (/\s/.test(value)) {
     throw fieldError("Enter a valid image URL", "customIconUrl");
   }
@@ -221,13 +221,12 @@ function checkedBoolean(value, message, field) {
   return value;
 }
 
-// New item: the keys of the payload that are false (a payload without the key, or with true, writes no key).
+// New item: the keys of the payload that are false (a payload without the key, or with true, writes no key). The "false is stored, true
+// writes nothing" rule lives in applyShowField only.
 function newShowFields(payload) {
   const fields = {};
   for (const [key, message] of LINK_SHOW_FIELDS) {
-    if (Object.hasOwn(payload, key) && !checkedBoolean(payload[key], message, key)) {
-      fields[key] = false;
-    }
+    applyShowField(fields, payload, key, message, key);
   }
   return fields;
 }
