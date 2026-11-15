@@ -746,6 +746,15 @@ img.onboarding-wizard__starter-icon[data-icon-check="pending"] {
   box-shadow: inset 0 0 0 1px var(--border-control);
 }
 
+/* Two checked neighbours in a toggle group (docs/tile-text-options.md, "Changes since the review of Task 2 and Task 3", L2-01): the seam is one line. Left as it is, it
+   is three: the inset stroke of the first option, its 1 px divider in the lighter --border, the inset stroke of the second. The first option then draws no stroke on its
+   right and paints the divider in --border-control, so the seam is that divider and the second option's own left stroke: 2 px of one colour, no lighter pixel between
+   two lines, the same thickness as the seam of a checked and an unchecked option (its inset stroke and the divider). Sizes and borders are the same, so no box moves. */
+.desktop-dialog .segmented--toggle .segmented__option:has(input:checked):has(+ .segmented__option input:checked) {
+  border-right-color: var(--border-control);
+  box-shadow: inset 1px 0 0 0 var(--border-control), inset 0 1px 0 0 var(--border-control), inset 0 -1px 0 0 var(--border-control);
+}
+
 /* Forced colors drop the soft fill and the inset ring, which left the selected segment marked by weight alone
    (docs/tile-size-followups.md decision 6d): it takes the system selection colors (the shape glyph follows through currentColor). */
 @media (forced-colors: active) {

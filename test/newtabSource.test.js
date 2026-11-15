@@ -3569,6 +3569,17 @@ describe("run 58 task 3: the `On tile` switches of the link dialogs (docs/tile-t
     assert.doesNotMatch(ring + forced, /--focus:|var\(--focus\)/, "the translucent --focus token cannot reach 3:1");
   });
 
+  it("two checked neighbours of a toggle group share one seam: the first option draws no right stroke and paints its divider in --border-control (L2-01, surfaces.css)", async () => {
+    const surfaces = stripCss(await read("surfaces.css"));
+    const rule = surfaces.match(/\.desktop-dialog \.segmented--toggle \.segmented__option:has\(input:checked\):has\(\+ \.segmented__option input:checked\) \{([^}]*)\}/);
+    assert.ok(rule, "the rule for a checked option followed by a checked option");
+    assert.match(rule[1], /border-right-color: var\(--border-control\);/);
+    assert.match(rule[1], /box-shadow: inset 1px 0 0 0 var\(--border-control\), inset 0 1px 0 0 var\(--border-control\), inset 0 -1px 0 0 var\(--border-control\);/, "left, top and bottom strokes, none on the right");
+    assert.doesNotMatch(rule[1], /width|height|padding|margin|border-right-width/, "no box moves: dg-86 and dg-92 compare the groups with zero tolerance");
+    // it comes after the selected-option rule of the dialog, so its box-shadow replaces that rule's all-sides stroke
+    assert.ok(surfaces.indexOf(rule[0]) > surfaces.indexOf(".desktop-dialog .segmented__option:has(input:checked) {"));
+  });
+
   it("the 12 px of the check glyph is written once: the box and the reserve both read --glyph-check", async () => {
     const controls = stripCss(await read("controls.css"));
     assert.equal(controls.split("--glyph-check:").length - 1, 1, "one declaration");
