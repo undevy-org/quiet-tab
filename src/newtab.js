@@ -3059,6 +3059,8 @@ async function healClearedDesk(state) {
     // keep what we have: the grid stays as it is until a reload
   }
   const healed = result.items.some((item) => item.id === SETTINGS_TILE_ID);
+  // a heal that succeeded spends the failed-ensure flag whatever it says: the notice was read before it (`healNoticeFor`), and a flag left true would turn the next heal's honest reset message silent
+  if (healed) widgetsEnsureFailed = false;
   if (healed) await dropCityClearedElsewhere();
   return { state: result, healed, failed: !healed };
 }

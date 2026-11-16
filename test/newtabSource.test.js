@@ -3783,6 +3783,13 @@ describe("run 59 task 4: weather and the return of the tab (docs/backlog-closeou
     assert.equal((all.match(/applySilentHeal\(\)/g) ?? []).length, 4, "defined once, used at the three sites");
   });
 
+  it("decision 3, branch review M1: a heal that succeeded spends the failed-ensure flag in healClearedDesk, after `healed` is known and before the city is dropped", async () => {
+    const fn = topLevelFunction(await code(), "healClearedDesk");
+    assert.equal((fn.match(/widgetsEnsureFailed = false;/g) ?? []).length, 1, "one statement");
+    assert.match(fn, /if \(healed\) widgetsEnsureFailed = false;\s*if \(healed\) await dropCityClearedElsewhere\(\);\s*return \{ state: result, healed, failed: !healed \};/, "under `healed` only: a failed heal keeps the flag");
+    assert.ok(fn.indexOf("const healed =") < fn.indexOf("widgetsEnsureFailed = false;"), "after healed is known");
+  });
+
   it("decision 3 and L0-28: the silent branch reads the focus BEFORE the chip is hidden, spends the flag, hides any persistent chip and puts the focus on Settings without scrolling", async () => {
     const silent = topLevelFunction(await code(), "applySilentHeal");
     const read = silent.indexOf("const focusWasInStatus = Boolean(desktopStatus?.contains(document.activeElement));");
@@ -3899,7 +3906,7 @@ describe("run 59 task 5: the Add menu, the dialog press, the city field and the 
     assert.match(quiet, /favoritesRoot\?\.querySelector\(":scope > \.grid-unreadable > p"\);\s*message\?\.removeAttribute\("role"\);\s*message\?\.removeAttribute\("aria-live"\);/);
     assert.equal((all.match(/quietUnreadableAlert\(\)/g) ?? []).length, 2, "the definition and one call, from the Reset grid branch of openDesktopDialog");
     assert.match(topLevelFunction(all, "openDesktopDialog"), /if \(dialog\.kind === "confirm-reset-grid"\) \{\s*guardResetDialogPresses\(root\);\s*quietUnreadableAlert\(\);\s*\}/);
-    assert.doesNotMatch(all, /alertSpoken|unreadableAlert(Spoken|Done)|\b(?:let|var) \w*(?:unreadable|reset|screen|grid|quiet|spoken|announced)\w*alert\w* =|\b(?:let|var) \w*alert\w*(?:unreadable|reset|screen|grid|quiet|spoken|announced|once|done)\w* =/i, "no flag");
+    assert.doesNotMatch(all, /alertSpoken|unreadableAlert(?:Spoken|Done)|\b(?:let|var) \w*(?:[Uu]nreadable|[Rr]eset|[Ss]creen|[Gg]rid|[Qq]uiet|[Ss]poken|[Aa]nnounced)\w*[Aa]lert\w* = (?:false|true|0|1)\b|\b(?:let|var) \w*[Aa]lert\w*(?:Unreadable|Reset|Screen|Grid|Quiet|Spoken|Announced|Once|Done)\w* = (?:false|true|0|1)\b/, "no boolean or counter flag for the screen's alert (a node or a function named for the alert is not one)");
     assert.match(all, /block\.append\(createStatus\(UNREADABLE_GRID_MESSAGE, \{ error: true, live: "assertive", full: true \}\), reset\);/);
     assert.match(all, /favoritesRoot\.replaceChildren\(createStatus\(NEWER_WIDGETS_MESSAGE, \{ error: true, live: "assertive", full: true \}\)\);/, "the newer screen keeps its alert");
   });
@@ -3960,7 +3967,7 @@ describe("run 59 task 6: the 50/50 footer buttons may shrink and the dialog segm
     assert.deepEqual(footerButtons.map((r) => r.selector).sort(), [".city-modal__actions .button", ".favorite-form__footer .button"]);
   });
 
-  it("decision 9: a (max-width: 14rem) block after the 451 px block with one rule, .desktop-dialog .segmented__option { padding: 0 4px; }, and nothing else in it", async () => {
+  it("decision 9: a (max-width: 14rem) block after the 451 px block with one rule, .desktop-dialog .segmented__option { padding-inline: 4px; }, and nothing else in it", async () => {
     const css = await readCss("surfaces.css");
     const narrow = mediaBlock(css, "@media (max-width: 451px)");
     const enlarged = mediaBlock(css, "@media (max-width: 14rem)");
@@ -3968,7 +3975,8 @@ describe("run 59 task 6: the 50/50 footer buttons may shrink and the dialog segm
     const rules = cssRules(enlarged.inner);
     assert.equal(rules.length, 1, "one rule in the block");
     assert.equal(rules[0].selector, ".desktop-dialog .segmented__option");
-    assert.deepEqual(decls(rules[0]), ["padding: 0 4px"]);
+    assert.deepEqual(decls(rules[0]), ["padding-inline: 4px"], "the side padding only: a font of 33 px and more makes 14rem wider than 451 px, and the vertical 4 px of the wide block must survive");
+    assert.doesNotMatch(enlarged.inner, /padding:/, "no shorthand in the block");
     // the 451 px block is as it was: the 5 px padding, no wrapping, the glyph unit
     const base = cssRules(narrow.inner).find((r) => r.selector === ".desktop-dialog .segmented__option");
     assert.deepEqual(decls(base), ["padding: 0 5px", "white-space: nowrap"]);
@@ -3980,7 +3988,7 @@ describe("run 59 task 6: the 50/50 footer buttons may shrink and the dialog segm
     const enlarged = mediaBlock(css, "@media (max-width: 14rem)").inner;
     assert.doesNotMatch(enlarged, /segmented--toggle/);
     const all = cssRules(css).filter((r) => r.selector.includes("segmented__option") && decls(r).some((d) => /^padding(?:-inline)?:/.test(d)));
-    assert.deepEqual(all.map((r) => [r.selector, decls(r).find((d) => d.startsWith("padding"))]), [[".desktop-dialog .segmented__option", "padding: 0 5px"], [".desktop-dialog .segmented__option", "padding: 0 4px"]], "the two padding rules of the dialogs' options, in source order: 5 px at 451 px, 4 px at 14rem");
+    assert.deepEqual(all.map((r) => [r.selector, decls(r).find((d) => d.startsWith("padding"))]), [[".desktop-dialog .segmented__option", "padding: 0 5px"], [".desktop-dialog .segmented__option", "padding-inline: 4px"]], "the two padding rules of the dialogs' options, in source order: 5 px at 451 px, 4 px at 14rem");
   });
 });
 
