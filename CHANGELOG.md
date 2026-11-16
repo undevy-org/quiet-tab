@@ -77,7 +77,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   which lines a link tile draws (both on, as before, is the default; the setting is per tile and is kept when the tile is resized, moved or the
   page reloaded). A 2×1 tile with the name off shows the host in its place; a tile with both off shows the icon centered in the tile, and the
   tile keeps its hover title and its accessible name. A tile that draws only the host is named `Open <name>, <host>` (`Edit ...` in edit mode)
-  so that the visible text is part of the name; every other tile keeps `Open <name>` / `Edit <name>`. Edit weather has a `City label` row (`Shown` or `Hidden`) that hides the city line of a
+  so that the visible text is part of the name (a link with no name, whose label is its host, keeps `Open <host>`: the host is not read twice); every other tile keeps `Open <name>` / `Edit <name>`. Edit weather has a `City label` row (`Shown` or `Hidden`) that hides the city line of a
   tall weather tile; the city itself stays saved and still opens the city window. Nothing is stored for a tile that shows everything (the three
   settings are written only when off), so a grid that never uses them is unchanged.
 - A page whose saved grid cannot be read now says so: `Your grid couldn't be read.` with a `Reset grid` button; the button asks first (`Your links will be removed.`), erases the grid's own saved data (the widgets meta and every tile key, in Chrome Sync) and loads the page again as a fresh install. The city and the first-run flags stay; a newer-version grid is still read-only and never erased (`docs/unreadable-grid-reset.md`, E2E `dg-91-unreadable-grid-reset.mjs`).

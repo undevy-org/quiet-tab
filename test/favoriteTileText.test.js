@@ -78,6 +78,26 @@ describe("favoriteTileName (docs/tile-text-options.md decision 3)", () => {
     }
   });
 
+  // Final design review L1-02, L3-01: a link added with no name has label = host. The host is then the visible text and already in the name,
+  // so it is not said twice (`Open example.net, example.net`).
+  it("a tile that draws only the host keeps the label alone when the label is the host (compared after trim and lower case)", () => {
+    for (const size of [SIZES["2x1"], SIZES["1x2"], SIZES["2x2"]]) {
+      const same = { label: "example.net", domain: "example.net", showName: false };
+      assert.equal(favoriteTileName(same, size, false), "Open example.net");
+      assert.equal(favoriteTileName(same, size, true), "Edit example.net");
+      assert.equal(favoriteTileName({ ...same, label: "Example.NET" }, size, false), "Open Example.NET");
+      assert.equal(favoriteTileName({ ...same, domain: " example.net " }, size, false), "Open example.net");
+      assert.equal(favoriteTileName({ ...same, domain: "EXAMPLE.net" }, size, true), "Edit example.net");
+    }
+  });
+
+  it("a label that is the host cut to 100 characters is not the host, so the host is added (as is, pinned)", () => {
+    const domain = `${"a".repeat(63)}.${"b".repeat(63)}.example.net`;
+    const label = domain.slice(0, 100);
+    assert.notEqual(label, domain);
+    assert.equal(favoriteTileName({ label, domain, showName: false }, SIZES["2x1"], false), `Open ${label}, ${domain}`);
+  });
+
   it("every other tile keeps the action plus the label", () => {
     for (const row of TABLE.filter((r) => !(r.showName === false && r.showLink === true))) {
       for (const size of Object.values(SIZES)) {
