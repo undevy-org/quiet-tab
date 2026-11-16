@@ -983,10 +983,12 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     assert.doesNotMatch(begin, /\+ 2\b/, "no spare rows beyond the allowed area");
   });
 
-  it("uses the wide weather model for 2-wide tiles and adds the city line only at 2 high (R6)", async () => {
+  it("uses the wide weather model for 2-wide tiles and adds the city line only at 2 high and only while the tile's showCity is not false (R6, run 58 decision 5)", async () => {
     const tile = fn(await source(), "createWeatherMetricTile");
     assert.match(tile, /const size = cell\.w === 2 \? "wide" : cell\.h === 2 \? "tall" : "square";/); // docs/tile-size-1x2.md decision 6
-    assert.match(tile, /if \(cell\.h === 2 && cityName\) tile\.appendChild\(createNode\("span", "weather-tile__city", cityName\)\);/);
+    // run 58 (docs/tile-text-options.md decision 5): replaces the pin on `if (cell.h === 2 && cityName)`; the old condition is the tail of the new one
+    assert.match(tile, /if \(item\.showCity !== false && cell\.h === 2 && cityName\) tile\.appendChild\(createNode\("span", "weather-tile__city", cityName\)\);/);
+    assert.doesNotMatch(tile, /showCity === true|showCity \? /, "a missing field means shown: the test is `!== false`, never `=== true`");
   });
 
   it("leads every weather tile with its decorative metric glyph from the vendored icons, sized by CSS per tile size", async () => {
@@ -1061,8 +1063,9 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     assert.match(build, /createNode\("p", "desktop-dialog__body", "This removes the link from your grid\."\)/);
     assert.match(build, /createIconButton\("button button--danger", "Delete", "trash2"\)/);
     assert.match(build, /widgetsService\.updateFavorite\(item\.id, payload, \{ columns \}\)/);
-    assert.match(build, /widgetsService\.updateWeatherMetric\(item\.id, size, \{ columns \}\)/);
-    assert.match(build, /save\.disabled = true; \/\/ enabled only when the size changed/);
+    // run 58 (decision 5) replaces two pins that named the size-only rule: the payload carries the city label too and Save compares both values with the opening ones
+    assert.match(build, /widgetsService\.updateWeatherMetric\(item\.id, \{ \.\.\.size, showCity \}, \{ columns \}\)/);
+    assert.match(build, /save\.disabled = true; \/\/ enabled only when the size or the city label differs from what the dialog opened with/);
     assert.match(build, /showCityModal\("change", WEATHER_DIALOG_CITY_SELECTOR\)/);
     assert.match(code, /const WEATHER_DIALOG_CITY_SELECTOR = '\[data-dialog="edit-weather"\] \[data-weather-action="open-city-modal"\]';/);
     // AS-MO-10 (updated by run 44, AS-CMF-11/22): the city-field is one button; with a city the hint is `Change`; with no city the value line
@@ -3585,5 +3588,19 @@ describe("run 58 task 3: the `On tile` switches of the link dialogs (docs/tile-t
     assert.equal(controls.split("--glyph-check:").length - 1, 1, "one declaration");
     assert.equal(controls.split("var(--glyph-check)").length - 1, 3, "width, height and the reserve");
     assert.doesNotMatch(controls.slice(controls.indexOf(".segmented__label--check")), /12px/, "no second copy of the number after the declaration");
+  });
+});
+
+describe("run 58 task 4: the city label of the weather tiles (docs/tile-text-options.md decision 5, AS-TTO-12..14)", () => {
+  it("Edit weather (run 58, decision 5): the rows stand City, City label, Size; City label is a Shown/Hidden radiogroup preselected from showCity; Save compares the size and the label with the opening values; the payload carries showCity as a boolean", async () => {
+    const build = topLevelFunction(await source(), "buildDialogContent");
+    const edit = build.slice(build.indexOf('case "edit-weather"'), build.indexOf("default:", build.indexOf('case "edit-weather"')));
+    const order = ['createFormRow("City", cityField)', 'createFormRow("City label"', 'createFormRow("Size", createSizeControl(size))'].map((needle) => edit.indexOf(needle));
+    assert.ok(order.every((i) => i !== -1) && order[0] < order[1] && order[1] < order[2], `the order of the rows: ${order}`);
+    assert.match(edit, /createFormRow\("City label", createSegmentedControl\("cityLabel", \[\["shown", "Shown"\], \["hidden", "Hidden"\]\], initialLabel\)\)/);
+    assert.match(edit, /const initialLabel = item\.showCity === false \? "hidden" : "shown";/);
+    assert.match(edit, /save\.disabled = data\.get\("size"\) === initial && data\.get\("cityLabel"\) === initialLabel;/);
+    assert.match(edit, /const showCity = data\.get\("cityLabel"\) !== "hidden";/);
+    assert.match(edit, /if \(!size \|\| save\.disabled\) return;/, "the double Save and the unchanged Save write nothing");
   });
 });

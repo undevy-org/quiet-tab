@@ -2205,7 +2205,8 @@ function createWeatherMetricTile(item, cell, view) {
   if (model.secondary) values.appendChild(createNode("span", "weather-tile__secondary", model.secondary));
   tile.appendChild(values);
   const cityName = view?.location?.name;
-  if (cell.h === 2 && cityName) tile.appendChild(createNode("span", "weather-tile__city", cityName));
+  // The city line stands on a tall tile only while the tile's city label is not Hidden (docs/tile-text-options.md decision 5): a missing showCity means shown.
+  if (item.showCity !== false && cell.h === 2 && cityName) tile.appendChild(createNode("span", "weather-tile__city", cityName));
   const description = createNode("span", "sr-only", model.description);
   description.id = `weather-desc-${weatherMetricKey(item.id)}`;
   description.dataset.tooltipText = "";
@@ -2468,24 +2469,35 @@ function buildDialogContent(root, dialog) {
       // A lenient read may have dropped a malformed grid: the size shown is the displayed cell's (spec § Reading grid).
       const size = displayedSize(item);
       const initial = `${size.w}x${size.h}`;
+      // The city label of the tile (docs/tile-text-options.md decision 5): Shown unless the item has showCity false.
+      const initialLabel = item.showCity === false ? "hidden" : "shown";
       const save = createIconButton("button button--primary", "Save", "check");
       save.type = "submit";
-      save.disabled = true; // enabled only when the size changed
+      save.disabled = true; // enabled only when the size or the city label differs from what the dialog opened with
       form.addEventListener("change", () => {
-        save.disabled = new FormData(form).get("size") === initial;
+        const data = new FormData(form);
+        save.disabled = data.get("size") === initial && data.get("cityLabel") === initialLabel;
       });
       form.addEventListener("submit", (event) => {
         event.preventDefault();
-        const size = readSize(new FormData(form).get("size"));
+        const data = new FormData(form);
+        const size = readSize(data.get("size"));
         if (!size || save.disabled) return;
+        const showCity = data.get("cityLabel") !== "hidden";
         void runDesktopMutation(
-          (columns) => widgetsService.updateWeatherMetric(item.id, size, { columns }),
+          (columns) => widgetsService.updateWeatherMetric(item.id, { ...size, showCity }, { columns }),
           { dialogRoot: root }
         ).then((ok) => {
           if (ok) closeDesktopDialog({ reveal: true });
         });
       });
-      form.append(createFormRow("City", cityField), createFormRow("Size", createSizeControl(size)), createDialogErrorSlot(), createDialogFooter(createDialogCancel(), save));
+      form.append(
+        createFormRow("City", cityField),
+        createFormRow("City label", createSegmentedControl("cityLabel", [["shown", "Shown"], ["hidden", "Hidden"]], initialLabel)),
+        createFormRow("Size", createSizeControl(size)),
+        createDialogErrorSlot(),
+        createDialogFooter(createDialogCancel(), save)
+      );
       root.append(title, form);
       syncWeatherDialogCity(root);
       break;
