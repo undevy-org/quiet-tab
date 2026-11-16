@@ -3604,3 +3604,21 @@ describe("run 58 task 4: the city label of the weather tiles (docs/tile-text-opt
     assert.match(edit, /if \(!size \|\| save\.disabled\) return;/, "the double Save and the unchanged Save write nothing");
   });
 });
+
+describe("run 58 task 5: the custom icon hint and the plain image (docs/tile-text-options.md decision 6, AS-TTO-15, 16, 22)", () => {
+  it("the Custom icon placeholder is https://example.com/icon and no format is named anywhere in the field's text", async () => {
+    const form = stripComments(topLevelFunction(await source(), "createFavoriteForm"));
+    assert.match(form, /customIconUrl\.placeholder = "https:\/\/example\.com\/icon";/);
+    assert.doesNotMatch(form, /icon\.(png|svg|jpe?g|gif|webp|ico)/i, "the old hint said icon.png, which reads as PNG only");
+    assert.match(form, /url\.placeholder = "https:\/\/example\.com";/, "the Link field keeps its own hint, the model of the icon one");
+  });
+
+  it("a custom icon is a plain <img> of the typed link: the letter on error, no canvas or network read of the image, and the globe check only for a favicon", async () => {
+    const node = stripComments(topLevelFunction(await source(), "createFavoriteIconNode"));
+    assert.match(node, /image\.addEventListener\("error", \(\) => \{\s*image\.replaceWith\(createFavoriteLetterNode\(item, "letter"\)\);/);
+    assert.match(node, /image\.dataset\.iconSource = item\.iconMode === "custom" \? "custom" : "favicon";/);
+    assert.match(node, /if \(item\.iconMode !== "custom"\) \{\s*const letter = attachDefaultFaviconCheck/);
+    assert.match(node, /image\.src = model\.src;/);
+    assert.doesNotMatch(node, /canvas|drawImage|getImageData|fetch\(|XMLHttpRequest|crossOrigin|createImageBitmap/, "the image is never read: no canvas, no request of our own, no CORS mode");
+  });
+});

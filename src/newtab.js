@@ -634,7 +634,7 @@ function createFavoriteForm(item) {
   customIconUrl.type = "text";
   customIconUrl.inputMode = "url";
   customIconUrl.value = isEdit ? item.customIconUrl ?? "" : "";
-  customIconUrl.placeholder = "https://example.com/icon.png";
+  customIconUrl.placeholder = "https://example.com/icon"; // no format named (docs/tile-text-options.md decision 6); the Link field's hint is the model
   const customIconRow = createFormRow("Custom icon", customIconUrl);
   customIconRow.classList.add("favorite-form__row--custom-icon");
 
