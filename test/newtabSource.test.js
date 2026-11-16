@@ -3628,3 +3628,89 @@ describe("run 58 task 5: the custom icon hint and the plain image (docs/tile-tex
     assert.doesNotMatch(node, /canvas|drawImage|getImageData|fetch\(|XMLHttpRequest|crossOrigin|createImageBitmap/, "the image is never read: no canvas, no request of our own, no CORS mode");
   });
 });
+
+describe("run 59 task 3: the render path (docs/backlog-closeout.md decisions 1, 5, 6, 7; AS-BC-01 to AS-BC-05)", () => {
+  const renderOf = async () => topLevelFunction(stripComments(await source()), "renderDesktop");
+
+  it("decision 1: a render while a drag has started gives the new grid max(own rows, dragSession.rows) and data-dragging BEFORE replaceChildren, from the condition reattachDrag uses", async () => {
+    const render = await renderOf();
+    const rule = render.indexOf("if (dragSession?.started && draggedTileIn(grid)) {");
+    assert.notEqual(rule, -1, "the rule is guarded by a started drag and the one predicate");
+    const replace = render.indexOf("favoritesRoot.replaceChildren(grid);");
+    assert.ok(rule < replace, "the new grid is made as high as the drag grid before it replaces the old one");
+    const block = render.slice(rule, render.indexOf("}", rule) + 1);
+    assert.match(block, /grid\.dataset\.dragging = "true";/);
+    assert.match(block, /grid\.style\.setProperty\("--rows", String\(Math\.max\(ownRows, dragSession\.rows\)\)\);/);
+    assert.doesNotMatch(block, /dragHoldPx|dragSettling|pendingDrop/, "the rule neither reads nor writes the hold state");
+    assert.match(render, /const ownRows = Math\.max\(1, \.\.\.entries\.map\(\(\{ cell \}\) => cell\.y \+ cell\.h\)\);/);
+  });
+
+  it("decision 1 and AS-BC-02 (c): the drag-height rule and reattachDrag take their condition from ONE predicate (the dragged tile in the new grid, edit mode on)", async () => {
+    const code = stripComments(await source());
+    const predicate = topLevelFunction(code, "draggedTileIn");
+    assert.match(predicate, /if \(!dragSession \|\| !desktopUi\.editMode\) return null;/);
+    assert.match(predicate, /grid\.querySelector\(`:scope > \[data-widget-id="\$\{CSS\.escape\(dragSession\.domId\)\}"\]`\)/);
+    const reattach = topLevelFunction(code, "reattachDrag");
+    assert.match(reattach, /const tile = grid \? draggedTileIn\(grid\) : null;\s*if \(!tile\) \{\s*stopDragFrame\(s\);\s*dragSession = null;\s*desktopUi = endDrag\(desktopUi\);\s*return;/);
+    assert.equal((code.match(/draggedTileIn\(/g) ?? []).length, 3, "defined once, used by the render rule and by reattachDrag");
+  });
+
+  it("decision 1: a started drag whose page the hold branch clamped judges its target again after putting the page back", async () => {
+    const render = await renderOf();
+    const put = render.indexOf("window.scrollTo(0, scrollY);");
+    assert.notEqual(put, -1);
+    assert.match(render.slice(put, put + 700), /if \(dragSession\?\.started\) updateDragTarget\(dragSession\);/);
+  });
+
+  it("decision 5: after the render in edit mode only the tile-jiggle animations of the new grid get startTime 0; reduced motion and normal mode call nothing", async () => {
+    const code = stripComments(await source());
+    const align = topLevelFunction(code, "alignJiggle");
+    assert.match(align, /if \(!desktopUi\.editMode \|\| prefersReducedMotion\(\)\) return;/);
+    assert.match(align, /grid\.getAnimations\(\{ subtree: true \}\)/);
+    assert.match(align, /if \(animation\.animationName === "tile-jiggle"\) animation\.startTime = 0;/);
+    assert.equal((align.match(/startTime/g) ?? []).length, 1, "nothing else is aligned (the tile-added ring keeps its own start)");
+    const render = topLevelFunction(code, "renderDesktop");
+    assert.ok(render.indexOf("scrollTo(0, scrollY)") < render.indexOf("alignJiggle(grid);"), "after the grid is attached and the page is put back");
+    assert.ok(render.indexOf("alignJiggle(grid);") < render.indexOf("restoreKeyboardTooltip("), "before the tooltip read of the tile's rectangle");
+  });
+
+  it("decision 6: the tooltip's tile is remembered before the first hideTooltip() and shown again at the very end, for keyboard focus only", async () => {
+    const code = stripComments(await source());
+    const render = topLevelFunction(code, "renderDesktop");
+    const remember = render.indexOf("const keyboardTooltipId = keyboardTooltipTileId();");
+    assert.notEqual(remember, -1);
+    assert.ok(remember < render.indexOf("hideTooltip();"), "remembered before the hide");
+    const scrollTo = render.indexOf("scrollTo(0, scrollY)");
+    const restore = render.indexOf("restoreKeyboardTooltip(keyboardTooltipId);");
+    assert.ok(restore > render.indexOf("restoreFocus(focusTarget)") && restore > scrollTo, "after restoreFocus and after the scrollTo of the hold branch");
+    assert.equal(render.slice(restore).includes("}\n  "), false, "nothing but the closing brace follows: it is the last statement of renderDesktop");
+    const which = topLevelFunction(code, "keyboardTooltipTileId");
+    assert.match(which, /document\.activeElement !== trigger \|\| !trigger\.matches\(":focus-visible"\)/, "the tile is the focused element and matches :focus-visible");
+    assert.match(which, /tooltipLayer\.hidden/);
+    const back = topLevelFunction(code, "restoreKeyboardTooltip");
+    assert.match(back, /tile\.dataset\.widgetId !== id/);
+    assert.match(back, /!tile\.matches\(":focus-visible"\)/);
+    assert.match(back, /if \(desktopUi\.editMode \|\| dragSession\) return;/);
+    assert.match(back, /openTooltipScrollWindow\(\);\s*showTooltipFor\(tile\);/);
+    // a window resize is not covered: its listener hides the tooltip before the render, so nothing is remembered and the resize handler stays as it is
+    assert.match(code, /window\.addEventListener\("resize", hideTooltip\);/);
+  });
+
+  it("decision 7: a document scroll hides the tooltip unless the clock window or the one-shot flag covers it; a focus and the restore open the window; an animation-frame callback closes the flag", async () => {
+    const code = stripComments(await source());
+    assert.match(code, /const tooltipScrollWindowOpen = \(\) => ignoreNextScroll \|\| performance\.now\(\) < ignoreScrollUntil;/);
+    const open = topLevelFunction(code, "openTooltipScrollWindow");
+    assert.match(open, /ignoreScrollUntil = performance\.now\(\) \+ TOOLTIP_FOCUS_SCROLL_MS;/);
+    assert.match(open, /ignoreNextScroll = true;/);
+    assert.match(open, /requestAnimationFrame\(\(\) => \{\s*if \(token === scrollWindowToken\) ignoreNextScroll = false;\s*\}\);/);
+    assert.match(code, /const TOOLTIP_FOCUS_SCROLL_MS = 250;/);
+    const handler = topLevelFunction(code, "onWindowScroll");
+    assert.ok(handler.indexOf("if (!tooltipScrollWindowOpen()) hideTooltip();") !== -1 && handler.indexOf("if (!tooltipScrollWindowOpen()) hideTooltip();") < handler.indexOf("dragSession?.started"), "the hide comes first, then the drag target and the hold release as before");
+    // the older listener of #favorites (scroll in a nested scroller, wheel, touchmove) stays, on the same window
+    assert.match(code, /favoritesRoot\?\.addEventListener\(\s*"scroll",\s*\(\) => \{\s*if \(!tooltipScrollWindowOpen\(\)\) hideTooltip\(\);\s*\},\s*true\s*\);/);
+    assert.match(code, /favoritesRoot\?\.addEventListener\("wheel", hideTooltip, \{ passive: true \}\);/);
+    assert.match(code, /favoritesRoot\?\.addEventListener\("touchmove", hideTooltip, \{ passive: true \}\);/);
+    // the focusin handler opens the window (the scroll its focus causes) before it schedules the show
+    assert.match(code, /openTooltipScrollWindow\(\);\s*requestAnimationFrame\(\(\) => \{\s*if \(document\.activeElement === trigger\) showTooltipFor\(trigger\);/);
+  });
+});

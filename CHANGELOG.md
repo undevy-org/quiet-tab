@@ -144,6 +144,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A render during a drag (a weather answer, a retry, a tab-return re-read) no longer shifts the page by a row under the held pointer (the pressed tile has the
+  focus and its re-focus clamped the page): the new grid keeps the drag grid's height, the outline stays on the cell under the pointer, and the drop lands on it
+  (`docs/backlog-closeout.md` decision 1). E2E: `dg-95-backlog-closeout.mjs` group g1.
+- The jiggle of edit mode keeps its phase when a render replaces the tiles (a weather answer, Add link): no jump of up to 1.2 degrees, and a tile
+  created by the render joins the same phase (decision 5). E2E: `dg-95` group g2.
+- The tooltip of a keyboard-focused tile comes back after a render (a retry, a weather answer, a tab-return re-read) instead of staying closed
+  (decision 6; a tooltip open for the pointer and one closed by a window resize are not restored), and any scroll of the document (arrow keys, Page Down, the
+  scrollbar) hides the tooltip instead of leaving it where the tile was; the scroll a focus itself causes does not hide it (decision 7). E2E:
+  `dg-95` group g3.
 - Drag and scrolling (`docs/drag-scroll-target.md`): the drop outline now follows every scroll of the page during a drag (wheel,
   keys, scrollbar), not only the pointer, and a release writes to the cell under the pointer.
 - A tile dropped on a page scrolled to its bottom lands on its outline: the page keeps the height its scroll position needs until you scroll

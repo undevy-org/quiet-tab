@@ -175,7 +175,24 @@ document.body.appendChild(tooltipLayer);
 
 let tooltipTrigger = null;
 let suppressTooltipOnFocus = false;
+// The scroll that a tooltip's own focus (or the render that brought it back) causes must not hide it (docs/backlog-closeout.md decision 7).
+// The window is the clock (250 ms) or a one-shot flag, whichever still covers the event: the scroll event of a scroll caused by a focus comes in
+// the next frame's scroll steps, before that frame's animation-frame callbacks, so the flag (cleared by such a callback) covers a frame that a
+// busy thread delayed past the 250 ms. A hidden tab runs no callbacks: the flag then stays until its first frame (accepted, exception 12).
+const TOOLTIP_FOCUS_SCROLL_MS = 250;
 let ignoreScrollUntil = 0;
+let ignoreNextScroll = false;
+let scrollWindowToken = 0;
+
+function openTooltipScrollWindow() {
+  ignoreScrollUntil = performance.now() + TOOLTIP_FOCUS_SCROLL_MS; // the browser may scroll the tile into view
+  ignoreNextScroll = true;
+  const token = (scrollWindowToken += 1);
+  requestAnimationFrame(() => {
+    if (token === scrollWindowToken) ignoreNextScroll = false;
+  });
+}
+const tooltipScrollWindowOpen = () => ignoreNextScroll || performance.now() < ignoreScrollUntil;
 
 function hideTooltip() {
   tooltipLayer.hidden = true;
@@ -224,7 +241,7 @@ favoritesRoot?.addEventListener("focusin", (event) => {
   if (suppressTooltipOnFocus) return;
   const trigger = tooltipTriggerOf(event);
   if (!trigger || !trigger.matches(":focus-visible")) return;
-  ignoreScrollUntil = performance.now() + 250; // the browser may scroll the tile into view
+  openTooltipScrollWindow();
   requestAnimationFrame(() => {
     if (document.activeElement === trigger) showTooltipFor(trigger);
   });
@@ -235,7 +252,7 @@ favoritesRoot?.addEventListener("focusout", (event) => {
 favoritesRoot?.addEventListener(
   "scroll",
   () => {
-    if (performance.now() >= ignoreScrollUntil) hideTooltip();
+    if (!tooltipScrollWindowOpen()) hideTooltip();
   },
   true
 );
@@ -3293,6 +3310,7 @@ let renderedCell = 0;
 // the current column count; never written by a render), in (y, x) DOM order.
 function renderDesktop() {
   if (!favoritesRoot) return;
+  const keyboardTooltipId = keyboardTooltipTileId(); // before the hide: the tooltip of a keyboard-focused tile comes back at the end (decision 6)
   hideTooltip();
   if (widgetsNewer) {
     favoritesRoot.replaceChildren(createStatus(NEWER_WIDGETS_MESSAGE, { error: true, live: "assertive", full: true }));
@@ -3355,9 +3373,16 @@ function renderDesktop() {
   entries.sort((a, b) => a.cell.y - b.cell.y || a.cell.x - b.cell.x);
 
   const grid = createNode("div", "desktop-grid");
+  const ownRows = Math.max(1, ...entries.map(({ cell }) => cell.y + cell.h));
   grid.style.setProperty("--grid-columns", String(columns));
-  grid.style.setProperty("--rows", String(Math.max(1, ...entries.map(({ cell }) => cell.y + cell.h))));
+  grid.style.setProperty("--rows", String(ownRows));
   grid.append(...entries.flatMap(({ nodes }) => nodes));
+  // A render while a drag goes on keeps the drag grid's height (docs/backlog-closeout.md decision 1): the new grid is as high as the
+  // allowed drop area BEFORE it replaces the old one, so the layout that restoreFocus forces has nothing to clamp scrollY to.
+  if (dragSession?.started && draggedTileIn(grid)) {
+    grid.dataset.dragging = "true";
+    grid.style.setProperty("--rows", String(Math.max(ownRows, dragSession.rows)));
+  }
   favoritesRoot.dataset.edit = String(desktopUi.editMode);
   favoritesRoot.replaceChildren(grid);
   // The page keeps the height its scroll position needs after a drag ended (the grid shrank): a bottom-padding term on .desktop,
@@ -3378,7 +3403,42 @@ function renderDesktop() {
     if (tile) settleTileAt(tile, pendingDrop.id, pendingDrop.cell);
   }
   if (dragSession) reattachDrag();
-  if (holding && window.scrollY !== scrollY) window.scrollTo(0, scrollY); // the measurement clamped: put the page back, same task
+  if (holding && window.scrollY !== scrollY) {
+    window.scrollTo(0, scrollY); // the measurement clamped: put the page back, same task
+    // a started drag judged its target (reattachDrag) while the page was clamped, and putting the page back in the same task sends no scroll event
+    // for onWindowScroll to judge it again: judge it here, so the outline is on the cell under the pointer (docs/backlog-closeout.md AS-BC-01 (ii))
+    if (dragSession?.started) updateDragTarget(dragSession);
+  }
+  alignJiggle(grid);
+  restoreKeyboardTooltip(keyboardTooltipId); // last: the tile's rectangle is read after the page is put back
+}
+
+// The jiggle keeps its phase across renders (docs/backlog-closeout.md decision 5): the new nodes' animations start on the document timeline's
+// origin, so each tile's phase is a function of the clock (its own animation-delay stays what CSS gave it) and not of the moment of the render.
+function alignJiggle(grid) {
+  if (!desktopUi.editMode || prefersReducedMotion()) return;
+  for (const animation of grid.getAnimations({ subtree: true })) {
+    if (animation.animationName === "tile-jiggle") animation.startTime = 0;
+  }
+}
+
+// The widget id of the tile whose tooltip is shown for KEYBOARD focus (the tile is the focused element and matches :focus-visible), else null.
+// A tooltip that is open for the pointer is not remembered: the pointer opens it again on the next move (docs/backlog-closeout.md decision 6).
+function keyboardTooltipTileId() {
+  const trigger = tooltipTrigger;
+  if (!trigger || tooltipLayer.hidden || document.activeElement !== trigger || !trigger.matches(":focus-visible")) return null;
+  return trigger.dataset.widgetId ?? null;
+}
+
+// After the render: when the focused element is that tile's new node (same data-widget-id, still keyboard-focused) show its tooltip again
+// (normal mode, no drag: showTooltipFor returns in the others), and open the scroll window, because the render may have scrolled.
+function restoreKeyboardTooltip(id) {
+  if (!id) return;
+  const tile = document.activeElement;
+  if (!(tile instanceof HTMLElement) || tile.dataset.widgetId !== id || !tile.matches("[data-tooltip-trigger]") || !tile.matches(":focus-visible")) return;
+  if (desktopUi.editMode || dragSession) return;
+  openTooltipScrollWindow();
+  showTooltipFor(tile);
 }
 
 // A resize only re-renders (when the column count or the cell size changed); it never writes.
@@ -3486,6 +3546,7 @@ function onDragPointerMove(event) {
 // Every scroll of the page (wheel, keys, scrollbar, autoscroll): the grid moved under a still pointer, so the target is judged
 // again; with no drag it only releases the page-height hold, and only where nothing can clamp (docs/drag-scroll-target.md 1, 2b).
 function onWindowScroll() {
+  if (!tooltipScrollWindowOpen()) hideTooltip(); // a scroll of the document (keys, scrollbar, script) hides the tooltip; the one a focus causes does not
   if (dragSession?.started) {
     updateDragTarget(dragSession);
     return;
@@ -3566,11 +3627,19 @@ function stopDragFrame(s) {
   if (s) s.frame = 0;
 }
 
+// The dragged tile's node in `grid` while a drag goes on across a render: edit mode on and the tile present in the new layout. The ONE condition
+// of both reattachDrag (picks the drag up again, else cancels it) and the render's drag-height rule (docs/backlog-closeout.md decision 1).
+function draggedTileIn(grid) {
+  if (!dragSession || !desktopUi.editMode) return null;
+  return grid.querySelector(`:scope > [data-widget-id="${CSS.escape(dragSession.domId)}"]`);
+}
+
 // A re-render while dragging (e.g. weather data arrived) replaced the tiles: pick up the new node and redraw.
 function reattachDrag() {
   const s = dragSession;
-  const tile = favoritesRoot?.querySelector(`.desktop-grid > [data-widget-id="${CSS.escape(s.domId)}"]`);
-  if (!tile || !desktopUi.editMode) {
+  const grid = dragGridOf();
+  const tile = grid ? draggedTileIn(grid) : null;
+  if (!tile) {
     stopDragFrame(s);
     dragSession = null;
     desktopUi = endDrag(desktopUi);
