@@ -260,7 +260,11 @@ visible, `newtab.js` starts the same attempt as a retry press, but only while a 
 `ready` result whose data is 30 minutes old or more (`weatherRefreshDue`; the 30 minutes is `WEATHER_CACHE_TTL_MS` in
 `weatherShared.js`). Nothing is polled or repeated on a timer, and once a tab has loaded, a hidden tab starts no attempt. A
 return does not try while `navigator.onLine` is `false`; an `online` event ignores the 3 s pause after a failed attempt; an
-attempt in flight blocks both. The automatic attempt is silent: it never writes `#desktop-status` and never calls
+attempt in flight blocks both. An `online` that arrives while the load at open or an attempt is in flight is remembered
+once (the current weather generation, taken in `onBrowserOnline` before the attempt is asked) and, when that load or attempt
+ends as the current one, one more automatic attempt starts at once (the 3 s pause ignored) if the remembered generation is
+the one that ended; the memory is cleared in every outcome, a failing replay never starts another, and a return of the tab
+remembers nothing (`docs/backlog-closeout.md` decision 2). The automatic attempt is silent: it never writes `#desktop-status` and never calls
 `announce`, and a `ready` tile shows no busy state. `docs/tab-return-refresh.md`.
 
 ### Onboarding wizard (first run) and city modal (change mode)
@@ -412,8 +416,12 @@ description node (`[data-tooltip-text]`) or, for the 1×1 hint, which has no tex
 node, its `data-tooltip-label` (`docs/typography-copy.md` decision 6), and is
 placed by `placeTooltip`: above the tile when there is room, otherwise below,
 centered on the tile and clamped to an 8px margin inside the viewport. It hides on leave,
-blur, Escape, grid scroll (except the scroll caused by focusing a tile), wheel,
-touch scroll, window resize, entering edit mode or a drag, and every grid render. Its text, like
+blur, Escape, any scroll of the document (arrow keys, Page Down, the scrollbar; except the scroll that focusing a tile
+itself causes, which the 250 ms of the focus or one frame after it covers), wheel, touch scroll, window resize, entering
+edit mode or a drag, and every grid render. A render brings it back for a tile that is the focused element and matches
+`:focus-visible` (the text is the new node's); a tooltip that was open for the pointer, one closed by a window resize,
+one for a tile that another tab carried wholly out of the window, and one in edit mode or during a drag are not brought
+back (`docs/backlog-closeout.md` decisions 6 and 7). Its text, like
 the city modal's error and the status chip, is set with `text-wrap: pretty`, so no lone word ends it.
 
 ## Concurrency
