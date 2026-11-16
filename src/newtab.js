@@ -180,9 +180,9 @@ document.body.appendChild(tooltipLayer);
 let tooltipTrigger = null;
 let suppressTooltipOnFocus = false;
 // The scroll that a tooltip's own focus (or the render that brought it back) causes must not hide it (docs/backlog-closeout.md decision 7).
-// The window is the clock (250 ms) or a one-shot flag, whichever still covers the event: the scroll event of a scroll caused by a focus comes in
-// the next frame's scroll steps, before that frame's animation-frame callbacks, so the flag (cleared by such a callback) covers a frame that a
-// busy thread delayed past the 250 ms. A hidden tab runs no callbacks: the flag then stays until its first frame (accepted, exception 12).
+// The window is the clock (250 ms) or a flag held until the next frame, whichever still covers the event: the scroll event of a scroll caused by a
+// focus comes in the next frame's scroll steps, before that frame's animation-frame callbacks, so the flag (cleared by such a callback, it covers
+// every scroll event up to then, not one event) covers a frame that a busy thread delayed past the 250 ms. A hidden tab runs no callbacks: the flag then stays until its first frame (accepted, exception 12).
 const TOOLTIP_FOCUS_SCROLL_MS = 250;
 let ignoreScrollUntil = 0;
 let ignoreNextScroll = false;

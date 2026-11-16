@@ -3684,12 +3684,13 @@ describe("run 59 task 3: the render path (docs/backlog-closeout.md decisions 1, 
     const scrollTo = render.indexOf("scrollTo(0, scrollY)");
     const restore = render.indexOf("restoreKeyboardTooltip(keyboardTooltipId);");
     assert.ok(restore > render.indexOf("restoreFocus(focusTarget)") && restore > scrollTo, "after restoreFocus and after the scrollTo of the hold branch");
-    assert.equal(render.slice(restore).includes("}\n  "), false, "nothing but the closing brace follows: it is the last statement of renderDesktop");
+    assert.match(render, /restoreKeyboardTooltip\(keyboardTooltipId\);\s*\}$/, "nothing but the closing brace follows: it is the last statement of renderDesktop");
     const which = topLevelFunction(code, "keyboardTooltipTileId");
     assert.match(which, /document\.activeElement !== trigger \|\| !trigger\.matches\(":focus-visible"\)/, "the tile is the focused element and matches :focus-visible");
     assert.match(which, /tooltipLayer\.hidden/);
     const back = topLevelFunction(code, "restoreKeyboardTooltip");
     assert.match(back, /tile\.dataset\.widgetId !== id/);
+    assert.match(back, /!tile\.matches\("\[data-tooltip-trigger\]"\)/, "only a tooltip trigger gets its tooltip back");
     assert.match(back, /!tile\.matches\(":focus-visible"\)/);
     assert.match(back, /if \(desktopUi\.editMode \|\| dragSession\) return;/);
     assert.match(back, /openTooltipScrollWindow\(\);\s*showTooltipFor\(tile\);/);
