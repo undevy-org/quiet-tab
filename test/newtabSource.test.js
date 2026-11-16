@@ -1063,8 +1063,8 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     assert.match(build, /createNode\("p", "desktop-dialog__body", "This removes the link from your grid\."\)/);
     assert.match(build, /createIconButton\("button button--danger", "Delete", "trash2"\)/);
     assert.match(build, /widgetsService\.updateFavorite\(item\.id, payload, \{ columns \}\)/);
-    // run 58 (decision 5) replaces two pins that named the size-only rule: the payload carries the city label too and Save compares both values with the opening ones
-    assert.match(build, /widgetsService\.updateWeatherMetric\(item\.id, \{ \.\.\.size, showCity \}, \{ columns \}\)/);
+    // run 58 (decision 5) replaces two pins that named the size-only rule: Save compares both values with the opening ones and the payload carries only what changed (two tabs, fix round)
+    assert.match(build, /widgetsService\.updateWeatherMetric\(item\.id, input, \{ columns \}\)/);
     assert.match(build, /save\.disabled = true; \/\/ enabled only when the size or the city label differs from what the dialog opened with/);
     assert.match(build, /showCityModal\("change", WEATHER_DIALOG_CITY_SELECTOR\)/);
     assert.match(code, /const WEATHER_DIALOG_CITY_SELECTOR = '\[data-dialog="edit-weather"\] \[data-weather-action="open-city-modal"\]';/);
@@ -1195,7 +1195,7 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     const code = await source();
     const build = fn(code, "buildDialogContent");
     assert.doesNotMatch(build, /item\.grid\.[wh]/);
-    assert.match(build, /const size = displayedSize\(item\);\s*const initial = `\$\{size\.w\}x\$\{size\.h\}`;/);
+    assert.match(build, /const size = displayedSize\(item\);\s*const initialSize = `\$\{size\.w\}x\$\{size\.h\}`;/);
     assert.match(build, /createFormRow\("Size", createSizeControl\(size\)\)/);
     assert.match(fn(code, "displayedSize"), /displayLayout\(widgetsState\.items, currentColumns\(\)\)\.get\(item\.id\)/);
     assert.match(fn(code, "displayedSize"), /cell \? \{ w: cell\.w, h: cell\.h \} : \{ w: 1, h: 1 \}/);
@@ -3592,16 +3592,20 @@ describe("run 58 task 3: the `On tile` switches of the link dialogs (docs/tile-t
 });
 
 describe("run 58 task 4: the city label of the weather tiles (docs/tile-text-options.md decision 5, AS-TTO-12..14)", () => {
-  it("Edit weather (run 58, decision 5): the rows stand City, City label, Size; City label is a Shown/Hidden radiogroup preselected from showCity; Save compares the size and the label with the opening values; the payload carries showCity as a boolean", async () => {
+  it("Edit weather (run 58, decision 5): the rows stand City, City label, Size; City label is a Shown/Hidden radiogroup preselected from showCity; Save compares the size and the label with the opening values; the payload carries only what changed (w and h when the size changed, showCity as a boolean when the label changed)", async () => {
     const build = topLevelFunction(await source(), "buildDialogContent");
     const edit = build.slice(build.indexOf('case "edit-weather"'), build.indexOf("default:", build.indexOf('case "edit-weather"')));
     const order = ['createFormRow("City", cityField)', 'createFormRow("City label"', 'createFormRow("Size", createSizeControl(size))'].map((needle) => edit.indexOf(needle));
     assert.ok(order.every((i) => i !== -1) && order[0] < order[1] && order[1] < order[2], `the order of the rows: ${order}`);
     assert.match(edit, /createFormRow\("City label", createSegmentedControl\("cityLabel", \[\["shown", "Shown"\], \["hidden", "Hidden"\]\], initialLabel\)\)/);
     assert.match(edit, /const initialLabel = item\.showCity === false \? "hidden" : "shown";/);
-    assert.match(edit, /save\.disabled = data\.get\("size"\) === initial && data\.get\("cityLabel"\) === initialLabel;/);
-    assert.match(edit, /const showCity = data\.get\("cityLabel"\) !== "hidden";/);
-    assert.match(edit, /if \(!size \|\| save\.disabled\) return;/, "the double Save and the unchanged Save write nothing");
+    assert.match(edit, /save\.disabled = data\.get\("size"\) === initialSize && data\.get\("cityLabel"\) === initialLabel;/);
+    // a stale tab that changes one thing must not overwrite the other thing another tab wrote since the dialog opened: an absent key leaves the stored value alone
+    assert.match(edit, /const input = \{\};/);
+    assert.match(edit, /if \(data\.get\("size"\) !== initialSize\) \{ input\.w = picked\.w; input\.h = picked\.h; \}/);
+    assert.match(edit, /if \(data\.get\("cityLabel"\) !== initialLabel\) input\.showCity = data\.get\("cityLabel"\) !== "hidden";/);
+    assert.doesNotMatch(edit, /\.\.\.size, showCity|\{ \.\.\.size/, "the payload is never the whole form");
+    assert.match(edit, /if \(!picked \|\| save\.disabled\) return;/, "the double Save and the unchanged Save write nothing");
   });
 });
 

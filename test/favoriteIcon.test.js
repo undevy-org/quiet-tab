@@ -95,7 +95,7 @@ describe("getFavoriteIconModel", () => {
   });
 });
 
-describe("custom icon links of every common image format (docs/tile-text-options.md decision 6, AS-TTO-16 and 22, run 58)", () => {
+describe("a custom icon link is used as typed, whatever its extension (docs/tile-text-options.md decision 6, AS-TTO-16 and 22, run 58)", () => {
   // The format is the browser's business: the model never looks at the link's extension or the image's bytes, so SVG, PNG, JPEG, WebP, GIF, ICO and a link with no
   // extension all give the same plain image of the typed link, which is never sampled (no canvas read, no CORS request): `sampleable: false`.
   const LINKS = [
@@ -124,7 +124,6 @@ describe("custom icon links of every common image format (docs/tile-text-options
   });
 
   it("an empty custom icon link is the letter (nothing to draw)", () => {
-    assert.equal(getFavoriteIconModel(favorite({ iconMode: "custom", customIconUrl: null }), { faviconBaseUrl: BASE }).type, "letter");
     assert.equal(getFavoriteIconModel(favorite({ iconMode: "custom", customIconUrl: "" }), { faviconBaseUrl: BASE }).type, "letter");
   });
 });

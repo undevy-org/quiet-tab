@@ -2161,7 +2161,7 @@ function showOnboardingWizard() {
 }
 
 // R6: a 2-wide tile uses the `wide` model, a 1×2 tile the `tall` model (docs/tile-size-1x2.md decision 6); a 2-high
-// tile gets the city name. Type sizes come from CSS keyed on data-w/data-h.
+// tile gets the city name unless its showCity is false (decision 5 of docs/tile-text-options.md). Type sizes come from CSS keyed on data-w/data-h.
 function createWeatherMetricTile(item, cell, view) {
   const size = cell.w === 2 ? "wide" : cell.h === 2 ? "tall" : "square";
   const editing = desktopUi.editMode;
@@ -2468,7 +2468,7 @@ function buildDialogContent(root, dialog) {
       form.noValidate = true;
       // A lenient read may have dropped a malformed grid: the size shown is the displayed cell's (spec § Reading grid).
       const size = displayedSize(item);
-      const initial = `${size.w}x${size.h}`;
+      const initialSize = `${size.w}x${size.h}`;
       // The city label of the tile (docs/tile-text-options.md decision 5): Shown unless the item has showCity false.
       const initialLabel = item.showCity === false ? "hidden" : "shown";
       const save = createIconButton("button button--primary", "Save", "check");
@@ -2476,16 +2476,20 @@ function buildDialogContent(root, dialog) {
       save.disabled = true; // enabled only when the size or the city label differs from what the dialog opened with
       form.addEventListener("change", () => {
         const data = new FormData(form);
-        save.disabled = data.get("size") === initial && data.get("cityLabel") === initialLabel;
+        save.disabled = data.get("size") === initialSize && data.get("cityLabel") === initialLabel;
       });
       form.addEventListener("submit", (event) => {
         event.preventDefault();
         const data = new FormData(form);
-        const size = readSize(data.get("size"));
-        if (!size || save.disabled) return;
-        const showCity = data.get("cityLabel") !== "hidden";
+        const picked = readSize(data.get("size"));
+        if (!picked || save.disabled) return;
+        // Only what the dialog changed is sent (docs/tile-text-options.md decision 5): an absent key leaves the stored value alone, so a tab that opened the dialog before another
+        // tab wrote the city label does not put the old label back when it changes only the size (and the other way round).
+        const input = {};
+        if (data.get("size") !== initialSize) { input.w = picked.w; input.h = picked.h; }
+        if (data.get("cityLabel") !== initialLabel) input.showCity = data.get("cityLabel") !== "hidden";
         void runDesktopMutation(
-          (columns) => widgetsService.updateWeatherMetric(item.id, { ...size, showCity }, { columns }),
+          (columns) => widgetsService.updateWeatherMetric(item.id, input, { columns }),
           { dialogRoot: root }
         ).then((ok) => {
           if (ok) closeDesktopDialog({ reveal: true });
