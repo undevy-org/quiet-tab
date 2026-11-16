@@ -150,7 +150,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The jiggle of edit mode keeps its phase when a render replaces the tiles (a weather answer, Add link): no jump of up to 1.2 degrees, and a tile
   created by the render joins the same phase (decision 5). E2E: `dg-95` group g2.
 - The tooltip of a keyboard-focused tile comes back after a render (a retry, a weather answer, a tab-return re-read) instead of staying closed
-  (decision 6; a tooltip open for the pointer and one closed by a window resize are not restored), and any scroll of the document (arrow keys, Page Down, the
+  (decision 6; a tooltip open for the pointer, one closed by a window resize and one for a tile that another tab carried wholly out of the window are not restored), and any scroll of the document (arrow keys, Page Down, the
   scrollbar) hides the tooltip instead of leaving it where the tile was; the scroll a focus itself causes does not hide it (decision 7). E2E:
   `dg-95` group g3.
 - An `online` event that arrives while the weather is loading (the load when the tab opens, or any retry) is no longer lost: it is remembered once and, if
@@ -162,6 +162,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   another tab really cleared shows the message as before (decision 3). E2E: `dg-95` g4, AS-BC-07 and AS-BC-08.
 - The city row of an open Edit weather dialog follows an automatic or manual weather attempt that changes the city (or finds it removed); a row whose text
   did not change is not touched (decision 4). E2E: `dg-95` g4, AS-BC-09.
+- A double click on `Add link` of the Add menu leaves the focus on the `Link` field of the new dialog (it fell to the page): the press that comes in the first
+  300 ms after a dialog opens and lands on its backdrop or on a part of it that is not a control no longer moves the focus; the same holds for the other
+  dialogs that a double click on their opener opens (`edit-link`, the delete confirm) (`docs/backlog-closeout.md` decision 11). E2E: `dg-95` g6, AS-BC-11.
+- A double click on `Add weather tile…` no longer restores a metric without a choice, closes the menu or opens the Edit link dialog of the tile under the
+  pointer: the second press (within 300 ms and 4 px of the click that opened the second level) does nothing, the second level stays open. A deliberate
+  quick pick of an item within 4 px of that click is lost with it (`docs/backlog-closeout.md` decision 12, Accepted exceptions 1 and 14). E2E: `dg-95` g6, AS-BC-12.
+- The city field of the city modal and of the first-run wizard names its error: while a message shows the field is described by it (`aria-describedby`), and
+  it is `aria-invalid` for an empty submit and a city that was not found, not for a network or location failure (`docs/backlog-closeout.md` decision 13).
+  E2E: `dg-95` g7, AS-BC-13.
+- The message of the unreadable-grid screen is spoken once: it stops being an alert when the Reset grid dialog first opens, so closing the dialog no longer
+  announces it again (`docs/backlog-closeout.md` decision 10). E2E: `dg-95` g5, AS-BC-10.
 - Drag and scrolling (`docs/drag-scroll-target.md`): the drop outline now follows every scroll of the page during a drag (wheel,
   keys, scrollbar), not only the pointer, and a release writes to the cell under the pointer.
 - A tile dropped on a page scrolled to its bottom lands on its outline: the page keeps the height its scroll position needs until you scroll

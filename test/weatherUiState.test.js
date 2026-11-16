@@ -20,7 +20,8 @@ import {
   hasShownWeatherTile,
   weatherAppearanceDecision,
   rememberOnline,
-  onlineReplayDecision
+  onlineReplayDecision,
+  cityFieldErrorAttributes
 } from "../src/weatherUiState.js";
 import { WEATHER_CACHE_TTL_MS } from "../src/weatherShared.js";
 
@@ -371,5 +372,30 @@ describe("rememberOnline and onlineReplayDecision (run 59, AS-BC-06)", () => {
     const first = onlineReplayDecision(2, 2);
     assert.equal(first.replay, true);
     assert.equal(onlineReplayDecision(first.memory, 2).replay, false);
+  });
+});
+
+describe("cityFieldErrorAttributes (run 59, AS-BC-13, decision 13, Ruling 12)", () => {
+  it("an empty message (a hidden slot) means neither attribute, whatever the invalid value says", () => {
+    assert.deepEqual(cityFieldErrorAttributes("", false), { describedBy: false, invalid: false });
+    assert.deepEqual(cityFieldErrorAttributes("", true), { describedBy: false, invalid: false });
+    assert.deepEqual(cityFieldErrorAttributes(undefined, true), { describedBy: false, invalid: false });
+    assert.deepEqual(cityFieldErrorAttributes(null, true), { describedBy: false, invalid: false });
+  });
+
+  it("a message about the typed value (the empty submit, a city that was not found) describes the field and makes it invalid", () => {
+    assert.deepEqual(cityFieldErrorAttributes("Enter a city name", true), { describedBy: true, invalid: true });
+    assert.deepEqual(cityFieldErrorAttributes('City "Nowhere" was not found', true), { describedBy: true, invalid: true });
+  });
+
+  it("any other message (a network failure, a location lookup failure) only describes the field", () => {
+    assert.deepEqual(cityFieldErrorAttributes("Can't reach the weather service. Check your connection and try again.", false), { describedBy: true, invalid: false });
+    assert.deepEqual(cityFieldErrorAttributes("Couldn't get your location. Search for a city instead.", false), { describedBy: true, invalid: false });
+  });
+
+  it("only the value true makes the field invalid (a truthy non-boolean does not)", () => {
+    assert.equal(cityFieldErrorAttributes("x", "yes").invalid, false);
+    assert.equal(cityFieldErrorAttributes("x", 1).invalid, false);
+    assert.equal(cityFieldErrorAttributes("x", undefined).invalid, false);
   });
 });

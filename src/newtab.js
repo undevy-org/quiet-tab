@@ -27,6 +27,7 @@ import {
   deskRefreshBlocker,
   deskRefreshDecision,
   healNotice,
+  isSwapSecondPress,
   openDialog,
   openMenu,
   startDrag,
@@ -62,6 +63,7 @@ import { createOnboardingStore, readOnboardingLocalFlags } from "./onboardingSto
 import { createWeatherCacheStore, createWeatherLocationStore, createWeatherPromptStore } from "./weatherStore.js";
 import { describeWeatherMetric } from "./weatherTiles.js";
 import {
+  cityFieldErrorAttributes,
   cityModalMode,
   citySuggestions,
   closeCityModal as closeCityModalState,
@@ -365,6 +367,7 @@ let cityModalOpener = null; // selector of the control that opened it, looked up
 let cityModalHintMetricId = null; // data-metric-id of the hint tile that opened it (the hint is gone once the first city is set)
 let cityAttempt = null; // { stale } of the newest changeCity attempt
 let cityModalError = "";
+let cityModalErrorInvalid = false; // the message is about the typed value (the empty submit, a city that was not found): aria-invalid; docs/backlog-closeout.md decision 13
 let locationStatusNode = null;
 let locating = false;
 let locationAbortController = null;
@@ -899,6 +902,17 @@ function createCityLocationDescription(variant) {
   return paragraph;
 }
 
+// The city field and its error slot (docs/backlog-closeout.md decision 13): while the slot shows a message the field is described by it, and invalid when the
+// message is about the typed value. One function writes both attributes; the form build, syncCityModal and clearCityError call it.
+const CITY_ERROR_ID = "weather-city-error"; // one city form exists at a time
+function applyCityFieldError(input, errorNode) {
+  const { describedBy, invalid } = cityFieldErrorAttributes(cityModalError, cityModalErrorInvalid);
+  if (describedBy) input.setAttribute("aria-describedby", errorNode.id);
+  else input.removeAttribute("aria-describedby");
+  if (invalid) input.setAttribute("aria-invalid", "true");
+  else input.removeAttribute("aria-invalid");
+}
+
 function createCityForm(mode, location) {
   weatherFormGeneration += 1;
   const formGeneration = weatherFormGeneration;
@@ -943,8 +957,10 @@ function createCityForm(mode, location) {
 
   const errorNode = createNode("p", "status status--error status--full", cityModalError);
   errorNode.dataset.cityModalError = "";
+  errorNode.id = CITY_ERROR_ID;
   errorNode.setAttribute("role", "alert");
   errorNode.hidden = cityModalError === "";
+  applyCityFieldError(input, errorNode);
 
   const actions = createNode("div", "city-modal__actions");
   let submitButton = null;
@@ -1151,8 +1167,10 @@ function createCityForm(mode, location) {
   // the same node keeps role="alert", so the next failure is a fresh empty -> text change.
   function clearCityError() {
     cityModalError = "";
+    cityModalErrorInvalid = false;
     errorNode.textContent = "";
     errorNode.hidden = true;
+    applyCityFieldError(input, errorNode);
     placePopover();
   }
 
@@ -1166,6 +1184,7 @@ function createCityForm(mode, location) {
     if (event.key === "Enter" && !event.isComposing && !weatherBusy && input.value.trim() === "") {
       event.preventDefault(); // a disabled Save blocks the implicit submit, so the field reports the empty case itself
       cityModalError = "Enter a city name";
+      cityModalErrorInvalid = true;
       syncCityModal();
       return;
     }
@@ -1357,6 +1376,7 @@ async function useMyLocation(variant) {
       if (!stillValid()) return;
       const code = error instanceof BrowserLocationError ? error.code : "unavailable";
       cityModalError = locationErrorMessage(variant, { source: "position", code });
+      cityModalErrorInvalid = false;
       finishAttempt();
       focusLocationLink();
       return;
@@ -1379,6 +1399,7 @@ async function useMyLocation(variant) {
       if (!stillValid()) return;
       const kind = error instanceof WeatherApiError ? error.details?.kind : "unknown";
       cityModalError = locationErrorMessage(variant, { source: "reverse", kind });
+      cityModalErrorInvalid = false;
       finishAttempt();
       focusLocationLink();
       return;
@@ -1402,6 +1423,7 @@ async function useMyLocation(variant) {
     } catch {
       if (attemptGeneration !== weatherFormGeneration) return;
       cityModalError = locationErrorMessage(variant, { source: "position", code: "unavailable" });
+      cityModalErrorInvalid = false;
       syncCityModalUi();
       focusLocationLink();
     }
@@ -1454,6 +1476,8 @@ function syncCityModal() {
   if (errorNode) {
     errorNode.textContent = cityModalError;
     errorNode.hidden = cityModalError === "";
+    const cityInput = host.querySelector(CITY_INPUT_SELECTOR);
+    if (cityInput) applyCityFieldError(cityInput, errorNode);
   }
   activeCityForm?.place();
 }
@@ -1528,6 +1552,7 @@ function attachCityModalListeners(root) {
     const cityName = String(new FormData(form).get("city") ?? "").trim();
     if (!cityName) {
       cityModalError = "Enter a city name";
+      cityModalErrorInvalid = true;
       syncCityModal();
       form.querySelector(CITY_INPUT_SELECTOR)?.focus();
       return;
@@ -1976,6 +2001,7 @@ function attachOnboardingWizardListeners(root) {
     const cityName = String(new FormData(form).get("city") ?? "").trim();
     if (!cityName) {
       cityModalError = "Enter a city name";
+      cityModalErrorInvalid = true;
       syncCityModal();
       form.querySelector(CITY_INPUT_SELECTOR)?.focus();
       return;
@@ -2597,12 +2623,25 @@ function openDesktopDialog(dialog, { opener = focusedWidgetId() } = {}) {
     desktopDialogOpener = null;
     throw error;
   }
-  if (dialog.kind === "confirm-reset-grid") guardResetDialogPresses(root);
+  if (dialog.kind === "confirm-reset-grid") {
+    guardResetDialogPresses(root);
+    quietUnreadableAlert();
+  }
   const backdrop = createNode("div", "desktop-backdrop");
   backdrop.addEventListener("click", () => {
     if (Date.now() - desktopDialogOpenedAt < DIALOG_BACKDROP_GUARD_MS || favoritesBusy) return;
     closeDesktopDialog();
   });
+  // The second press of a double click on whatever opened the dialog lands on the backdrop the first click has just put over the page (or on a part of the
+  // dialog that is not a control) and would move the focus to body: in the first 300 ms its default is cancelled, so the focus stays where this function put it
+  // (docs/backlog-closeout.md decision 11). Clicks and presses on controls are not touched.
+  const keepFocusAtOpen = (event) => {
+    if (Date.now() - desktopDialogOpenedAt >= DIALOG_BACKDROP_GUARD_MS) return;
+    const target = event.target instanceof Element ? event.target : null;
+    if (target && !target.closest("input, button, label, select, textarea, a")) event.preventDefault();
+  };
+  backdrop.addEventListener("mousedown", keepFocusAtOpen);
+  root.addEventListener("mousedown", keepFocusAtOpen);
   root.querySelector('[data-favorite-action="cancel"]')?.addEventListener("click", () => {
     if (!favoritesBusy) closeDesktopDialog();
   });
@@ -2639,6 +2678,15 @@ function closeDesktopDialog({ restoreFocusTo = desktopDialogOpener, reveal = fal
   }
   if (restoreFocusTo) focusWidgetTarget([restoreFocusTo, fallback].flat(), { preventScroll: true, reveal });
   scheduleDeferredDeskRefresh();
+}
+
+// The unreadable-grid screen's message was spoken once, at load (role=alert). When the Reset grid dialog first opens it stops being a live region (the text
+// stays): every close of the dialog lifts `inert` off #favorites, which would announce an alert again. Nothing rebuilds the screen after load, so no flag is
+// kept (docs/backlog-closeout.md decision 10, Ruling 9).
+function quietUnreadableAlert() {
+  const message = favoritesRoot?.querySelector(":scope > .grid-unreadable > p");
+  message?.removeAttribute("role");
+  message?.removeAttribute("aria-live");
 }
 
 // A double click on the screen's Reset grid button must neither confirm nor flip the dialog (docs/unreadable-grid-reset.md decision 5): the dialog is
@@ -2765,6 +2813,7 @@ function handleEditModeClick(target) {
 // ---- Add tile and Add menu (spec § Add menu (edit mode), AS-30) ----
 let addMenuRoot = null;
 let addMenuDismissPress = null; // the pointerdown that closed the menu: it never also exits edit mode
+let addMenuSwap = null; // { x, y, t } of the pointer click that moved the menu to its second level (docs/backlog-closeout.md decision 12); null for a keyboard activation
 
 const hiddenMetrics = () => (widgetsState?.items ?? []).filter((item) => item.type === "weather-metric" && item.enabled !== true);
 
@@ -2854,6 +2903,7 @@ function closeAddMenu({ focusAdd = false } = {}) {
   if (!addMenuRoot) return;
   addMenuRoot.remove();
   addMenuRoot = null;
+  addMenuSwap = null;
   desktopUi = closeMenu(desktopUi);
   syncAddTileExpanded();
   if (focusAdd) focusWidgetTarget("chrome:add");
@@ -2875,6 +2925,7 @@ function onAddMenuClick(event) {
   if (!(entry instanceof HTMLElement) || favoritesBusy) return;
   const action = entry.dataset.menuAction;
   if (action === "add-weather") {
+    addMenuSwap = event.detail > 0 ? { x: event.clientX, y: event.clientY, t: event.timeStamp } : null; // a pointer click only: the second press of a double click does nothing
     fillAddMenu("restore-weather");
     return;
   }
@@ -2892,7 +2943,14 @@ function onAddMenuClick(event) {
 document.addEventListener(
   "pointerdown",
   (event) => {
-    if (!addMenuRoot || !(event.target instanceof Element)) return;
+    if (!addMenuRoot) return;
+    // The second press of a double click on `Add weather tile…` (within 300 ms and 4 px of the click that opened the second level, on the menu or outside it) does
+    // nothing: the post-close guard swallows its click, cancels its mousedown and keeps the background press from leaving edit mode (docs/backlog-closeout.md decision 12).
+    if (isSwapSecondPress(addMenuSwap, { x: event.clientX, y: event.clientY, t: event.timeStamp })) {
+      armPostCloseClickGuard();
+      return;
+    }
+    if (!(event.target instanceof Element)) return;
     if (addMenuRoot.contains(event.target) || event.target.closest(ADD_TILE_SELECTOR)) return;
     addMenuDismissPress = event;
     closeAddMenu();
@@ -3491,6 +3549,11 @@ function restoreKeyboardTooltip(id) {
   const tile = document.activeElement;
   if (!(tile instanceof HTMLElement) || tile.dataset.widgetId !== id || !tile.matches("[data-tooltip-trigger]") || !tile.matches(":focus-visible")) return;
   if (desktopUi.editMode || dragSession) return;
+  // A tile that another tab carried wholly out of the window (the focus does not scroll to it: restoreFocus uses preventScroll) gets no tooltip: it would
+  // stand against the window edge with no tile beside it (docs/backlog-closeout.md decision 6, checkpoint L1-01).
+  const box = tile.getBoundingClientRect();
+  const root = document.documentElement;
+  if (box.bottom <= 0 || box.top >= root.clientHeight || box.right <= 0 || box.left >= root.clientWidth) return;
   openTooltipScrollWindow();
   showTooltipFor(tile);
 }
@@ -4466,6 +4529,7 @@ function changeCity(run, { onSuccess = null } = {}) {
     } catch (error) {
       attempt.stale = true; // a timeout: a result that arrives later is dropped by the service
       cityModalError = weatherErrorMessage(error);
+      cityModalErrorInvalid = error?.details?.kind === "notFound"; // a WeatherApiError keeps its kind in details; only an error about the typed city is invalid
     } finally {
       // Only the newest attempt owns the busy state and the UI. An attempt that was superseded or whose modal was torn
       // down (hideCityModal marks it stale and clears the busy state itself) leaves silently.

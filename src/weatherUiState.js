@@ -134,3 +134,11 @@ export function weatherRetryOutcome(result) {
   const text = (status === "error" || status === "stale") && typeof result.error === "string" && result.error !== "" ? result.error : GENERIC_RETRY_FAILURE;
   return { failed: text };
 }
+
+// ---- what the city field says about its error slot (docs/backlog-closeout.md decision 13, Ruling 12, 184) ----------------------------------------
+// While the slot shows a message the field is described by it; the field is invalid only when the message is about the typed value (`invalid`: the empty
+// submit, a city that was not found), not for a network failure or a location lookup failure. An empty message (a hidden slot) means neither.
+export function cityFieldErrorAttributes(message, invalid) {
+  const described = typeof message === "string" && message !== "";
+  return { describedBy: described, invalid: described && invalid === true };
+}

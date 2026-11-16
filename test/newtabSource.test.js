@@ -147,7 +147,7 @@ describe("newtab favorites source", () => {
 
   it("drives the desktop UI from the pure desktopUiState module, not a mode string", async () => {
     const code = await source();
-    assert.match(code, /import \{\s*closeDialog,\s*createDesktopUiState,\s*endDrag,\s*enterEditMode,\s*escapeLayer,\s*exitEditMode,\s*closeMenu,\s*deskRefreshBlocker,\s*deskRefreshDecision,\s*healNotice,\s*openDialog,\s*openMenu,\s*startDrag,\s*updateDrag\s*\} from "\.\/desktopUiState\.js";/); // run 50: the two re-read functions join the list
+    assert.match(code, /import \{\s*closeDialog,\s*createDesktopUiState,\s*endDrag,\s*enterEditMode,\s*escapeLayer,\s*exitEditMode,\s*closeMenu,\s*deskRefreshBlocker,\s*deskRefreshDecision,\s*healNotice,\s*isSwapSecondPress,\s*openDialog,\s*openMenu,\s*startDrag,\s*updateDrag\s*\} from "\.\/desktopUiState\.js";/); // run 50: the two re-read functions join the list
     assert.match(code, /let desktopUi = createDesktopUiState\(\);/);
     assert.doesNotMatch(code, /favoritesMode/);
     assert.doesNotMatch(code, /favoritesUiState\.js/);
@@ -3286,7 +3286,7 @@ describe("run 51: the screen for an unreadable grid and the reset (AS-UGR-22)", 
     assert.match(guard, /event\.detail > 1/);
     assert.match(guard, /addEventListener\("click", \(event\) => \{\s*if \(guarded\(event\)\) \{\s*event\.preventDefault\(\);\s*event\.stopPropagation\(\);/);
     assert.match(guard, /addEventListener\("mousedown", \(event\) => \{\s*if \(guarded\(event\)\) event\.preventDefault\(\);/);
-    assert.match(topLevelFunction(src, "openDesktopDialog"), /if \(dialog\.kind === "confirm-reset-grid"\) guardResetDialogPresses\(root\);/);
+    assert.match(topLevelFunction(src, "openDesktopDialog"), /if \(dialog\.kind === "confirm-reset-grid"\) \{\s*guardResetDialogPresses\(root\);\s*quietUnreadableAlert\(\);\s*\}/);
     const close = topLevelFunction(src, "closeDesktopDialog");
     assert.match(close, /const wasResetConfirm = desktopUi\.dialog\?\.kind === "confirm-reset-grid";/);
     assert.match(close, /if \(wasResetConfirm\) \{\s*armPostCloseClickGuard\(\);\s*favoritesRoot\?\.querySelector\('\[data-grid-action="reset"\]'\)\?\.focus\(\{ preventScroll: true \}\);/);
@@ -3497,13 +3497,14 @@ describe("Add menu restore guard source pins (run 57, docs/wizard-trap-add-dblcl
     assert.doesNotMatch(addLink, /armPostCloseClickGuard/);
   });
 
-  it("AS-WTA-05: the outside-press listener of the Add menu is unchanged (no guard in it)", async () => {
+  it("AS-WTA-05: the outside-press part of the Add menu listener has no guard in it (run 59 put the swap branch before it, decision 12)", async () => {
     const code = stripComments(await source());
     const start = code.indexOf("addMenuDismissPress = event;");
     assert.notEqual(start, -1, "the outside press listener exists");
     const listener = code.slice(code.lastIndexOf("document.addEventListener(", start), code.indexOf("\n);", start));
-    assert.doesNotMatch(listener, /postCloseGuard|armPostCloseClickGuard/);
-    assert.match(listener, /if \(addMenuRoot\.contains\(event\.target\) \|\| event\.target\.closest\(ADD_TILE_SELECTOR\)\) return;/);
+    const outside = listener.slice(listener.indexOf("if (!(event.target instanceof Element)) return;"));
+    assert.doesNotMatch(outside, /postCloseGuard|armPostCloseClickGuard/);
+    assert.match(outside, /if \(addMenuRoot\.contains\(event\.target\) \|\| event\.target\.closest\(ADD_TILE_SELECTOR\)\) return;/);
   });
 });
 
@@ -3693,7 +3694,9 @@ describe("run 59 task 3: the render path (docs/backlog-closeout.md decisions 1, 
     assert.match(back, /!tile\.matches\("\[data-tooltip-trigger\]"\)/, "only a tooltip trigger gets its tooltip back");
     assert.match(back, /!tile\.matches\(":focus-visible"\)/);
     assert.match(back, /if \(desktopUi\.editMode \|\| dragSession\) return;/);
-    assert.match(back, /openTooltipScrollWindow\(\);\s*showTooltipFor\(tile\);/);
+    // checkpoint L1-01: a tile wholly outside the window (another tab carried it away; restoreFocus does not scroll to it) gets no tooltip; the test is
+    // the intersection of its rectangle with the window and comes before the scroll window opens and before the show
+    assert.match(back, /const box = tile\.getBoundingClientRect\(\);\s*const root = document\.documentElement;\s*if \(box\.bottom <= 0 \|\| box\.top >= root\.clientHeight \|\| box\.right <= 0 \|\| box\.left >= root\.clientWidth\) return;\s*openTooltipScrollWindow\(\);\s*showTooltipFor\(tile\);/);
     // a window resize is not covered: its listener hides the tooltip before the render, so nothing is remembered and the resize handler stays as it is
     assert.match(code, /window\.addEventListener\("resize", hideTooltip\);/);
   });
@@ -3818,6 +3821,87 @@ describe("run 59 task 4: weather and the return of the tab (docs/backlog-closeou
   it("decision 4: a load at open that applies a city also syncs an open Edit weather dialog's city row", async () => {
     const start = topLevelFunction(await code(), "startWeather");
     assert.match(start, /if \(result\.location\) \{\s*weatherLocation = result\.location;\s*weatherLocationError = "";\s*syncWeatherDialogCity\(\);\s*\}\s*renderFavorites\(\);/);
+  });
+});
+
+describe("run 59 task 5: the Add menu, the dialog press, the city field and the unreadable alert (docs/backlog-closeout.md decisions 10 to 13; AS-BC-10 to AS-BC-13)", () => {
+  const code = async () => stripComments(await source());
+  const read = (name) => readFile(new URL(`../src/${name}`, import.meta.url), "utf8");
+
+  it("decision 11: openDesktopDialog cancels the mousedown default on the backdrop and on a non-control part of the dialog in the first DIALOG_BACKDROP_GUARD_MS", async () => {
+    const open = topLevelFunction(await code(), "openDesktopDialog");
+    assert.match(open, /const keepFocusAtOpen = \(event\) => \{\s*if \(Date\.now\(\) - desktopDialogOpenedAt >= DIALOG_BACKDROP_GUARD_MS\) return;\s*const target = event\.target instanceof Element \? event\.target : null;\s*if \(target && !target\.closest\("input, button, label, select, textarea, a"\)\) event\.preventDefault\(\);\s*\};/);
+    assert.match(open, /backdrop\.addEventListener\("mousedown", keepFocusAtOpen\);\s*root\.addEventListener\("mousedown", keepFocusAtOpen\);/);
+    assert.equal((open.match(/DIALOG_BACKDROP_GUARD_MS/g) ?? []).length, 2, "the existing constant is used (the backdrop click guard and this one), no new one");
+    // the backdrop's own click guard is as before
+    assert.match(open, /backdrop\.addEventListener\("click", \(\) => \{\s*if \(Date\.now\(\) - desktopDialogOpenedAt < DIALOG_BACKDROP_GUARD_MS \|\| favoritesBusy\) return;\s*closeDesktopDialog\(\);\s*\}\);/);
+    assert.equal((await code()).split("const DIALOG_BACKDROP_GUARD_MS =").length, 2, "no second constant");
+  });
+
+  it("decision 12: the add-weather branch records the point and the time of a POINTER click only (detail > 0), and closeAddMenu drops the record", async () => {
+    const all = await code();
+    const handler = topLevelFunction(all, "onAddMenuClick");
+    assert.match(handler, /if \(action === "add-weather"\) \{\s*addMenuSwap = event\.detail > 0 \? \{ x: event\.clientX, y: event\.clientY, t: event\.timeStamp \} : null;\s*fillAddMenu\("restore-weather"\);\s*return;\s*\}/);
+    assert.equal((handler.match(/addMenuSwap/g) ?? []).length, 1, "only the add-weather branch writes it; the restore and add-link branches are untouched");
+    assert.match(topLevelFunction(all, "closeAddMenu"), /addMenuRoot = null;\s*addMenuSwap = null;/);
+    assert.match(all, /let addMenuSwap = null;/);
+  });
+
+  it("decision 12: the Add menu pointerdown listener asks isSwapSecondPress right after the !addMenuRoot return and BEFORE the other conditions, arms the guard and closes nothing", async () => {
+    const all = await code();
+    const start = all.indexOf("addMenuDismissPress = event;");
+    const listener = all.slice(all.lastIndexOf("document.addEventListener(", start), all.indexOf("\n);", start));
+    assert.match(listener, /\(event\) => \{\s*if \(!addMenuRoot\) return;\s*if \(isSwapSecondPress\(addMenuSwap, \{ x: event\.clientX, y: event\.clientY, t: event\.timeStamp \}\)\) \{\s*armPostCloseClickGuard\(\);\s*return;\s*\}\s*if \(!\(event\.target instanceof Element\)\) return;/);
+    const swapBranch = listener.slice(listener.indexOf("if (isSwapSecondPress("), listener.indexOf("if (!(event.target instanceof Element)) return;"));
+    assert.doesNotMatch(swapBranch, /closeAddMenu|addMenuDismissPress|restoreWeatherMetric|openDesktopDialog|focusWidgetTarget/);
+    assert.ok(listener.indexOf("isSwapSecondPress(") < listener.indexOf("addMenuRoot.contains(event.target)"), "before the contains return");
+    assert.ok(listener.indexOf("isSwapSecondPress(") < listener.indexOf("addMenuDismissPress = event;"), "before the outside press");
+    // the second press of a swap uses the existing guard of run 57: no new listener, timer or constant in newtab.js
+    assert.equal((all.match(/ADD_MENU_DOUBLE_PRESS/g) ?? []).length, 0, "the constants live in desktopUiState.js, next to the rule");
+    assert.match(all, /import \{[^}]*isSwapSecondPress[^}]*\} from "\.\/desktopUiState\.js";/);
+  });
+
+  it("decision 12: the window is 300 ms and 4 px, in one place, in the pure rule", async () => {
+    const ui = await read("desktopUiState.js");
+    assert.match(ui, /export const ADD_MENU_DOUBLE_PRESS_MS = 300;/);
+    assert.match(ui, /export const ADD_MENU_DOUBLE_PRESS_SLOP_PX = 4;/);
+    assert.match(ui, /elapsed < 0 \|\| elapsed > ADD_MENU_DOUBLE_PRESS_MS/);
+    assert.match(ui, /Math\.hypot\(press\.x - record\.x, press\.y - record\.y\) <= ADD_MENU_DOUBLE_PRESS_SLOP_PX/);
+  });
+
+  it("decision 13: the error slot has a stable id and one helper writes aria-describedby and aria-invalid from cityFieldErrorAttributes; the form build, syncCityModal and clearCityError call it", async () => {
+    const all = await code();
+    assert.match(all, /const CITY_ERROR_ID = "weather-city-error";/);
+    assert.match(all, /errorNode\.dataset\.cityModalError = "";\s*errorNode\.id = CITY_ERROR_ID;\s*errorNode\.setAttribute\("role", "alert"\);\s*errorNode\.hidden = cityModalError === "";\s*applyCityFieldError\(input, errorNode\);/);
+    const helper = topLevelFunction(all, "applyCityFieldError");
+    assert.match(helper, /cityFieldErrorAttributes\(cityModalError, cityModalErrorInvalid\)/);
+    assert.match(helper, /if \(describedBy\) input\.setAttribute\("aria-describedby", errorNode\.id\);\s*else input\.removeAttribute\("aria-describedby"\);/);
+    assert.match(helper, /if \(invalid\) input\.setAttribute\("aria-invalid", "true"\);\s*else input\.removeAttribute\("aria-invalid"\);/);
+    assert.match(topLevelFunction(all, "syncCityModal"), /errorNode\.hidden = cityModalError === "";\s*const cityInput = host\.querySelector\(CITY_INPUT_SELECTOR\);\s*if \(cityInput\) applyCityFieldError\(cityInput, errorNode\);/);
+    assert.equal((all.match(/applyCityFieldError\(/g) ?? []).length, 4, "the definition and the three DOM writers");
+    const weather = await read("weatherUiState.js");
+    assert.match(weather, /export function cityFieldErrorAttributes\(message, invalid\)/);
+  });
+
+  it("decision 13: the seven writers of a non-empty cityModalError set cityModalErrorInvalid next to it: true for the three empty submits and a city that was not found (error.details?.kind), false for the three location failures", async () => {
+    const all = await code();
+    assert.equal((all.match(/cityModalError = "Enter a city name";\s*cityModalErrorInvalid = true;/g) ?? []).length, 3, "the Enter on the field, the change-mode submit, the wizard submit");
+    assert.equal((all.match(/cityModalError = locationErrorMessage\([^\n]*\);\s*cityModalErrorInvalid = false;/g) ?? []).length, 3, "the three location failures are described, not invalid");
+    assert.match(all, /cityModalError = weatherErrorMessage\(error\);\s*cityModalErrorInvalid = error\?\.details\?\.kind === "notFound";/);
+    assert.doesNotMatch(all, /error\.kind\b/, "a WeatherApiError keeps its kind in details");
+    assert.equal((all.match(/cityModalError = (?!"")[^\n]*;/g) ?? []).length, 7, "no eighth writer of a non-empty message");
+    assert.match(all, /let cityModalErrorInvalid = false;/);
+  });
+
+  it("decision 10: the screen's paragraph loses role and aria-live when the Reset grid dialog first opens; no module flag; the screen is still built with an assertive alert", async () => {
+    const all = await code();
+    const quiet = topLevelFunction(all, "quietUnreadableAlert");
+    assert.match(quiet, /favoritesRoot\?\.querySelector\(":scope > \.grid-unreadable > p"\);\s*message\?\.removeAttribute\("role"\);\s*message\?\.removeAttribute\("aria-live"\);/);
+    assert.equal((all.match(/quietUnreadableAlert\(\)/g) ?? []).length, 2, "the definition and one call, from the Reset grid branch of openDesktopDialog");
+    assert.match(topLevelFunction(all, "openDesktopDialog"), /if \(dialog\.kind === "confirm-reset-grid"\) \{\s*guardResetDialogPresses\(root\);\s*quietUnreadableAlert\(\);\s*\}/);
+    assert.doesNotMatch(all, /alertSpoken|unreadableAlert(Spoken|Done)|let [a-zA-Z]*Alert[a-zA-Z]* =/, "no flag");
+    assert.match(all, /block\.append\(createStatus\(UNREADABLE_GRID_MESSAGE, \{ error: true, live: "assertive", full: true \}\), reset\);/);
+    assert.match(all, /favoritesRoot\.replaceChildren\(createStatus\(NEWER_WIDGETS_MESSAGE, \{ error: true, live: "assertive", full: true \}\)\);/, "the newer screen keeps its alert");
   });
 });
 
