@@ -94,3 +94,14 @@ export function deskRefreshDecision({ hasState, locked, drawn, blocker, startedF
   if (current !== startedFrom) return "again";
   return "apply";
 }
+
+// ---- which message a heal of a cleared storage shows (docs/backlog-closeout.md decision 3, Ruling 3, 154 (2)) -------------------------------
+// "silent": the heal is this tab's own retry of an ensure that failed at load, and the state the tab showed before it had no Settings tile (a
+// tab that never showed Settings never had a layout that something could have reset). Otherwise "reset": the storage was really cleared in another
+// tab and the message `Your layout was reset in another tab.` is true. `ensureFailed` is the tab's `widgetsEnsureFailed`; `shownItems` the items of
+// the state the tab showed BEFORE the heal's result replaced it (null when it showed none: that counts as no Settings). The same rule at the three
+// heal sites of newtab.js (the return re-read, runDesktopMutation, recoverFromGoneLink).
+export function healNotice({ ensureFailed, shownItems }) {
+  const shownSettings = Array.isArray(shownItems) && shownItems.some((item) => item?.id === "chrome:settings");
+  return ensureFailed === true && !shownSettings ? "silent" : "reset";
+}

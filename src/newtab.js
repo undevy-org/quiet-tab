@@ -26,6 +26,7 @@ import {
   closeMenu,
   deskRefreshBlocker,
   deskRefreshDecision,
+  healNotice,
   openDialog,
   openMenu,
   startDrag,
@@ -37,6 +38,7 @@ import {
   WIDGETS_META_KEY,
   createWidgetsStore,
   ensureWidgetsLayout,
+  hasEverySystemTile,
   inspectWidgetsMeta,
   resetUnreadableWidgets
 } from "./widgetsStore.js";
@@ -69,7 +71,9 @@ import {
   hideSuggestions,
   isCityModalOpen,
   isSuggestionsOpen,
+  onlineReplayDecision,
   openCityModal as openCityModalState,
+  rememberOnline,
   resetWeatherRetry,
   showSuggestions,
   startWeatherRetry,
@@ -343,6 +347,10 @@ let weatherRetryTimer = 0; // the end of the cooldown (updates the existing retr
 let weatherTileShown = false;
 let weatherOpenLoadStarted = false;
 let weatherLoadInFlight = false;
+// An `online` that arrived while the load at open or an attempt was in flight (docs/backlog-closeout.md decision 2): the weather generation that was
+// current then, or null for no memory (0, the generation of the load at open, is a valid value). Taken in onBrowserOnline, consumed once by the end of
+// that load or attempt (replayRememberedOnline).
+let weatherOnlineMemory = null;
 let weatherAppearanceQueued = false;
 let widgetsEnsureFailed = false;
 let widgetsNewer = false;
@@ -2536,11 +2544,16 @@ function syncWeatherDialogCity(root = desktopDialogRoot) {
   const label = location ? cityDisplayLabel(location) : "";
   const value = root.querySelector("[data-weather-dialog-city]");
   const hint = field.querySelector(".city-field__hint");
-  value.textContent = label || "Set a city"; // no city: one muted line, no separate hint
+  const text = label || "Set a city"; // no city: one muted line, no separate hint
+  // The name is the row label plus the visible parts (single spaces, no commas); a hidden hint is left out.
+  const labelledby = [field.dataset.rowLabelId, value.id, label ? hint.id : null].filter(Boolean).join(" ");
+  // An attempt calls this whether or not the city changed (decision 4): a row that already says it is not written, so nothing is mutated and a screen
+  // reader is not told the row again.
+  if (value.textContent === text && hint.hidden === !label && value.hasAttribute("data-empty") === !label && field.getAttribute("aria-labelledby") === labelledby && (field.getAttribute("title") ?? "") === label && field.disabled === !weatherService) return;
+  value.textContent = text;
   value.toggleAttribute("data-empty", !label);
   hint.hidden = !label;
-  // The name is the row label plus the visible parts (single spaces, no commas); a hidden hint is left out.
-  field.setAttribute("aria-labelledby", [field.dataset.rowLabelId, value.id, label ? hint.id : null].filter(Boolean).join(" "));
+  field.setAttribute("aria-labelledby", labelledby);
   if (label) field.title = label; // the full label whenever a city is stored; the accessible name comes from aria-labelledby
   else field.removeAttribute("title");
   field.disabled = !weatherService;
@@ -3014,6 +3027,33 @@ async function dropCityClearedElsewhere() {
   weatherLocationError = "";
 }
 
+// Which message a successful heal shows (docs/backlog-closeout.md decision 3, 154 (2)): the pure rule `healNotice` from the failed-ensure flag and the
+// state this tab showed BEFORE the heal (each site reads it at its start, before the heal's result replaces `widgetsState`). "silent" is this tab's own
+// retry of an ensure that failed at load; "reset" is a storage that another tab really cleared.
+function healNoticeFor(shownState) {
+  return healNotice({ ensureFailed: widgetsEnsureFailed, shownItems: shownState?.items ?? null });
+}
+
+// The silent branch of a successful heal, the same at the three heal sites: the flag is spent, any persistent chip is hidden (the ensure chip, or the
+// `Reload` chip of an earlier failed heal) and a focus that was inside the chip (on `Reload`) goes to the Settings tile of the healed grid without
+// scrolling. The focus is read BEFORE the chip is hidden: hiding a focused element drops the focus to `body`.
+function applySilentHeal() {
+  const focusWasInStatus = Boolean(desktopStatus?.contains(document.activeElement));
+  widgetsEnsureFailed = false;
+  if (desktopStatusPersistent) showDesktopStatus("");
+  if (focusWasInStatus) focusWidgetTarget([SETTINGS_TILE_ID], { preventScroll: true });
+}
+
+// A healthy re-read that has all six system tiles (docs/backlog-closeout.md decision 3, 154 (4)): the ensure that failed at load has been completed
+// elsewhere, so the flag is spent and the ensure chip (the persistent status with that text) is hidden. Called BEFORE applyReadDesk, which returns on
+// an equal state: an equal grid is not touched, the chip still goes. A state that has Settings but lacks another system tile leaves both: the claim
+// "couldn't add the tiles" is still true.
+function clearEnsureChipOnHealthyRead(fresh) {
+  if (!hasEverySystemTile(fresh.items)) return;
+  widgetsEnsureFailed = false;
+  if (desktopStatusPersistent && desktopStatus?.textContent === ENSURE_FAILED_MESSAGE) showDesktopStatus("");
+}
+
 // A failed heal leaves no Settings to leave edit mode with and nothing to act on: drop edit mode and every transient layer (not
 // `setEditMode(false)`: it announces and clears the status), keep the live region quiet (the alert speaks once). Any open dialog is
 // closed first, without restoring focus (`#favorites` is inert while one is open and the opener tile does not exist).
@@ -3059,6 +3099,7 @@ function dismissLayoutFailureChip() {
 // first); a failed heal ends in `showLayoutRestoreFailure`.
 async function recoverFromGoneLink(generation, error) {
   pendingDrop = null;
+  const notice = healNoticeFor(widgetsState);
   let neighbours = error.id ? neighborTargets(error.id) : [SETTINGS_TILE_ID];
   let fresh = null;
   try {
@@ -3078,8 +3119,11 @@ async function recoverFromGoneLink(generation, error) {
     return;
   }
   // The chip first (docs/layers-weather-polish.md decision 2): its reserve is current when the reveal below reads it, so the neighbour ends above the chip.
-  if (outcome.healed) showDesktopStatus(LAYOUT_RESET_MESSAGE, { tone: "info" });
-  else showDesktopStatus(error.message);
+  if (outcome.healed && notice === "reset") showDesktopStatus(LAYOUT_RESET_MESSAGE, { tone: "info" });
+  else {
+    if (outcome.healed) applySilentHeal(); // an ensure retry of this tab: the reset notice would be untrue, the message about the gone link still is
+    showDesktopStatus(error.message);
+  }
   if (desktopDialogRoot) closeDesktopDialog({ restoreFocusTo: neighbours, reveal: true });
   else focusWidgetTarget(neighbours, { preventScroll: true, reveal: true });
 }
@@ -3100,6 +3144,7 @@ async function runDesktopMutation(action, { dialogRoot = null, renderPending = t
     }
   }
   const generation = startFavoritesAction({ render: renderPending });
+  const notice = healNoticeFor(widgetsState);
   try {
     const next = await action(currentColumns());
     // a state without Settings means the write landed in a storage another tab had cleared (an Add link): heal it, the new link stays
@@ -3109,7 +3154,10 @@ async function runDesktopMutation(action, { dialogRoot = null, renderPending = t
       widgetsState = outcome.state;
     });
     if (outcome.failed) showLayoutRestoreFailure();
-    else if (outcome.healed) showDesktopStatus(LAYOUT_RESET_MESSAGE, { tone: "info" });
+    else if (outcome.healed) {
+      if (notice === "silent") applySilentHeal();
+      else showDesktopStatus(LAYOUT_RESET_MESSAGE, { tone: "info" });
+    }
     return true;
   } catch (error) {
     if (error?.code === "link-gone") {
@@ -3190,8 +3238,10 @@ async function refreshDeskOnReturn() {
       return;
     }
     if (next !== "apply") return;
-    if (fresh.items.some((item) => item.id === SETTINGS_TILE_ID)) applyReadDesk(fresh);
-    else await healReadDesk(fresh);
+    if (fresh.items.some((item) => item.id === SETTINGS_TILE_ID)) {
+      clearEnsureChipOnHealthyRead(fresh);
+      applyReadDesk(fresh);
+    } else await healReadDesk(fresh);
   } finally {
     deskRefreshRunning = false;
     const queued = deskRefreshQueued;
@@ -3217,6 +3267,7 @@ function applyReadDesk(fresh) {
 // goes to Settings, forced (a neighbour list read from the old DOM would find a just-created tile first).
 async function healReadDesk(state) {
   const focused = focusedWidgetId();
+  const notice = healNoticeFor(widgetsState);
   const generation = startFavoritesAction({ render: false });
   let outcome;
   try {
@@ -3233,7 +3284,10 @@ async function healReadDesk(state) {
     return;
   }
   if (focused) focusWidgetTarget([SETTINGS_TILE_ID], { preventScroll: true });
-  if (outcome.healed) showDesktopStatus(LAYOUT_RESET_MESSAGE, { tone: "info" });
+  if (outcome.healed) {
+    if (notice === "silent") applySilentHeal();
+    else showDesktopStatus(LAYOUT_RESET_MESSAGE, { tone: "info" });
+  }
 }
 
 // A return that came while a layer was up is kept; the end of the last layer (a render, or a close that renders nothing) calls this, and one
@@ -4222,6 +4276,19 @@ async function startWeather() {
     weatherLocationError = "";
   }
   renderFavorites();
+  replayRememberedOnline(generation);
+}
+
+// The end of a load or an attempt that is still the current one asks the pure rule about the remembered `online` (decision 2): it replays once
+// when the memory is this generation, and the memory is cleared whatever the rule says. The replay checks what its two callers check (a visible tab,
+// the browser not offline) and then goes through the ordinary automatic attempt, whose own guards decide the rest (a shown tile, `weatherRefreshDue`,
+// no attempt already in flight); `ignorePause` as for `online`. A failing replay never starts another: only a new `online` can.
+function replayRememberedOnline(generation) {
+  const decision = onlineReplayDecision(weatherOnlineMemory, generation);
+  weatherOnlineMemory = decision.memory;
+  if (!decision.replay) return;
+  if (document.visibilityState !== "visible" || navigator.onLine === false) return;
+  void retryWeather({ automatic: true, ignorePause: true });
 }
 
 // One attempt for every tile, through the unchanged service (`initialize()` re-reads the city, serves a cache another tab refreshed,
@@ -4274,6 +4341,8 @@ async function retryWeather({ automatic = false, ignorePause = false } = {}) {
     weatherLocationError = "";
     clearTimeout(weatherRetryTimer);
     if (!automatic && !desktopStatusPersistent) showDesktopStatus(""); // a failure text of an earlier attempt would now contradict the hint tile
+    syncWeatherDialogCity(); // an open Edit weather dialog follows the city that is gone (decision 4)
+    weatherOnlineMemory = null; // the memory is cleared in every outcome that is still current; after this one nothing is due
     renderFavorites();
     const active = document.activeElement;
     if ((!automatic || focusWasOnWeatherTile) && (!active || active === document.body)) favoritesRoot?.querySelector(HINT_TILE_SELECTOR)?.focus();
@@ -4294,6 +4363,7 @@ async function retryWeather({ automatic = false, ignorePause = false } = {}) {
     }
   }
   if (!failed) weatherLocationError = "";
+  if (replaced) syncWeatherDialogCity(); // an open Edit weather dialog follows the city this attempt applied (decision 4)
   if (!silentStart || replaced) renderFavorites(); // a ready tile that an attempt did not change is not redrawn
 
   if (failed) {
@@ -4311,6 +4381,7 @@ async function retryWeather({ automatic = false, ignorePause = false } = {}) {
     if (!desktopStatusPersistent) showDesktopStatus(""); // an earlier failure text would now contradict the tiles
     announce("Weather updated");
   }
+  replayRememberedOnline(generation);
 }
 
 // The two triggers of an automatic attempt (docs/tab-return-refresh.md decisions 1 and 4). Both return at once unless the tab is visible:
@@ -4323,8 +4394,12 @@ function onTabVisibilityChange() {
   void refreshDeskOnReturn();
 }
 
+// An `online` that arrives while the load at open or an attempt is in flight is remembered (one value, the current generation) BEFORE retryWeather is
+// asked, because retryWeather leaves at two different lines for the two (the load at open at `!due`, an attempt at the in-flight line): one place covers
+// both. The end of that load or attempt replays it once (replayRememberedOnline). An `online` with nothing in flight starts the attempt as before.
 function onBrowserOnline() {
   if (document.visibilityState !== "visible") return;
+  if (weatherTileShownNow()) weatherOnlineMemory = rememberOnline(weatherOnlineMemory, { loadInFlight: weatherLoadInFlight, generation: weatherGeneration });
   void retryWeather({ automatic: true, ignorePause: true });
 }
 

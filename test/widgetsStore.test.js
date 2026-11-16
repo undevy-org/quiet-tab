@@ -6,7 +6,9 @@ import {
   WIDGETS_META_KEY,
   createWidgetsStore,
   createInitialWidgetsState,
+  ENSURED_IDS,
   ensureWidgetsLayout,
+  hasEverySystemTile,
   inspectWidgetsMeta,
   isWidgetItem,
   isWidgetsState,
@@ -695,5 +697,44 @@ describe("tile text fields: showName, showLink, showCity (run 58)", () => {
     await area.set({ [WIDGETS_META_KEY]: metaOf(["weather:uv"]), [widgetItemStorageKey("weather:uv")]: kept });
     await ensureWidgetsLayout(area);
     assert.equal((await area.get(widgetItemStorageKey("weather:uv")))[widgetItemStorageKey("weather:uv")].showCity, false);
+  });
+});
+
+describe("hasEverySystemTile (run 59, docs/backlog-closeout.md decision 3, AS-BC-08)", () => {
+  const six = () => ENSURED_IDS.map((id) => ({ id, type: id.startsWith("weather:") ? "weather-metric" : "chrome", enabled: true }));
+
+  it("ENSURED_IDS is the four metrics, Settings and Add (the one source of truth next to ensureWidgetsLayout)", () => {
+    assert.deepEqual([...ENSURED_IDS], [...WEATHER_METRIC_IDS, "chrome:settings", "chrome:add"]);
+    assert.equal(ENSURED_IDS.length, 6);
+  });
+
+  it("six system tiles: true; extra links do not matter", () => {
+    assert.equal(hasEverySystemTile(six()), true);
+    assert.equal(hasEverySystemTile([...six(), favorite()]), true);
+  });
+
+  it("five of the six: false, whichever one is missing", () => {
+    for (const id of ENSURED_IDS) assert.equal(hasEverySystemTile(six().filter((item) => item.id !== id)), false, id);
+  });
+
+  it("zero system tiles, an empty list, a list of links only: false", () => {
+    assert.equal(hasEverySystemTile([]), false);
+    assert.equal(hasEverySystemTile([favorite()]), false);
+  });
+
+  it("duplicates are counted once: six items that repeat one id are not six tiles", () => {
+    const one = six()[0];
+    assert.equal(hasEverySystemTile([one, one, one, one, one, one]), false);
+    assert.equal(hasEverySystemTile([...six(), ...six()]), true);
+  });
+
+  it("presence, not enabled: a metric the user hid (enabled: false) is present and counts", () => {
+    assert.equal(hasEverySystemTile(six().map((item) => (item.id === "weather:uv" ? { ...item, enabled: false } : item))), true);
+  });
+
+  it("anything that is not a list is not a healthy state", () => {
+    assert.equal(hasEverySystemTile(null), false);
+    assert.equal(hasEverySystemTile(undefined), false);
+    assert.equal(hasEverySystemTile({ length: 6 }), false);
   });
 });

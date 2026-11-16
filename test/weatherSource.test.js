@@ -468,7 +468,7 @@ describe("newtab weather on return (run 50, docs/tab-return-refresh.md, AS-TRR-0
     const code = await source();
     assert.match(code, /async function retryWeather\(\{ automatic = false, ignorePause = false \} = \{\}\) \{/);
     assert.match(code, /action === "retry-weather"\) \{\s*void retryWeather\(\);/);
-    assert.equal(code.match(/\bvoid retryWeather\(/g).length, 4, "the click branch, the two automatic calls and the tile-appears hook start an attempt, nothing else does");
+    assert.equal(code.match(/\bvoid retryWeather\(/g).length, 5, "the click branch, the two automatic calls, the tile-appears hook and the replay of a remembered online (run 59, replayRememberedOnline) start an attempt, nothing else does");
   });
 
   it("the gate of an automatic attempt is weatherRefreshDue on the shown result, the manual one stays error or stale", async () => {

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   DIALOG_KINDS, closeDialog, closeMenu, createDesktopUiState, deskRefreshBlocker, deskRefreshDecision, endDrag, enterEditMode, escapeLayer, exitEditMode,
-  openDialog, openMenu, startDrag, toggleEditMode, updateDrag
+  healNotice, openDialog, openMenu, startDrag, toggleEditMode, updateDrag
 } from "../src/desktopUiState.js";
 
 const edit = () => enterEditMode(createDesktopUiState());
@@ -239,5 +239,40 @@ describe("deskRefreshDecision", () => {
         }
       }
     }
+  });
+});
+
+// ---- which message a heal of a cleared storage shows (docs/backlog-closeout.md decision 3, Ruling 3; AS-BC-07) --------------------------
+describe("healNotice", () => {
+  const settings = { id: "chrome:settings" };
+  const add = { id: "chrome:add" };
+  const link = { id: "fav-1" };
+
+  it("the ensure failed and the tab never showed Settings: the heal is the tab's own retry, silent", () => {
+    assert.equal(healNotice({ ensureFailed: true, shownItems: [] }), "silent");
+    assert.equal(healNotice({ ensureFailed: true, shownItems: [link] }), "silent");
+  });
+
+  it("a partial desk that shows Add but no Settings heals silently too (Accepted exception 10)", () => {
+    assert.equal(healNotice({ ensureFailed: true, shownItems: [add, link] }), "silent");
+  });
+
+  it("the ensure failed but the tab showed Settings: the storage was really cleared elsewhere, the message is true", () => {
+    assert.equal(healNotice({ ensureFailed: true, shownItems: [settings, add] }), "reset");
+    assert.equal(healNotice({ ensureFailed: true, shownItems: [link, settings] }), "reset");
+  });
+
+  it("no failed ensure: the message, with or without Settings in the shown state", () => {
+    assert.equal(healNotice({ ensureFailed: false, shownItems: [settings] }), "reset");
+    assert.equal(healNotice({ ensureFailed: false, shownItems: [] }), "reset");
+  });
+
+  it("no shown state at all (null) counts as a state without Settings", () => {
+    assert.equal(healNotice({ ensureFailed: true, shownItems: null }), "silent");
+    assert.equal(healNotice({ ensureFailed: false, shownItems: null }), "reset");
+  });
+
+  it("only a true flag counts (a missing flag is not a failed ensure)", () => {
+    assert.equal(healNotice({ ensureFailed: undefined, shownItems: [] }), "reset");
   });
 });

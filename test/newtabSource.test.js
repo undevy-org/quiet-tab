@@ -147,7 +147,7 @@ describe("newtab favorites source", () => {
 
   it("drives the desktop UI from the pure desktopUiState module, not a mode string", async () => {
     const code = await source();
-    assert.match(code, /import \{\s*closeDialog,\s*createDesktopUiState,\s*endDrag,\s*enterEditMode,\s*escapeLayer,\s*exitEditMode,\s*closeMenu,\s*deskRefreshBlocker,\s*deskRefreshDecision,\s*openDialog,\s*openMenu,\s*startDrag,\s*updateDrag\s*\} from "\.\/desktopUiState\.js";/); // run 50: the two re-read functions join the list
+    assert.match(code, /import \{\s*closeDialog,\s*createDesktopUiState,\s*endDrag,\s*enterEditMode,\s*escapeLayer,\s*exitEditMode,\s*closeMenu,\s*deskRefreshBlocker,\s*deskRefreshDecision,\s*healNotice,\s*openDialog,\s*openMenu,\s*startDrag,\s*updateDrag\s*\} from "\.\/desktopUiState\.js";/); // run 50: the two re-read functions join the list
     assert.match(code, /let desktopUi = createDesktopUiState\(\);/);
     assert.doesNotMatch(code, /favoritesMode/);
     assert.doesNotMatch(code, /favoritesUiState\.js/);
@@ -346,7 +346,7 @@ describe("newtab favorites source", () => {
   it("the bootstrap has no migration step: early newer check, then ensureWidgetsLayout, then getState (AS-RM-05)", async () => {
     const code = await source();
     assert.match(code, /from "\.\/widgetsStore\.js"/);
-    assert.match(code, /import \{\s*WIDGETS_META_KEY,\s*createWidgetsStore,\s*ensureWidgetsLayout,\s*inspectWidgetsMeta,\s*resetUnreadableWidgets\s*\} from "\.\/widgetsStore\.js";/);
+    assert.match(code, /import \{\s*WIDGETS_META_KEY,\s*createWidgetsStore,\s*ensureWidgetsLayout,\s*hasEverySystemTile,\s*inspectWidgetsMeta,\s*resetUnreadableWidgets\s*\} from "\.\/widgetsStore\.js";/);
     const boot = code.slice(code.indexOf("if (favoritesRoot) {\n  void (async () => {"), code.indexOf("})();", code.indexOf("if (favoritesRoot)")));
     const order = ['const metaKind = inspectWidgetsMeta(rawMeta);', 'metaKind === "newer"', 'metaKind === "invalid"', "await ensureWidgetsLayout(syncStorageArea, { screen: firstScreen() });", 'ensured.meta === "invalid"', "widgetsState = await widgetsService.getState();"].map((n) => boot.indexOf(n));
     assert.ok(order.every((i) => i >= 0), order.join());
@@ -1356,7 +1356,8 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     assert.match(recover, /const outcome = await healClearedDesk\(fresh\);/);
     assert.match(recover, /if \(outcome\.healed\) neighbours = \[SETTINGS_TILE_ID\];/);
     assert.match(recover, /closeDesktopDialog\(\{ restoreFocusTo: neighbours, reveal: true \}\)/);
-    assert.match(recover, /if \(outcome\.healed\) showDesktopStatus\(LAYOUT_RESET_MESSAGE, \{ tone: "info" \}\);\s*else showDesktopStatus\(error\.message\);/);
+    // run 59 (decision 3): the reset notice only where it is true; a silent heal (an ensure retry of this tab) shows the gone-link message as when nothing was healed
+    assert.match(recover, /if \(outcome\.healed && notice === "reset"\) showDesktopStatus\(LAYOUT_RESET_MESSAGE, \{ tone: "info" \}\);\s*else \{\s*if \(outcome\.healed\) applySilentHeal\(\);[^\n]*\n\s*showDesktopStatus\(error\.message\);\s*\}/);
     assert.ok(recover.indexOf("healClearedDesk(") < recover.indexOf("finishFavoritesAction("), "healed before the one render");
     assert.doesNotMatch(recover, /announce\(/); // the alert status announces it once
     // the heal helper (docs/stale-tab-recovery-followups.md decision 1): only without Settings, guarded against null, always re-reads, never throws
@@ -1388,7 +1389,7 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     // the post-action check of runDesktopMutation (decision 3) and the strings (Copy)
     assert.match(run, /const outcome = await healClearedDesk\(next\);/);
     assert.match(run, /if \(outcome\.failed\) leaveEditModeAfterFailedHeal\(\);/);
-    assert.match(run, /else if \(outcome\.healed\) showDesktopStatus\(LAYOUT_RESET_MESSAGE, \{ tone: "info" \}\);/);
+    assert.match(run, /else if \(outcome\.healed\) \{\s*if \(notice === "silent"\) applySilentHeal\(\);\s*else showDesktopStatus\(LAYOUT_RESET_MESSAGE, \{ tone: "info" \}\);\s*\}/); // run 59 (decision 3)
     assert.ok(run.indexOf("healClearedDesk(next)") < run.indexOf("leaveEditModeAfterFailedHeal()") && run.indexOf("leaveEditModeAfterFailedHeal()") < run.indexOf("finishFavoritesAction(generation"), "healed and layers left before the render");
     assert.ok(run.indexOf("finishFavoritesAction(generation") < run.indexOf("showLayoutRestoreFailure()"), "the failure message after the render");
     assert.match(code, /const LAYOUT_RESET_MESSAGE = "Your layout was reset in another tab\.";/);
@@ -2616,7 +2617,7 @@ describe("city modal focus and copy source (run 44, docs/city-modal-focus-copy.m
 
   it("AS-CMF-11: with no city the value line is `Set a city`, the hint is hidden by the city, the name is set with setAttribute", async () => {
     const sync = topLevelFunction(await strippedSource(), "syncWeatherDialogCity");
-    assert.match(sync, /\.textContent\s*=[^;]*"Set a city"/, "the value line shows Set a city");
+    assert.match(sync, /const text = label \|\| "Set a city";[\s\S]*value\.textContent = text;/, "the value line shows Set a city (run 59: written only when the row changes)");
     assert.match(sync, /\[data-weather-dialog-city\]/, "on the dialog's value node");
     assert.match(sync, /\.hidden\s*=[^;]*(?:label|location)|toggleAttribute\("hidden",[^)]*(?:label|location)/, "the hint's hidden depends on the stored city");
     assert.match(sync, /setAttribute\("aria-labelledby",/, "the accessible name is rebuilt on every sync");
@@ -3434,7 +3435,7 @@ describe("run 53 task 2: layers (AS-QDL-01, AS-QDL-02, AS-QDL-03, AS-QDL-05)", (
 
   it("decision 2: recoverFromGoneLink shows the chip before it closes the dialog or focuses the neighbour, in both branches", async () => {
     const recover = await stripped("recoverFromGoneLink");
-    const chip = recover.indexOf('if (outcome.healed) showDesktopStatus(LAYOUT_RESET_MESSAGE, { tone: "info" });');
+    const chip = recover.indexOf('if (outcome.healed && notice === "reset") showDesktopStatus(LAYOUT_RESET_MESSAGE, { tone: "info" });');
     assert.ok(chip > -1);
     assert.equal(recover.split("showDesktopStatus(").length - 1, 2, "one place shows the chip (the healed and the plain message)");
     assert.ok(chip > recover.indexOf("if (outcome.failed) {\n    showLayoutRestoreFailure();"), "after the failed exit");
@@ -3445,7 +3446,7 @@ describe("run 53 task 2: layers (AS-QDL-01, AS-QDL-02, AS-QDL-03, AS-QDL-05)", (
   it("decision 2: the heal branch of runDesktopMutation shows the chip before the Add link handler closes the dialog and reveals the tile", async () => {
     const code = stripComments(await source());
     const run = topLevelFunction(code, "runDesktopMutation");
-    assert.match(run, /else if \(outcome\.healed\) showDesktopStatus\(LAYOUT_RESET_MESSAGE, \{ tone: "info" \}\);\s*return true;/);
+    assert.match(run, /else if \(outcome\.healed\) \{\s*if \(notice === "silent"\) applySilentHeal\(\);\s*else showDesktopStatus\(LAYOUT_RESET_MESSAGE, \{ tone: "info" \}\);\s*\}\s*return true;/);
     const add = code.slice(code.indexOf('case "add-link": {'), code.indexOf('case "edit-link": {'));
     assert.ok(add.indexOf("runDesktopMutation(") < add.indexOf("closeDesktopDialog();") && add.indexOf("closeDesktopDialog();") < add.indexOf("revealAddedTile(added.id)"), "the mutation (which shows the chip), then the close, then the reveal");
   });
@@ -3714,3 +3715,106 @@ describe("run 59 task 3: the render path (docs/backlog-closeout.md decisions 1, 
     assert.match(code, /openTooltipScrollWindow\(\);\s*requestAnimationFrame\(\(\) => \{\s*if \(document\.activeElement === trigger\) showTooltipFor\(trigger\);/);
   });
 });
+
+describe("run 59 task 4: weather and the return of the tab (docs/backlog-closeout.md decisions 2, 3, 4; AS-BC-06 to AS-BC-09)", () => {
+  const code = async () => stripComments(await source());
+
+  it("decision 2: onBrowserOnline asks the memory rule BEFORE retryWeather (with the tab visible and a weather tile shown), so the load at open and every attempt are covered by one place", async () => {
+    const online = topLevelFunction(await code(), "onBrowserOnline");
+    const visible = online.indexOf('document.visibilityState !== "visible"');
+    const remember = online.indexOf("weatherOnlineMemory = rememberOnline(weatherOnlineMemory, { loadInFlight: weatherLoadInFlight, generation: weatherGeneration });");
+    const retry = online.indexOf("void retryWeather({ automatic: true, ignorePause: true });");
+    assert.ok(visible !== -1 && visible < remember && remember < retry, "visible, then the memory, then the ordinary attempt");
+    assert.match(online, /if \(weatherTileShownNow\(\)\) weatherOnlineMemory = rememberOnline\(/, "only while a weather tile is shown");
+    assert.match(await code(), /let weatherOnlineMemory = null;/, "no memory is null, 0 is a generation");
+  });
+
+  it("decision 2: the replay asks onlineReplayDecision, clears the memory whatever it says, checks the visibility and the network itself and calls the same automatic attempt", async () => {
+    const replay = topLevelFunction(await code(), "replayRememberedOnline");
+    assert.match(replay, /const decision = onlineReplayDecision\(weatherOnlineMemory, generation\);\s*weatherOnlineMemory = decision\.memory;\s*if \(!decision\.replay\) return;/);
+    assert.match(replay, /document\.visibilityState !== "visible" \|\| navigator\.onLine === false/);
+    assert.match(replay, /void retryWeather\(\{ automatic: true, ignorePause: true \}\);/);
+  });
+
+  it("decision 2: the load at open consumes the memory after its result is applied and rendered, only as the current generation (the superseded early return clears nothing)", async () => {
+    const start = topLevelFunction(await code(), "startWeather");
+    const superseded = start.indexOf("if (generation !== weatherGeneration) {");
+    const render = start.lastIndexOf("renderFavorites();");
+    const consume = start.indexOf("replayRememberedOnline(generation);");
+    assert.ok(superseded !== -1 && superseded < render && render < consume, "after the early return and after the render");
+    assert.equal((start.match(/replayRememberedOnline\(/g) ?? []).length, 1);
+    assert.ok(consume > start.indexOf("weatherResult = result;"), "after the result is applied");
+  });
+
+  it("decision 2: an attempt consumes the memory at the very end for every outcome that is still current; the gone branch clears it with one line; the superseded early return clears nothing", async () => {
+    const retry = topLevelFunction(await code(), "retryWeather");
+    const superseded = retry.indexOf("if (token !== weatherRetryToken || generation !== weatherGeneration) return;");
+    const gone = retry.indexOf('if (outcome === "gone") {');
+    const clear = retry.indexOf("weatherOnlineMemory = null;");
+    const consume = retry.indexOf("replayRememberedOnline(generation);");
+    assert.ok(superseded !== -1 && superseded < gone && gone < clear && clear < retry.indexOf("return;", clear), "the gone branch clears the memory before its own return");
+    assert.ok(consume > retry.indexOf("if (failed) {") && consume > superseded, "the replay point follows the failure and success handling");
+    assert.equal(retry.slice(consume).split("\n").length <= 3, true, "it is the last statement of retryWeather");
+    assert.equal((retry.match(/weatherOnlineMemory = null;/g) ?? []).length, 1);
+    assert.equal((retry.match(/replayRememberedOnline\(/g) ?? []).length, 1);
+  });
+
+  it("decision 3: the three heal sites take the notice from healNotice, read from the state the tab showed BEFORE the heal", async () => {
+    const all = await code();
+    assert.match(topLevelFunction(all, "healNoticeFor"), /return healNotice\(\{ ensureFailed: widgetsEnsureFailed, shownItems: shownState\?\.items \?\? null \}\);/);
+    const read = topLevelFunction(all, "healReadDesk");
+    assert.ok(read.indexOf("const notice = healNoticeFor(widgetsState);") !== -1 && read.indexOf("const notice = healNoticeFor(widgetsState);") < read.indexOf("healClearedDesk(state)"), "healReadDesk: before the heal");
+    const run = topLevelFunction(all, "runDesktopMutation");
+    assert.ok(run.indexOf("const notice = healNoticeFor(widgetsState);") !== -1 && run.indexOf("const notice = healNoticeFor(widgetsState);") < run.indexOf("await action(currentColumns())"), "runDesktopMutation: before the write");
+    const recover = topLevelFunction(all, "recoverFromGoneLink");
+    assert.ok(recover.indexOf("const notice = healNoticeFor(widgetsState);") !== -1 && recover.indexOf("const notice = healNoticeFor(widgetsState);") < recover.indexOf("healClearedDesk(fresh)"), "recoverFromGoneLink: before the heal");
+    assert.equal((all.match(/healNoticeFor\(/g) ?? []).length, 4, "defined once, used at the three sites");
+  });
+
+  it("decision 3: a silent heal at each site shows no reset message (recoverFromGoneLink shows its own text) and runs applySilentHeal; a reset heal shows today's message", async () => {
+    const all = await code();
+    assert.match(topLevelFunction(all, "healReadDesk"), /if \(outcome\.healed\) \{\s*if \(notice === "silent"\) applySilentHeal\(\);\s*else showDesktopStatus\(LAYOUT_RESET_MESSAGE, \{ tone: "info" \}\);\s*\}/);
+    assert.match(topLevelFunction(all, "runDesktopMutation"), /else if \(outcome\.healed\) \{\s*if \(notice === "silent"\) applySilentHeal\(\);\s*else showDesktopStatus\(LAYOUT_RESET_MESSAGE, \{ tone: "info" \}\);\s*\}/);
+    assert.match(topLevelFunction(all, "recoverFromGoneLink"), /if \(outcome\.healed && notice === "reset"\) showDesktopStatus\(LAYOUT_RESET_MESSAGE, \{ tone: "info" \}\);\s*else \{\s*if \(outcome\.healed\) applySilentHeal\(\);\s*showDesktopStatus\(error\.message\);\s*\}/);
+    assert.equal((all.match(/applySilentHeal\(\)/g) ?? []).length, 4, "defined once, used at the three sites");
+  });
+
+  it("decision 3 and L0-28: the silent branch reads the focus BEFORE the chip is hidden, spends the flag, hides any persistent chip and puts the focus on Settings without scrolling", async () => {
+    const silent = topLevelFunction(await code(), "applySilentHeal");
+    const read = silent.indexOf("const focusWasInStatus = Boolean(desktopStatus?.contains(document.activeElement));");
+    const flag = silent.indexOf("widgetsEnsureFailed = false;");
+    const hide = silent.indexOf('showDesktopStatus("");');
+    const focus = silent.indexOf("focusWidgetTarget([SETTINGS_TILE_ID], { preventScroll: true });");
+    assert.ok(read !== -1 && flag !== -1 && hide !== -1 && focus !== -1, "all four statements exist");
+    assert.ok(read < hide && hide < focus, "read the focus, hide the chip, then move the focus");
+    assert.match(silent, /if \(desktopStatusPersistent\) showDesktopStatus\(""\);/, "any persistent chip: the ensure chip and the Reload chip");
+    assert.match(silent, /if \(focusWasInStatus\) focusWidgetTarget/, "only a focus that was inside the chip moves");
+  });
+
+  it("decision 3, 154 (4): a healthy re-read with the six system tiles spends the flag and hides the ensure chip BEFORE the equal-state check of applyReadDesk", async () => {
+    const all = await code();
+    const reread = topLevelFunction(all, "refreshDeskOnReturn");
+    const clear = reread.indexOf("clearEnsureChipOnHealthyRead(fresh);");
+    const apply = reread.indexOf("applyReadDesk(fresh);");
+    assert.ok(clear !== -1 && clear < apply, "the clear precedes applyReadDesk (which returns on an equal state)");
+    const fn = topLevelFunction(all, "clearEnsureChipOnHealthyRead");
+    assert.match(fn, /if \(!hasEverySystemTile\(fresh\.items\)\) return;\s*widgetsEnsureFailed = false;\s*if \(desktopStatusPersistent && desktopStatus\?\.textContent === ENSURE_FAILED_MESSAGE\) showDesktopStatus\(""\);/);
+    assert.doesNotMatch(applyReadDeskText(all), /widgetsEnsureFailed|hasEverySystemTile/, "applyReadDesk itself is untouched");
+  });
+
+  it("decision 4: syncWeatherDialogCity leaves an unchanged row alone (nothing is written) and runs in the replaced and gone branches of retryWeather", async () => {
+    const all = await code();
+    const sync = topLevelFunction(all, "syncWeatherDialogCity");
+    const unchanged = sync.indexOf("field.getAttribute(\"aria-labelledby\") === labelledby");
+    const firstWrite = sync.indexOf("value.textContent = ");
+    assert.ok(unchanged !== -1 && unchanged < firstWrite, "the equality return comes before the first write");
+    assert.match(sync, /value\.textContent === text && hint\.hidden === !label && value\.hasAttribute\("data-empty"\) === !label && field\.getAttribute\("aria-labelledby"\) === labelledby && \(field\.getAttribute\("title"\) \?\? ""\) === label && field\.disabled === !weatherService\) return;/);
+    const retry = topLevelFunction(all, "retryWeather");
+    assert.match(retry, /weatherLocation = null;\s*weatherLocationError = "";\s*clearTimeout\(weatherRetryTimer\);\s*if \(!automatic && !desktopStatusPersistent\) showDesktopStatus\(""\);\s*syncWeatherDialogCity\(\);\s*weatherOnlineMemory = null;/, "the gone branch");
+    assert.match(retry, /if \(replaced\) \{\s*weatherResult = result;[\s\S]*?\}\s*if \(!failed\) weatherLocationError = "";\s*if \(replaced\) syncWeatherDialogCity\(\);/, "the replaced branch");
+  });
+});
+
+function applyReadDeskText(code) {
+  return topLevelFunction(code, "applyReadDesk");
+}

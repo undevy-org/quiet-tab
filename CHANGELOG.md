@@ -153,6 +153,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (decision 6; a tooltip open for the pointer and one closed by a window resize are not restored), and any scroll of the document (arrow keys, Page Down, the
   scrollbar) hides the tooltip instead of leaving it where the tile was; the scroll a focus itself causes does not hide it (decision 7). E2E:
   `dg-95` group g3.
+- An `online` event that arrives while the weather is loading (the load when the tab opens, or any retry) is no longer lost: it is remembered once and, if
+  that load or retry then fails, one more attempt starts at once (the 3 s pause is ignored); nothing starts after a success, after a city change, or while
+  the tab is hidden (`docs/backlog-closeout.md` decision 2). E2E: `dg-95` group g4, AS-BC-06.
+- Retrying a layout that failed to save at load no longer says `Your layout was reset in another tab.` (nothing was reset elsewhere): the heal that
+  completes the six system tiles is silent and also takes down the `Couldn't add the weather and settings tiles` chip and a stale `Reload` chip, with the
+  focus that was on `Reload` going to the Settings tile; a healthy return that already finds the six tiles written takes down the chip too; a storage that
+  another tab really cleared shows the message as before (decision 3). E2E: `dg-95` g4, AS-BC-07 and AS-BC-08.
+- The city row of an open Edit weather dialog follows an automatic or manual weather attempt that changes the city (or finds it removed); a row whose text
+  did not change is not touched (decision 4). E2E: `dg-95` g4, AS-BC-09.
 - Drag and scrolling (`docs/drag-scroll-target.md`): the drop outline now follows every scroll of the page during a drag (wheel,
   keys, scrollbar), not only the pointer, and a release writes to the cell under the pointer.
 - A tile dropped on a page scrolled to its bottom lands on its outline: the page keeps the height its scroll position needs until you scroll

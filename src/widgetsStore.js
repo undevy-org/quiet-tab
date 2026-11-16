@@ -321,7 +321,16 @@ export function createWidgetsStore(
 // for the block's height (docs/vertically-centered-defaults.md, docs/unreadable-grid-reset.md decision 2); `placeMissing` validates it.
 // A partial self-heal, or no / an invalid `screen`, keeps the row-0 rule. `y` is never recomputed later.
 // ---------------------------------------------------------------------------
-const ENSURED_IDS = [...WEATHER_METRIC_IDS, CHROME_IDS.settings, CHROME_IDS.add];
+export const ENSURED_IDS = [...WEATHER_METRIC_IDS, CHROME_IDS.settings, CHROME_IDS.add];
+
+// A state that has an item for each of the six system ids (docs/backlog-closeout.md decision 3, 154 (4)): what a healthy re-read looks like after
+// a failed ensure. It counts the PRESENCE of an item with the id, as `ensureWidgetsLayout` does with `readable(id) === null` (a metric the user hid,
+// `enabled: false`, is present), and a repeated id counts once.
+export function hasEverySystemTile(items) {
+  if (!Array.isArray(items)) return false;
+  const present = new Set(items.map((item) => item?.id));
+  return ENSURED_IDS.every((id) => present.has(id));
+}
 
 export function ensureWidgetsLayout(storageArea, { now = () => new Date().toISOString(), screen } = {}) {
   return withWidgetsMutationLock(async () => {

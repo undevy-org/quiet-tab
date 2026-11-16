@@ -101,6 +101,22 @@ export function weatherAppearanceDecision({ wasShown, shown, openLoadStarted, ch
   return { action: online && !loadInFlight ? "attempt" : "none", openLoadStarted };
 }
 
+// ---- an `online` that arrives while a load or an attempt runs (docs/backlog-closeout.md decision 2, Ruling 2, 154 (1)) -----------------------
+// One memory, one value: the weather generation that was current when an `online` arrived while the load at open or an attempt was in flight.
+// "No memory" is null; 0, the generation of the load at open, is a valid memory, so every comparison is with null or by value and never by truthiness.
+// An `online` with nothing in flight remembers nothing (the ordinary attempt path handles it) and leaves what is there as it was.
+export function rememberOnline(memory, { loadInFlight, generation }) {
+  return loadInFlight === true ? generation : memory;
+}
+
+// What the end of a load or an attempt that is still the current one does with the memory: replay once when the remembered generation is the one
+// that just ended, and in EVERY case clear it (a value of another generation is dropped, a replay that a guard refuses leaves nothing behind, and a
+// replay that fails never starts another: only a new `online` can). A superseded load or attempt does not ask: the generations only grow, so its
+// stale value can never equal a later generation.
+export function onlineReplayDecision(memory, generation) {
+  return { replay: typeof memory === "number" && memory === generation, memory: null };
+}
+
 export function finishWeatherRetry(state, now, ok) {
   return { ...state, retry: { inFlight: false, availableAt: ok ? 0 : now + WEATHER_RETRY_COOLDOWN_MS } };
 }
