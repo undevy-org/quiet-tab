@@ -1583,7 +1583,6 @@ describe("widgetsService tile text options (run 58)", () => {
       assert.equal(item.label.length, 100);
       assert.deepEqual([item.showName, item.showLink], [false, false], "the keys are in the measured item");
       const bytes = storedBytes(item);
-      console.log(`worst item stored size: ${bytes} bytes`);
       assert.equal(bytes <= 8192 - 1000, true, `${bytes} bytes`);
     });
 
@@ -1594,7 +1593,6 @@ describe("widgetsService tile text options (run 58)", () => {
       const item = onlyItem(state);
       assert.equal(item.url.length, URL_MAX);
       const bytes = storedBytes(item);
-      console.log(`worst item stored size (http, 2000 href): ${bytes} bytes`);
       assert.equal(bytes <= 8192 - 1000, true, `${bytes} bytes`);
     });
 
@@ -1629,8 +1627,8 @@ describe("widgetsService tile text options (run 58)", () => {
 
     it("100 letters and 50 pairs of a letter and a combining accent (100 code points) are accepted", async () => {
       await nameOk("n".repeat(100));
-      await nameOk("é".repeat(50));
-      await nameRefused("é".repeat(51));
+      await nameOk("e\u0301".repeat(50));
+      await nameRefused("e\u0301".repeat(51));
     });
 
     it("updateFavorite counts the same way (an Edit Save of a 100-emoji name succeeds, 101 is refused)", async () => {

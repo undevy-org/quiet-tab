@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { favoriteTileText } from "../src/favoritesShared.js";
+import { favoriteTileName, favoriteTileText } from "../src/favoritesShared.js";
 
 // Decision 2 of docs/tile-text-options.md: the table of what a link tile shows. Expected values are written out cell by cell,
 // not derived from the rule, so a wrong rule cannot agree with its own test.
@@ -63,5 +63,49 @@ describe("favoriteTileText (docs/tile-text-options.md decision 2)", () => {
   it("does not change the item it reads", () => {
     const item = Object.freeze({ showName: false });
     assert.deepEqual(favoriteTileText(item, { w: 2, h: 2 }), HOST);
+  });
+});
+
+// Decision 3 of docs/tile-text-options.md (changed by the review of the branch, I1): the accessible name of a link tile. It is the
+// action plus the label; when the host is the only text a tile draws, the host is part of the name (WCAG 2.5.3 Label in Name).
+describe("favoriteTileName (docs/tile-text-options.md decision 3)", () => {
+  const item = (extra) => ({ label: "GitHub", domain: "github.com", ...extra });
+
+  it("a tile that draws only the host names the host after the label, in normal and in edit mode", () => {
+    for (const size of [SIZES["2x1"], SIZES["1x2"], SIZES["2x2"]]) {
+      assert.equal(favoriteTileName(item({ showName: false }), size, false), "Open GitHub, github.com");
+      assert.equal(favoriteTileName(item({ showName: false }), size, true), "Edit GitHub, github.com");
+    }
+  });
+
+  it("every other tile keeps the action plus the label", () => {
+    for (const row of TABLE.filter((r) => !(r.showName === false && r.showLink === true))) {
+      for (const size of Object.values(SIZES)) {
+        const stored = { ...(row.showName ? {} : { showName: false }), ...(row.showLink ? {} : { showLink: false }) };
+        assert.equal(favoriteTileName(item(stored), size, false), "Open GitHub");
+        assert.equal(favoriteTileName(item(stored), size, true), "Edit GitHub");
+      }
+    }
+  });
+
+  it("a 1x1 tile draws no text, so its name is the label even with the name off", () => {
+    assert.equal(favoriteTileName(item({ showName: false }), SIZES["1x1"], false), "Open GitHub");
+    assert.equal(favoriteTileName(item({ showName: false }), SIZES["1x1"], true), "Edit GitHub");
+  });
+
+  it("a tile with no switches keeps the label alone at every size", () => {
+    for (const size of Object.values(SIZES)) {
+      assert.equal(favoriteTileName(item({}), size, false), "Open GitHub");
+    }
+  });
+
+  it("agrees with favoriteTileText: the host is in the name exactly when it is the only line drawn", () => {
+    for (const row of TABLE) {
+      for (const size of Object.values(SIZES)) {
+        const stored = { ...(row.showName ? {} : { showName: false }), ...(row.showLink ? {} : { showLink: false }) };
+        const lines = favoriteTileText(stored, size);
+        assert.equal(favoriteTileName(item(stored), size, false).includes("github.com"), !lines.name && lines.host);
+      }
+    }
   });
 });

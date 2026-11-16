@@ -22,3 +22,13 @@ export function favoriteTileText(item, { w, h }) {
   }
   return { name: wantName, host: wantLink };
 }
+
+// The accessible name of a link tile (docs/tile-text-options.md decision 3): the action and the label. When the host is the only text the
+// tile draws (the name is off, the link is on, the tile has a text box), the host follows the label, so that the visible text is part of the
+// name (WCAG 2.5.3 Label in Name; the label is not drawn then, and the host is what a person can say to a voice control). Every other tile,
+// a 1×1 tile and a tile with no text included, is named as before.
+export function favoriteTileName(item, size, editing) {
+  const action = editing ? "Edit" : "Open";
+  const lines = favoriteTileText(item, size);
+  return !lines.name && lines.host ? `${action} ${item.label}, ${item.domain}` : `${action} ${item.label}`;
+}

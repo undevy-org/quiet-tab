@@ -22,7 +22,7 @@ forecast cache and a per-device "city prompt dismissed" flag persist to
 | `src/widgetsService.js` | Add/update/delete for links, `updateWeatherMetric` (size, shown/hidden, city label) and `moveWidget` (drop at a cell, `PlacementError` when the block is taken). Every mutation takes the current column count, runs under the mutation lock, checks `assertWritable` first, applies the action to the displayed layout of fresh storage and persists the displayed grid of every widget. |
 | `src/widgetsShared.js` | Shared widget constants (types, weather metric ids, caps, lock name, newer-version message). |
 | `src/widgetsLayout.js` | `placeTooltip` (edge-aware tooltip placement). |
-| `src/favoritesShared.js` | Shared favorites constants (icon modes, color sources, the link and name limits) and helpers, including the pure `favoriteTileText(item, { w, h })` that says which lines (name, host) a link tile draws. |
+| `src/favoritesShared.js` | Shared favorites constants (icon modes, color sources, the link and name limits) and helpers, including the pure `favoriteTileText(item, { w, h })` that says which lines (name, host) a link tile draws and `favoriteTileName(item, size, editing)` that builds its accessible name (`Open <label>` / `Edit <label>`, with `, <domain>` added when the host is the only line drawn). |
 | `src/favoriteIcon.js` | Chooses a favicon, custom image, or letter icon for a tile. (The default-globe check on top of it lives in `defaultFavicon.js` and `newtab.js`; see `docs/favicon-globe-fallback.md`.) |
 | `src/defaultFavicon.js` | Tells Chrome's grey default `_favicon` globe from a real icon: pure exact-pixel comparison (`isDefaultFaviconPixels`), a per-page-load checker (one sentinel image, 2 s timeout, fail open) and an in-memory verdict cache. |
 | `src/favoriteColor.js` | Derives a tile's accent color from its domain or a sampled icon. |
@@ -57,7 +57,7 @@ is sharded instead (layout version 3):
   `grid: { x, y, w, h }` (cell coordinates; `w` and `h` are 1 or 2; `x` is a
   signed integer counted in columns from the center line of the grid, `y` from
   the top row):
-  - `favorite` — a link (URL, label, icon mode, color); optionally `showName` and
+  - `favorite`: a link (URL, label, icon mode, color); optionally `showName` and
     `showLink` (booleans, stored only when `false`: the tile hides its name or its
     host line; a missing key means shown, `docs/tile-text-options.md`);
   - `weather-metric` — `{ id, type, enabled, grid }` with one of four fixed ids
@@ -174,7 +174,7 @@ dismissed; the flag is per device and not synced.
 Weather values are not part of the widgets store. Each metric tile in the grid is
 matched to the forecast by its metric id at render time; the grid re-renders when
 the forecast arrives. A 2-wide tile shows the primary and secondary values, a
-2-high one larger type and the city name; type sizes follow the cell size.
+2-high one larger type and the city name (unless the tile's `showCity` is `false`); type sizes follow the cell size.
 
 1. `initialize()` reads the location. With none set, no weather tile is drawn and
    the first shown metric's cell holds one "Set a city" hint tile (unless all four

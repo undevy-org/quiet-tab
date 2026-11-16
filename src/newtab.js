@@ -10,7 +10,7 @@ import {
   createDefaultFaviconChecker
 } from "./defaultFavicon.js";
 import { FAVICON_SIZE, getFaviconUrl, getFavoriteIconModel, getFavoriteLetter } from "./favoriteIcon.js";
-import { favoriteTileText } from "./favoritesShared.js";
+import { favoriteTileName, favoriteTileText } from "./favoritesShared.js";
 import { createIconNode } from "./icons.js";
 import {
   canPlace, cellFromPoint, clampDropCell, displayLayout, effectiveColumns, gridMetrics, maxDropRow, viewportRows
@@ -482,7 +482,7 @@ function createFavoriteTile(item, cell) {
   button.dataset.favoriteId = item.id;
   button.dataset.widgetId = item.id;
   button.title = item.label;
-  button.setAttribute("aria-label", editing ? `Edit ${item.label}` : `Open ${item.label}`);
+  button.setAttribute("aria-label", favoriteTileName(item, cell, editing)); // docs/tile-text-options.md decision 3: the host joins the name when it is the only text
   button.style.setProperty(
     "--favorite-accent-rgb",
     hexToRgbChannels(normalizeAccentLightness(item.backgroundColor))

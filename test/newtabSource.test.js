@@ -936,7 +936,9 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
 
   it("names a link tile Open <label> in normal mode and Edit <label> in edit mode; text only via text nodes", async () => {
     const tile = fn(await source(), "createFavoriteTile");
-    assert.match(tile, /editing \? `Edit \$\{item\.label\}` : `Open \$\{item\.label\}`/);
+    // the name is built by the pure favoriteTileName (docs/tile-text-options.md decision 3: the host joins the label when it is the only text drawn); the tile never builds it itself
+    assert.match(tile, /button\.setAttribute\("aria-label", favoriteTileName\(item, cell, editing\)\);/);
+    assert.doesNotMatch(tile, /`Edit \$\{|`Open \$\{/);
     assert.match(tile, /button\.dataset\.favoriteAction = editing \? "edit" : "open";/);
     // what the tile draws is decided by favoriteTileText (docs/tile-text-options.md decision 2); 1×1 tiles carry no text (the label is the accessible name)
     assert.match(tile, /const lines = favoriteTileText\(item, cell\);/);

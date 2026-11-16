@@ -207,13 +207,15 @@ function normalizeBackgroundColor(backgroundColor, domain, defaultBackgroundColo
   return color.toLowerCase();
 }
 
-// The optional booleans of an item, stored only when false (docs/tile-text-options.md decision 1). `field` names the dialog field the
-// error is about; the weather tile's `showCity` has no field of its own and throws a plain Error like `enabled`.
+// The two optional booleans of a link, each with the message of a value that is not a boolean; stored only when false
+// (docs/tile-text-options.md decision 1). The weather tile's `showCity` is handled on its own, not through this list.
 const LINK_SHOW_FIELDS = [
   ["showName", "Choose whether the tile shows its name"],
   ["showLink", "Choose whether the tile shows its link"]
 ];
 
+// `field` names the dialog field the error is about (a link's `showName` and `showLink` pass their own key); the weather tile's `showCity`
+// has no field of its own and passes none, so it throws a plain Error like `enabled`.
 function checkedBoolean(value, message, field) {
   if (typeof value !== "boolean") {
     throw field ? fieldError(message, field) : new Error(message);
