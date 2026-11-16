@@ -173,6 +173,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   E2E: `dg-95` g7, AS-BC-13.
 - The message of the unreadable-grid screen is spoken once: it stops being an alert when the Reset grid dialog first opens, so closing the dialog no longer
   announces it again (`docs/backlog-closeout.md` decision 10). E2E: `dg-95` g5, AS-BC-10.
+- At a 24 px browser font in a 320 px window the two 50/50 footer buttons of the dialogs, the city modal and the first-run wizard are equal halves of the card
+  and stay inside it (the delete confirm and wizard step 1 stuck out by 2.7 and 3.4 px: `min-width: 0` on the buttons), and the last label of the Icon group
+  of Add link and Edit link is no longer touched by the group's border with a classic scrollbar (`padding` 4 px instead of 5 px on the dialog segments when the
+  window is at most 14 rem, 336 px at 24 px; nothing changes at 16 px and 20 px). A two-line `Reset grid` label keeps its 1 px of line box under the border
+  (`docs/backlog-closeout.md` decisions 8 and 9, Accepted exception 16). E2E: `dg-95` g8, AS-BC-14 and AS-BC-15.
 - Drag and scrolling (`docs/drag-scroll-target.md`): the drop outline now follows every scroll of the page during a drag (wheel,
   keys, scrollbar), not only the pointer, and a release writes to the cell under the pointer.
 - A tile dropped on a page scrolled to its bottom lands on its outline: the page keeps the height its scroll position needs until you scroll

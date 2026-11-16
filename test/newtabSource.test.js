@@ -3905,6 +3905,85 @@ describe("run 59 task 5: the Add menu, the dialog press, the city field and the 
   });
 });
 
+describe("run 59 task 6: the 50/50 footer buttons may shrink and the dialog segments take a narrower padding at an enlarged font (docs/backlog-closeout.md decisions 8 and 9; AS-BC-14, AS-BC-15)", () => {
+  const stripCss = (text) => text.replace(/\/\*[\s\S]*?\*\//g, "");
+  const norm = (text) => text.replace(/\s+/g, " ").trim();
+  const readCss = (name) => readFile(new URL(`../src/${name}`, import.meta.url), "utf8");
+  const cssRules = (css) => [...stripCss(css).matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({ selector: norm(m[1]), body: norm(m[2]), index: m.index }));
+  const decls = (rule) => rule.body.split(";").map((d) => d.trim()).filter(Boolean);
+  // The top-level block that starts with `header` (its text between the braces) and where it starts; exactly one such block.
+  const mediaBlock = (css, header) => {
+    const text = stripCss(css);
+    const hits = [];
+    for (let from = text.indexOf(header); from !== -1; from = text.indexOf(header, from + 1)) {
+      let depth = 0;
+      let end = -1;
+      for (let i = text.indexOf("{", from); i < text.length; i += 1) {
+        if (text[i] === "{") depth += 1;
+        if (text[i] === "}" && --depth === 0) { end = i; break; }
+      }
+      assert.ok(end > -1, `${header} is unbalanced`);
+      hits.push({ start: from, inner: text.slice(text.indexOf("{", from) + 1, end) });
+    }
+    assert.equal(hits.length, 1, `exactly one ${header} block`);
+    return hits[0];
+  };
+  // A rule at the top level of the stylesheet (not inside an @media block): the selector compared whole, never by substring.
+  const topRules = (css, selector) => {
+    let text = stripCss(css);
+    for (const m of [...text.matchAll(/@media[^{]*\{/g)].reverse()) {
+      let depth = 0;
+      let end = -1;
+      for (let i = m.index + m[0].length - 1; i < text.length; i += 1) {
+        if (text[i] === "{") depth += 1;
+        if (text[i] === "}" && --depth === 0) { end = i; break; }
+      }
+      text = text.slice(0, m.index) + text.slice(end + 1);
+    }
+    return cssRules(text).filter((r) => r.selector === selector);
+  };
+
+  it("decision 8: min-width: 0 on the two footer button rules (the dialogs' and the city modal's and the wizard's), next to flex: 1, and on no third footer selector", async () => {
+    const controls = await readCss("controls.css");
+    const surfaces = await readCss("surfaces.css");
+    const dialog = topRules(controls, ".favorite-form__footer .button");
+    const city = topRules(surfaces, ".city-modal__actions .button");
+    assert.equal(dialog.length, 1, "one dialog footer button rule");
+    assert.equal(city.length, 1, "one city modal and wizard footer button rule");
+    for (const rule of [dialog[0], city[0]]) {
+      assert.ok(decls(rule).includes("flex: 1"), `${rule.selector} keeps flex: 1`);
+      assert.ok(decls(rule).includes("min-width: 0"), `${rule.selector} has min-width: 0`);
+      assert.equal(decls(rule).filter((d) => d.startsWith("min-width")).length, 1, "one min-width");
+    }
+    // the footers of the wizard are .city-modal__actions too: no other rule names a footer button, so no third pair gets the rule
+    const footerButtons = [...cssRules(controls), ...cssRules(surfaces)].filter((r) => /(?:favorite-form__footer|city-modal__actions)[^,]*\.button(?![-\w])/.test(r.selector) && decls(r).some((d) => d.startsWith("min-width")));
+    assert.deepEqual(footerButtons.map((r) => r.selector).sort(), [".city-modal__actions .button", ".favorite-form__footer .button"]);
+  });
+
+  it("decision 9: a (max-width: 14rem) block after the 451 px block with one rule, .desktop-dialog .segmented__option { padding: 0 4px; }, and nothing else in it", async () => {
+    const css = await readCss("surfaces.css");
+    const narrow = mediaBlock(css, "@media (max-width: 451px)");
+    const enlarged = mediaBlock(css, "@media (max-width: 14rem)");
+    assert.ok(enlarged.start > narrow.start, "the rem block comes after the 451 px block, so it wins at the same specificity");
+    const rules = cssRules(enlarged.inner);
+    assert.equal(rules.length, 1, "one rule in the block");
+    assert.equal(rules[0].selector, ".desktop-dialog .segmented__option");
+    assert.deepEqual(decls(rules[0]), ["padding: 0 4px"]);
+    // the 451 px block is as it was: the 5 px padding, no wrapping, the glyph unit
+    const base = cssRules(narrow.inner).find((r) => r.selector === ".desktop-dialog .segmented__option");
+    assert.deepEqual(decls(base), ["padding: 0 5px", "white-space: nowrap"]);
+    assert.equal(cssRules(narrow.inner).length, 5, "the 451 px block keeps its five rules");
+  });
+
+  it("decision 9: the toggles and the radio groups are one selector (no .segmented--toggle override), so the On tile toggles become 4 px with the rest", async () => {
+    const css = await readCss("surfaces.css");
+    const enlarged = mediaBlock(css, "@media (max-width: 14rem)").inner;
+    assert.doesNotMatch(enlarged, /segmented--toggle/);
+    const all = cssRules(css).filter((r) => r.selector.includes("segmented__option") && decls(r).some((d) => /^padding(?:-inline)?:/.test(d)));
+    assert.deepEqual(all.map((r) => [r.selector, decls(r).find((d) => d.startsWith("padding"))]), [[".desktop-dialog .segmented__option", "padding: 0 5px"], [".desktop-dialog .segmented__option", "padding: 0 4px"]], "the two padding rules of the dialogs' options, in source order: 5 px at 451 px, 4 px at 14rem");
+  });
+});
+
 function applyReadDeskText(code) {
   return topLevelFunction(code, "applyReadDesk");
 }

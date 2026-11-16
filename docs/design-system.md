@@ -227,7 +227,7 @@ All heights are **border-box** (`box-sizing: border-box` globally).
 - In forced colors the selected dialog segment is drawn with `forced-color-adjust: none`, `Highlight` and `HighlightText` (the soft fill and the inset ring do not survive; without the opt-out Chromium paints a Canvas backplate under the label). The Size segments carry a footprint shape glyph in `currentColor` (unit 5 px, unit 4 px up to 451 px windows).
 - Container: 1px `var(--color-border-control)` border (dividers between options keep the decorative `--border`), radius **8px**; outer height **40px** minimum (`min-height`)
 - Option: `min-height: calc(var(--control-height) - 2 * var(--control-border-width))` → **38px** at the default font size; a label that wraps at a larger browser font makes all options of the group (and the group) taller, nothing is cut by the group's `overflow: hidden`
-- Option padding `0 8px` (dialog up to 451 px wide windows: `0 5px`, `white-space: nowrap`)
+- Option padding `0 8px` (dialog up to 451 px wide windows: `0 5px`, `white-space: nowrap`; and `0 4px` when the window is at most `14rem` wide, the browser's default font size times 14, 224 px at 16 px and 336 px at 24 px, the bound included: at an enlarged font the Icon group of Add link and Edit link would touch its border with a classic scrollbar at `0 5px`; every dialog segment takes it, the `On tile` and `City label` toggles too. `docs/backlog-closeout.md` decision 9)
 - Font `--font-size-sm` (**13px** at the default font size); checked segment outside dialogs: primary fill, weight **600**
 - **Direction B (inside `.desktop-dialog`):** the checked segment uses the soft fill
   (`--soft-fill-strong`), `--text`, weight **600** and an inset 1px `--border-control`
@@ -268,7 +268,9 @@ All heights are **border-box** (`box-sizing: border-box` globally).
 ### Modal actions
 
 - Every dialog and the city modal ends with the same row (`.favorite-form__footer`,
-  `.city-modal__actions`): exactly **two** buttons, 50/50 (`flex: 1`), `min-height`
+  `.city-modal__actions`): exactly **two** buttons, 50/50 (`flex: 1`, `min-width: 0` so that
+  a label that is wider than its half wraps inside the button at an enlarged font instead of
+  pushing the button out of the card, `docs/backlog-closeout.md` decision 8), `min-height`
   **40px**, `gap: var(--form-footer-gap)` (**8px**) between them and between icon and
   label, secondary (`x`, Cancel or Not now) on the left, commit on the right
 - `margin-top: var(--modal-actions-margin-top)` (**16px**); no footer padding or
