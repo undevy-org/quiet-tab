@@ -176,7 +176,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - At a 24 px browser font in a 320 px window the two 50/50 footer buttons of the dialogs, the city modal and the first-run wizard are equal halves of the card
   and stay inside it (the delete confirm and wizard step 1 stuck out by 2.7 and 3.4 px: `min-width: 0` on the buttons), and the last label of the Icon group
   of Add link and Edit link is no longer touched by the group's border with a classic scrollbar (`padding` 4 px instead of 5 px on the dialog segments when the
-  window is at most 14 rem, 336 px at 24 px; nothing changes at 16 px and 20 px). A two-line `Reset grid` label keeps its 1 px of line box under the border
+  window is at most 14 rem, 336 px at 24 px; nothing changes at 16 px, and at 20 px only the first-run wizard's step 1 in a window of 340 px or
+  less, whose two buttons were uneven, gets equal halves). A two-line `Reset grid` label keeps its 1 px of line box under the border
   (`docs/backlog-closeout.md` decisions 8 and 9, Accepted exception 16). E2E: `dg-95` g8, AS-BC-14 and AS-BC-15.
 - Drag and scrolling (`docs/drag-scroll-target.md`): the drop outline now follows every scroll of the page during a drag (wheel,
   keys, scrollbar), not only the pointer, and a release writes to the cell under the pointer.

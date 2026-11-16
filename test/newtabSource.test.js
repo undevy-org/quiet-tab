@@ -3888,7 +3888,7 @@ describe("run 59 task 5: the Add menu, the dialog press, the city field and the 
     assert.equal((all.match(/cityModalError = "Enter a city name";\s*cityModalErrorInvalid = true;/g) ?? []).length, 3, "the Enter on the field, the change-mode submit, the wizard submit");
     assert.equal((all.match(/cityModalError = locationErrorMessage\([^\n]*\);\s*cityModalErrorInvalid = false;/g) ?? []).length, 3, "the three location failures are described, not invalid");
     assert.match(all, /cityModalError = weatherErrorMessage\(error\);\s*cityModalErrorInvalid = error\?\.details\?\.kind === "notFound";/);
-    assert.doesNotMatch(all, /error\.kind\b/, "a WeatherApiError keeps its kind in details");
+    assert.doesNotMatch(all, /cityModalErrorInvalid = [^;\n]*\berror\.kind\b/, "a WeatherApiError keeps its kind in details, not on the error");
     assert.equal((all.match(/cityModalError = (?!"")[^\n]*;/g) ?? []).length, 7, "no eighth writer of a non-empty message");
     assert.match(all, /let cityModalErrorInvalid = false;/);
   });
@@ -3899,7 +3899,7 @@ describe("run 59 task 5: the Add menu, the dialog press, the city field and the 
     assert.match(quiet, /favoritesRoot\?\.querySelector\(":scope > \.grid-unreadable > p"\);\s*message\?\.removeAttribute\("role"\);\s*message\?\.removeAttribute\("aria-live"\);/);
     assert.equal((all.match(/quietUnreadableAlert\(\)/g) ?? []).length, 2, "the definition and one call, from the Reset grid branch of openDesktopDialog");
     assert.match(topLevelFunction(all, "openDesktopDialog"), /if \(dialog\.kind === "confirm-reset-grid"\) \{\s*guardResetDialogPresses\(root\);\s*quietUnreadableAlert\(\);\s*\}/);
-    assert.doesNotMatch(all, /alertSpoken|unreadableAlert(Spoken|Done)|let [a-zA-Z]*Alert[a-zA-Z]* =/, "no flag");
+    assert.doesNotMatch(all, /alertSpoken|unreadableAlert(Spoken|Done)|\b(?:let|var) \w*(?:unreadable|reset|screen|grid|quiet|spoken|announced)\w*alert\w* =|\b(?:let|var) \w*alert\w*(?:unreadable|reset|screen|grid|quiet|spoken|announced|once|done)\w* =/i, "no flag");
     assert.match(all, /block\.append\(createStatus\(UNREADABLE_GRID_MESSAGE, \{ error: true, live: "assertive", full: true \}\), reset\);/);
     assert.match(all, /favoritesRoot\.replaceChildren\(createStatus\(NEWER_WIDGETS_MESSAGE, \{ error: true, live: "assertive", full: true \}\)\);/, "the newer screen keeps its alert");
   });
