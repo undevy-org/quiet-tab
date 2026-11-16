@@ -322,7 +322,7 @@ describe("newtab weather source", () => {
 
     assert.doesNotMatch(code, /formHost/);
     // run 48: startWeather also records the known city between the result and the render
-    assert.match(code, /weatherResult = result;\s*if \(result\.location\) \{\s*weatherLocation = result\.location;\s*weatherLocationError = "";\s*\}\s*renderFavorites\(\);/);
+    assert.match(code, /weatherResult = result;\s*if \(result\.location\) \{\s*weatherLocation = result\.location;\s*weatherLocationError = "";\s*syncWeatherDialogCity\(\);[^\n]*\n\s*\}\s*renderFavorites\(\);/);
     assert.match(code, /if \(generation !== weatherGeneration\) \{\s*return;\s*\}/);
     assert.match(code, /const result = await withTimeout\(run\(isStale\)\);[\s\S]*?weatherGeneration \+= 1;\s*weatherResult = result;/);
     assert.doesNotMatch(code, /function changeCity\(run\) \{\s*weatherGeneration \+= 1;/);

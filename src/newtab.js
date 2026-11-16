@@ -4274,6 +4274,7 @@ async function startWeather() {
   if (result.location) {
     weatherLocation = result.location;
     weatherLocationError = "";
+    syncWeatherDialogCity(); // an open Edit weather dialog follows the city this load applied (decision 4)
   }
   renderFavorites();
   replayRememberedOnline(generation);

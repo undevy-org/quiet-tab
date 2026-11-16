@@ -3814,6 +3814,11 @@ describe("run 59 task 4: weather and the return of the tab (docs/backlog-closeou
     assert.match(retry, /weatherLocation = null;\s*weatherLocationError = "";\s*clearTimeout\(weatherRetryTimer\);\s*if \(!automatic && !desktopStatusPersistent\) showDesktopStatus\(""\);\s*syncWeatherDialogCity\(\);\s*weatherOnlineMemory = null;/, "the gone branch");
     assert.match(retry, /if \(replaced\) \{\s*weatherResult = result;[\s\S]*?\}\s*if \(!failed\) weatherLocationError = "";\s*if \(replaced\) syncWeatherDialogCity\(\);/, "the replaced branch");
   });
+
+  it("decision 4: a load at open that applies a city also syncs an open Edit weather dialog's city row", async () => {
+    const start = topLevelFunction(await code(), "startWeather");
+    assert.match(start, /if \(result\.location\) \{\s*weatherLocation = result\.location;\s*weatherLocationError = "";\s*syncWeatherDialogCity\(\);\s*\}\s*renderFavorites\(\);/);
+  });
 });
 
 function applyReadDeskText(code) {
