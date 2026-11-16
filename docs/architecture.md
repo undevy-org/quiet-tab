@@ -19,10 +19,10 @@ forecast cache and a per-device "city prompt dismissed" flag persist to
 | `src/desktopLayout.js` | Pure grid engine: grid metrics and the (always even) column count for a viewport width, grid validation (`isValidGrid` with a signed `x`), the stored/displayed frame (`originColumn`, `toStored`, `toDisplayed`), the displayed layout (`displayLayout`, a stateless anchored repack of the stored grids for the current column count), placement rules (`canPlace`, `placeResized`, `placeNew` nearest to the center, `cellFromPoint`), the default block (`placeMissing`, with the vertical centering of its first placement: `centeredDefaultRow`, `defaultBlockRows`, capped by `CEILING_REFERENCE_ROWS`). |
 | `src/desktopUiState.js` | Pure UI state for edit mode, the Add menu, the open dialog and an active drag, the Escape layering (`escapeLayer`) and the tab-return re-read rules (`deskRefreshBlocker`: which layer is up; `deskRefreshDecision`: skip, pending, again or apply). |
 | `src/widgetsStore.js` | Validates, reads, and writes persisted widgets state (links, weather metrics and chrome tiles, each with a `grid`), sharded across `chrome.storage.sync` keys; reads are lenient about a missing or malformed `grid`. Also holds `ensureWidgetsLayout` (defaults and self-heal), `inspectWidgetsMeta` (`missing\|valid\|newer\|invalid`; a v1/v2 meta is `invalid`), `resetUnreadableWidgets` and the write guard (`assertWritable`) that refuses `newer` and `invalid` metas (only `valid` and `missing` are writable). |
-| `src/widgetsService.js` | Add/update/delete for links, `updateWeatherMetric` (size, shown/hidden) and `moveWidget` (drop at a cell, `PlacementError` when the block is taken). Every mutation takes the current column count, runs under the mutation lock, checks `assertWritable` first, applies the action to the displayed layout of fresh storage and persists the displayed grid of every widget. |
+| `src/widgetsService.js` | Add/update/delete for links, `updateWeatherMetric` (size, shown/hidden, city label) and `moveWidget` (drop at a cell, `PlacementError` when the block is taken). Every mutation takes the current column count, runs under the mutation lock, checks `assertWritable` first, applies the action to the displayed layout of fresh storage and persists the displayed grid of every widget. |
 | `src/widgetsShared.js` | Shared widget constants (types, weather metric ids, caps, lock name, newer-version message). |
 | `src/widgetsLayout.js` | `placeTooltip` (edge-aware tooltip placement). |
-| `src/favoritesShared.js` | Shared favorites constants (icon modes, color sources) and helpers. |
+| `src/favoritesShared.js` | Shared favorites constants (icon modes, color sources, the link and name limits) and helpers, including the pure `favoriteTileText(item, { w, h })` that says which lines (name, host) a link tile draws and `favoriteTileName(item, size, editing)` that builds its accessible name (`Open <label>` / `Edit <label>`, with `, <domain>` added when the host is the only line drawn and the label is not already the host). |
 | `src/favoriteIcon.js` | Chooses a favicon, custom image, or letter icon for a tile. (The default-globe check on top of it lives in `defaultFavicon.js` and `newtab.js`; see `docs/favicon-globe-fallback.md`.) |
 | `src/defaultFavicon.js` | Tells Chrome's grey default `_favicon` globe from a real icon: pure exact-pixel comparison (`isDefaultFaviconPixels`), a per-page-load checker (one sentinel image, 2 s timeout, fail open) and an in-memory verdict cache. |
 | `src/favoriteColor.js` | Derives a tile's accent color from its domain or a sampled icon. |
@@ -57,12 +57,16 @@ is sharded instead (layout version 3):
   `grid: { x, y, w, h }` (cell coordinates; `w` and `h` are 1 or 2; `x` is a
   signed integer counted in columns from the center line of the grid, `y` from
   the top row):
-  - `favorite` — a link (URL, label, icon mode, color);
+  - `favorite`: a link (URL, label, icon mode, color); optionally `showName` and
+    `showLink` (booleans, stored only when `false`: the tile hides its name or its
+    host line; a missing key means shown, `docs/tile-text-options.md`);
   - `weather-metric` — `{ id, type, enabled, grid }` with one of four fixed ids
     (`weather:temperature`, `weather:precipitation`, `weather:airQuality`,
     `weather:uv`); hidden is `enabled: false` (no cell, its grid is a placeholder).
-    A metric stores only its place, size and shown/hidden flag; the values come
-    from the weather cache at render time;
+    A metric stores only its place, size and shown/hidden flag, plus optionally
+    `showCity: false` (stored only when `false`: a tall tile hides its city line; the
+    city itself stays in its own key); the values come from the weather cache at
+    render time;
   - `chrome` — `{ id, type, role, grid }`, `chrome:settings` and `chrome:add`,
     always 1×1. They can be moved but never deleted or hidden.
 
@@ -170,7 +174,7 @@ dismissed; the flag is per device and not synced.
 Weather values are not part of the widgets store. Each metric tile in the grid is
 matched to the forecast by its metric id at render time; the grid re-renders when
 the forecast arrives. A 2-wide tile shows the primary and secondary values, a
-2-high one larger type and the city name; type sizes follow the cell size.
+2-high one larger type and the city name (unless the tile's `showCity` is `false`); type sizes follow the cell size.
 
 1. `initialize()` reads the location. With none set, no weather tile is drawn and
    the first shown metric's cell holds one "Set a city" hint tile (unless all four
@@ -352,7 +356,7 @@ Tiles take one of four footprints (1×1, 1×2, 2×1, 2×2; chrome tiles 1×1 onl
 - **Edit mode** (Settings, `aria-pressed`): tiles jiggle (not with reduced
   motion), links and weather tiles get a − badge (links: Delete link? confirm; weather:
   Hide <metric>? confirm, `confirm-hide-weather`, Cancel focused, one write on Hide), a tap on a link or weather tile opens its edit dialog (link: URL, name,
-  icon, color, size; weather: city-field and size), and any tile can be dragged.
+  icon, color, size and the `On tile` switches for the name and the link; weather: city-field, city label and size), and any tile can be dragged.
   The whole window is the drop area: the pointer anywhere (side margins, above the
   grid, below the last row) targets the nearest allowed cell, `x` within the columns
   and `y` at most `maxDropRow` (every row of the first screen, `viewportRows`; below

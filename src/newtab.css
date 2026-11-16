@@ -366,6 +366,12 @@ body:has(.desktop-dialog, .city-modal) #desktop-status {
   padding: 0 var(--space-grid-12);
 }
 
+/* A 2×1 tile that draws no text (both switches off, docs/tile-text-options.md decision 3): the icon stands in the middle of the tile. The 1×2
+   and 2×2 tiles already center their icon on both axes (the column is centered, the icon has align-self: center), so no rule is added for them. */
+.favorite-tile[data-w="2"][data-h="1"][data-tile-text="none"] {
+  justify-content: center;
+}
+
 .favorite-tile[data-w="2"][data-h="2"] {
   flex-direction: column;
   align-items: flex-start;

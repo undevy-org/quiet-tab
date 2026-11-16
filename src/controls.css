@@ -102,10 +102,12 @@
   gap: var(--form-footer-gap);
 }
 
-/* The two sides of the Size shape glyph: the one place of the numbers, read by .segmented__glyph--size-* and by the reserve (--glyph-room). */
+/* The two sides of the Size shape glyph and the side of the toggle check box: the one place of the numbers, read by .segmented__glyph--size-*,
+   .segmented__glyph--check and by the reserve (--glyph-room). */
 .segmented {
   --glyph-short: 5px;
   --glyph-long: 11px;
+  --glyph-check: 12px;
   display: flex;
   min-height: var(--control-height);
   border: var(--control-border-width) solid var(--border-control);
@@ -166,6 +168,11 @@
   --glyph-room: calc(var(--glyph-long) + var(--control-gap-icon));
 }
 
+/* The glyph of a toggle option is --glyph-check wide (.segmented__glyph--check below) whatever the window is. */
+.segmented__label--check {
+  --glyph-room: calc(var(--glyph-check) + var(--control-gap-icon));
+}
+
 /* Not in the nowrap block (451 px and narrower, surfaces.css): there a label cannot wrap, and the bold width as the minimum width of each option would let
    the group's overflow: hidden cut a label that is whole without it. `not all and (max-width: 451px)` is the exact complement of that block's query. */
 @media not all and (max-width: 451px) {
@@ -190,6 +197,29 @@
 .segmented__glyph--size-1x2 { width: var(--glyph-short); height: var(--glyph-long); }
 .segmented__glyph--size-2x1 { width: var(--glyph-long); height: var(--glyph-short); }
 .segmented__glyph--size-2x2 { width: var(--glyph-long); height: var(--glyph-long); }
+
+/* The on/off glyph of a toggle option (docs/tile-text-options.md decision 4): a 12 px box with a 3 px radius, always drawn, so the option keeps its width
+   in both states; the check mark is its ::after, drawn only while the option is checked. Both are currentColor (no image, mask or background), so a checked
+   option in forced colors, which paints HighlightText, keeps the mark visible. No transition: reduced motion changes nothing. */
+.segmented__glyph--check {
+  position: relative;
+  width: var(--glyph-check);
+  height: var(--glyph-check);
+  border-radius: 3px;
+}
+
+.segmented__option:has(input:checked) .segmented__glyph--check::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  box-sizing: border-box;
+  width: 3px;
+  height: 6px;
+  border: solid currentColor;
+  border-width: 0 1.5px 1.5px 0;
+  transform: translate(-50%, -62%) rotate(45deg);
+}
 
 .segmented__option:last-child {
   border-right: none;

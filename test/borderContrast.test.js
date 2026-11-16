@@ -80,9 +80,12 @@ describe("AS-CT-05: only the six control-boundary rules use --border-control", (
     // A hover STATE of the weather retry tile (docs/weather-tile-retry.md decision 2) is not a control boundary rule.
     const hoverStates = ['.weather-tile--retry[data-retry="ready"]:hover'];
     // docs/modal-overlay-design.md: the city-field is a bordered control (Direction D); the selected dialog segment draws an inset 1px ring.
+    // run 58 (L2-01, docs/tile-text-options.md): the first of two checked toggle options keeps the ring on three sides and paints its divider in --border-control,
+    // so the seam of the pair is one line of the selected ring's colour; it is the same inset ring as the rule above, on a pair of neighbours.
     const modalOverlay = [
       ".city-field",
       ".desktop-dialog .segmented__option:has(input:checked)",
+      ".desktop-dialog .segmented--toggle .segmented__option:has(input:checked):has(+ .segmented__option input:checked)",
       ".onboarding-wizard__pill--active",
       ".onboarding-wizard__starter-check"
     ];

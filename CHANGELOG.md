@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Custom icon (`docs/tile-text-options.md` decisions 6 to 8): the hint in the field is `https://example.com/icon` and names no format (the field
+  takes any link to an image the browser draws: SVG, PNG, JPEG, WebP, GIF, ICO; a raw `.svg` link served as plain text still shows the letter).
+  An icon link with a space or other whitespace in it is refused with `Enter a valid image URL`, as the main link is (write `%20` for a space).
+  The name limit counts characters, not UTF-16 units: a name of 100 emoji is now accepted, 101 are refused.
 - The first set of tiles (and the starter-links island after the first-run wizard) is centered in the window as before, but never lower than where it would be centered in a 1280×800 window (row 4 for the six tiles in one row, row 3 for their two-row block in a narrow window, row 3 or 2 for the island), so a grid written in a tall window is still on the first screen when Chrome Sync opens it in a low window of the same width (`docs/unreadable-grid-reset.md` decision 2).
 - The legacy `tileSize` field of a stored tile is ignored: it is no longer validated, no longer sizes a tile that has no cell, and no longer removed by an edit; a tile without a cell is drawn at its default size (`docs/unreadable-grid-reset.md` decision 3).
 - Typography: text in inputs, buttons, descriptions, the Add menu and the city suggestions is 14 px (it was 12 px, the browser's default for an
@@ -69,6 +73,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Tile text options (`docs/tile-text-options.md`): Add link and Edit link have an `On tile` row with two switches, `Name` and `Link`, that choose
+  which lines a link tile draws (both on, as before, is the default; the setting is per tile and is kept when the tile is resized, moved or the
+  page reloaded). A 2×1 tile with the name off shows the host in its place; a tile with both off shows the icon centered in the tile, and the
+  tile keeps its hover title and its accessible name. A tile that draws only the host is named `Open <name>, <host>` (`Edit ...` in edit mode)
+  so that the visible text is part of the name (a link with no name, whose label is its host, keeps `Open <host>`: the host is not read twice); every other tile keeps `Open <name>` / `Edit <name>`. Edit weather has a `City label` row (`Shown` or `Hidden`) that hides the city line of a
+  tall weather tile; the city itself stays saved and still opens the city window. Nothing is stored for a tile that shows everything (the three
+  settings are written only when off), so a grid that never uses them is unchanged.
 - A page whose saved grid cannot be read now says so: `Your grid couldn't be read.` with a `Reset grid` button; the button asks first (`Your links will be removed.`), erases the grid's own saved data (the widgets meta and every tile key, in Chrome Sync) and loads the page again as a fresh install. The city and the first-run flags stay; a newer-version grid is still read-only and never erased (`docs/unreadable-grid-reset.md`, E2E `dg-91-unreadable-grid-reset.mjs`).
 - Returning to the tab: the weather and the grid catch up. When a tab becomes visible again, a weather tile that failed to load, is stale, or whose data is
   30 minutes old or more is refreshed by itself, and again when the network comes back (nothing is polled or repeated on a timer, once a tab has loaded a

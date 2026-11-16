@@ -936,11 +936,15 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
 
   it("names a link tile Open <label> in normal mode and Edit <label> in edit mode; text only via text nodes", async () => {
     const tile = fn(await source(), "createFavoriteTile");
-    assert.match(tile, /editing \? `Edit \$\{item\.label\}` : `Open \$\{item\.label\}`/);
+    // the name is built by the pure favoriteTileName (docs/tile-text-options.md decision 3: the host joins the label when it is the only text drawn); the tile never builds it itself
+    assert.match(tile, /button\.setAttribute\("aria-label", favoriteTileName\(item, cell, editing\)\);/);
+    assert.doesNotMatch(tile, /`Edit \$\{|`Open \$\{/);
     assert.match(tile, /button\.dataset\.favoriteAction = editing \? "edit" : "open";/);
-    assert.match(tile, /if \(cell\.w === 2 \|\| cell\.h === 2\) \{/); // 1×1 tiles carry no label text (the label is the accessible name); 2-wide and 1×2 tiles do
-    assert.match(tile, /createNode\("span", "favorite-tile__label", item\.label\)/);
-    assert.match(tile, /if \(cell\.h === 2\) text\.appendChild\(createNode\("span", "favorite-tile__host", item\.domain\)\);/);
+    // what the tile draws is decided by favoriteTileText (docs/tile-text-options.md decision 2); 1×1 tiles carry no text (the label is the accessible name)
+    assert.match(tile, /const lines = favoriteTileText\(item, cell\);/);
+    assert.match(tile, /if \(lines\.name\) text\.appendChild\(createNode\("span", "favorite-tile__label", item\.label\)\);/);
+    assert.match(tile, /if \(lines\.host\) text\.appendChild\(createNode\("span", "favorite-tile__host", item\.domain\)\);/);
+    assert.match(tile, /if \(lines\.name \|\| lines\.host\) \{/);
   });
 
   it("renders from displayLayout of the current column count, skips cell-less (hidden) metrics and sorts the DOM by (y, x)", async () => {
@@ -981,10 +985,12 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     assert.doesNotMatch(begin, /\+ 2\b/, "no spare rows beyond the allowed area");
   });
 
-  it("uses the wide weather model for 2-wide tiles and adds the city line only at 2 high (R6)", async () => {
+  it("uses the wide weather model for 2-wide tiles and adds the city line only at 2 high and only while the tile's showCity is not false (R6, run 58 decision 5)", async () => {
     const tile = fn(await source(), "createWeatherMetricTile");
     assert.match(tile, /const size = cell\.w === 2 \? "wide" : cell\.h === 2 \? "tall" : "square";/); // docs/tile-size-1x2.md decision 6
-    assert.match(tile, /if \(cell\.h === 2 && cityName\) tile\.appendChild\(createNode\("span", "weather-tile__city", cityName\)\);/);
+    // run 58 (docs/tile-text-options.md decision 5): replaces the pin on `if (cell.h === 2 && cityName)`; the old condition is the tail of the new one
+    assert.match(tile, /if \(item\.showCity !== false && cell\.h === 2 && cityName\) tile\.appendChild\(createNode\("span", "weather-tile__city", cityName\)\);/);
+    assert.doesNotMatch(tile, /showCity === true|showCity \? /, "a missing field means shown: the test is `!== false`, never `=== true`");
   });
 
   it("leads every weather tile with its decorative metric glyph from the vendored icons, sized by CSS per tile size", async () => {
@@ -1059,8 +1065,9 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     assert.match(build, /createNode\("p", "desktop-dialog__body", "This removes the link from your grid\."\)/);
     assert.match(build, /createIconButton\("button button--danger", "Delete", "trash2"\)/);
     assert.match(build, /widgetsService\.updateFavorite\(item\.id, payload, \{ columns \}\)/);
-    assert.match(build, /widgetsService\.updateWeatherMetric\(item\.id, size, \{ columns \}\)/);
-    assert.match(build, /save\.disabled = true; \/\/ enabled only when the size changed/);
+    // run 58 (decision 5) replaces two pins that named the size-only rule: Save compares both values with the opening ones and the payload carries only what changed (two tabs, fix round)
+    assert.match(build, /widgetsService\.updateWeatherMetric\(item\.id, input, \{ columns \}\)/);
+    assert.match(build, /save\.disabled = true; \/\/ enabled only when the size or the city label differs from what the dialog opened with/);
     assert.match(build, /showCityModal\("change", WEATHER_DIALOG_CITY_SELECTOR\)/);
     assert.match(code, /const WEATHER_DIALOG_CITY_SELECTOR = '\[data-dialog="edit-weather"\] \[data-weather-action="open-city-modal"\]';/);
     // AS-MO-10 (updated by run 44, AS-CMF-11/22): the city-field is one button; with a city the hint is `Change`; with no city the value line
@@ -1190,7 +1197,7 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
     const code = await source();
     const build = fn(code, "buildDialogContent");
     assert.doesNotMatch(build, /item\.grid\.[wh]/);
-    assert.match(build, /const size = displayedSize\(item\);\s*const initial = `\$\{size\.w\}x\$\{size\.h\}`;/);
+    assert.match(build, /const size = displayedSize\(item\);\s*const initialSize = `\$\{size\.w\}x\$\{size\.h\}`;/);
     assert.match(build, /createFormRow\("Size", createSizeControl\(size\)\)/);
     assert.match(fn(code, "displayedSize"), /displayLayout\(widgetsState\.items, currentColumns\(\)\)\.get\(item\.id\)/);
     assert.match(fn(code, "displayedSize"), /cell \? \{ w: cell\.w, h: cell\.h \} : \{ w: 1, h: 1 \}/);
@@ -1269,9 +1276,25 @@ describe("newtab desktop grid source (DOM contract, normal mode)", () => {
   it("pins the 1×2 link tile (docs/tile-size-1x2.md)", async () => {
     const code = await source();
     const styles = await css();
-    assert.match(fn(code, "createFavoriteTile"), /if \(cell\.w === 2 \|\| cell\.h === 2\) \{/);
-    assert.match(fn(code, "createFavoriteTile"), /if \(cell\.h === 2\) text\.appendChild\(createNode\("span", "favorite-tile__host", item\.domain\)\);/);
     assert.match(styles, /\.favorite-tile\[data-w="1"\]\[data-h="2"\] \.favorite-tile__label\s*\{[^}]*-webkit-line-clamp: 3;/s);
+  });
+
+  it("draws the text of a link tile from favoriteTileText and marks a tile with no text (docs/tile-text-options.md decisions 2 and 3)", async () => {
+    const code = await source();
+    assert.match(code, /import \{[^}]*\bfavoriteTileText\b[^}]*\} from "\.\/favoritesShared\.js";/);
+    const tile = fn(code, "createFavoriteTile");
+    assert.match(tile, /\} else if \(cell\.w === 2 \|\| cell\.h === 2\) \{\s*button\.dataset\.tileText = "none";\s*\}/, "only a size that has a text box and draws no line is marked");
+    assert.doesNotMatch(tile, /item\.showName|item\.showLink/, "the tile never reads the switches itself: favoriteTileText decides");
+    assert.doesNotMatch(tile, /cell\.h === 2\) text\.appendChild/, "the old size-only rule for the host line is gone");
+  });
+
+  it("centers the icon of a 2x1 tile with no text with one rule and adds none for 1x2 and 2x2 (docs/tile-text-options.md decision 3)", async () => {
+    const styles = await css();
+    const rules = [...styles.matchAll(/([^{}]*\[data-tile-text="none"\][^{}]*)\{([^}]*)\}/g)];
+    assert.equal(rules.length, 1, "one rule names data-tile-text");
+    assert.match(rules[0][1], /\.favorite-tile\[data-w="2"\]\[data-h="1"\]\[data-tile-text="none"\]/);
+    assert.match(rules[0][2], /justify-content:\s*center;/);
+    assert.match(styles, /\.favorite-tile\[data-w="2"\]\s*\{\s*justify-content:\s*flex-start;/, "the left alignment of a 2-wide tile with text is unchanged");
   });
 
   it("pins the 1×2 weather tile (docs/tile-size-1x2.md)", async () => {
@@ -2927,7 +2950,7 @@ describe("typography and copy source pins (run 49)", () => {
   it("a segmented option keeps a bold-face reserve above 451 px and 4 px of vertical room; the nowrap block has no reserve (run 53, decision 12)", async () => {
     const controls = (await readFile(new URL("../src/controls.css", import.meta.url), "utf8")).replace(/\/\*[\s\S]*?\*\//g, "");
     const surfaces = (await readFile(new URL("../src/surfaces.css", import.meta.url), "utf8")).replace(/\/\*[\s\S]*?\*\//g, "");
-    const segmented = topLevelFunction(await source(), "createSegmentedControl");
+    const segmented = topLevelFunction(await source(), "createSegmentedOption");
     // the label is a grid whose one cell holds the visible text and the hidden bold copy; the text itself is one textContent node (createNode's third argument)
     assert.match(segmented, /label\.dataset\.text = text;/);
     assert.match(segmented, /createNode\("i", "segmented__content"\)/);
@@ -3480,5 +3503,128 @@ describe("Add menu restore guard source pins (run 57, docs/wizard-trap-add-dblcl
     const listener = code.slice(code.lastIndexOf("document.addEventListener(", start), code.indexOf("\n);", start));
     assert.doesNotMatch(listener, /postCloseGuard|armPostCloseClickGuard/);
     assert.match(listener, /if \(addMenuRoot\.contains\(event\.target\) \|\| event\.target\.closest\(ADD_TILE_SELECTOR\)\) return;/);
+  });
+});
+
+describe("run 58 task 3: the `On tile` switches of the link dialogs (docs/tile-text-options.md decision 4, AS-TTO-06..08, 20)", () => {
+  const read = (name) => readFile(new URL(`../src/${name}`, import.meta.url), "utf8");
+  const stripCss = (text) => text.replace(/\/\*[\s\S]*?\*\//g, "");
+
+  it("createFavoriteForm adds the `On tile` row after Size with its own push; Edit link preselects from the item, Add link from `true`", async () => {
+    const form = stripComments(topLevelFunction(await source(), "createFavoriteForm"));
+    assert.ok(form.indexOf('createFormRow("Size"') !== -1 && form.indexOf('createFormRow("On tile"') > form.indexOf('createFormRow("Size"'), "the order is Size, then On tile");
+    assert.match(form, /rows\.push\(createFormRow\("On tile", createToggleGroup\(\[/);
+    assert.match(form, /\["showName", "Name", "Name on tile", isEdit \? item\.showName !== false : true\]/);
+    assert.match(form, /\["showLink", "Link", "Link on tile", isEdit \? item\.showLink !== false : true\]/);
+    assert.match(form, /form\.append\(\.\.\.rows, createDialogErrorSlot\(\), footer\);/, "the alert slot and the footer still follow the rows");
+  });
+
+  it("readFavoriteFormPayload reads the two checkboxes as booleans with data.has, never as undefined", async () => {
+    const payload = stripComments(topLevelFunction(await source(), "readFavoriteFormPayload"));
+    assert.match(payload, /showName: data\.has\("showName"\)/);
+    assert.match(payload, /showLink: data\.has\("showLink"\)/);
+    assert.doesNotMatch(payload, /showName: data\.get|showLink: data\.get/);
+  });
+
+  it("createToggleGroup builds div.segmented.segmented--toggle[role=group] of checkbox inputs with an accessible name, each option from the shared createSegmentedOption with a check glyph", async () => {
+    const code = await source();
+    const group = stripComments(topLevelFunction(code, "createToggleGroup"));
+    assert.match(group, /createNode\("div", "segmented segmented--toggle"\)/);
+    assert.match(group, /group\.setAttribute\("role", "group"\)/);
+    assert.match(group, /input\.type = "checkbox";/);
+    assert.match(group, /input\.setAttribute\("aria-label", accessibleName\);/);
+    assert.match(group, /group\.appendChild\(createSegmentedOption\(input, text, "check"\)\);/);
+    assert.doesNotMatch(group, /innerHTML/);
+    assert.doesNotMatch(group, /radio/);
+    // the option is built in one place, for both groups; the radio loop and its aria-label line stay in createSegmentedControl
+    const option = stripComments(topLevelFunction(code, "createSegmentedOption"));
+    assert.match(option, /segmented__glyph segmented__glyph--\$\{glyph\}/);
+    assert.match(option, /mark\.setAttribute\("aria-hidden", "true"\);/);
+    const control = stripComments(topLevelFunction(code, "createSegmentedControl"));
+    assert.match(control, /for \(const \[value, text, glyph, accessibleName\] of options\)/);
+    assert.match(control, /group\.appendChild\(createSegmentedOption\(input, text, glyph\)\);/);
+    assert.ok(code.indexOf("function createToggleGroup(") > code.indexOf("function createSegmentedControl("), "next to createSegmentedControl");
+  });
+
+  it("createFormRow names a role=group control by the row label, as it names a radiogroup, so the label never lands on the first checkbox", async () => {
+    const row = stripComments(topLevelFunction(await source(), "createFormRow"));
+    assert.match(row, /control\.getAttribute\("role"\) === "radiogroup" \|\| control\.getAttribute\("role"\) === "group"/);
+    assert.match(row, /control\.querySelector\('input, \[role="radiogroup"\]'\)/);
+  });
+
+  it("the check glyph is a 12 px box with a 3 px radius, its mark is a pseudo-element shown only while checked, and the reserve counts its room (controls.css)", async () => {
+    const controls = stripCss(await read("controls.css"));
+    assert.match(controls, /\.segmented \{[^}]*--glyph-check: 12px;/s, "the one place of the 12 px");
+    assert.match(controls, /\.segmented__glyph--check \{[^}]*width: var\(--glyph-check\);[^}]*height: var\(--glyph-check\);[^}]*border-radius: 3px;/s);
+    assert.match(controls, /\.segmented__option:has\(input:checked\) \.segmented__glyph--check::after \{[^}]*content: "";[^}]*border: solid currentColor;[^}]*transform: [^;]*rotate\(45deg\);/s);
+    const glyphRules = [...controls.matchAll(/(\.segmented__glyph--check[^{]*)\{([^}]*)\}/g)];
+    assert.equal(glyphRules.length, 2, "the glyph rule and the mark rule");
+    for (const [, selector, body] of glyphRules) assert.doesNotMatch(body, /background|mask|url\(/, `no image, mask or background in ${selector.trim()}`);
+    assert.match(controls, /\.segmented__label--check \{\s*--glyph-room: calc\(var\(--glyph-check\) \+ var\(--control-gap-icon\)\);\s*\}/);
+  });
+
+  it("the own ring of the focused option of a toggle group: 2 px solid --focus-ring, 4 px inside the option, with a HighlightText rule for a checked option in forced colors (surfaces.css)", async () => {
+    const surfaces = stripCss(await read("surfaces.css"));
+    assert.match(surfaces, /\.desktop-dialog \.segmented--toggle \.segmented__option:has\(input:focus-visible\) \{\s*outline: 2px solid var\(--focus-ring\);\s*outline-offset: -4px;\s*\}/);
+    assert.match(surfaces, /@media \(forced-colors: active\) \{\s*\.desktop-dialog \.segmented--toggle \.segmented__option:has\(input:checked\):has\(input:focus-visible\) \{\s*outline-color: HighlightText;\s*\}\s*\}/);
+    // the old rule of a radio option stays (focusTokens.test.js pins it) and is less specific than the new one
+    assert.match(surfaces, /\.desktop-dialog \.segmented__option:has\(input:focus-visible\) \{\s*outline: none;\s*\}/);
+    const ring = surfaces.match(/\.desktop-dialog \.segmented--toggle \.segmented__option:has\(input:focus-visible\) \{[^}]*\}/)[0];
+    const forced = surfaces.match(/@media \(forced-colors: active\) \{\s*\.desktop-dialog \.segmented--toggle[^}]*\}\s*\}/)[0];
+    assert.doesNotMatch(ring + forced, /--focus:|var\(--focus\)/, "the translucent --focus token cannot reach 3:1");
+  });
+
+  it("two checked neighbours of a toggle group share one seam: the first option draws no right stroke and paints its divider in --border-control (L2-01, surfaces.css)", async () => {
+    const surfaces = stripCss(await read("surfaces.css"));
+    const rule = surfaces.match(/\.desktop-dialog \.segmented--toggle \.segmented__option:has\(input:checked\):has\(\+ \.segmented__option input:checked\) \{([^}]*)\}/);
+    assert.ok(rule, "the rule for a checked option followed by a checked option");
+    assert.match(rule[1], /border-right-color: var\(--border-control\);/);
+    assert.match(rule[1], /box-shadow: inset 1px 0 0 0 var\(--border-control\), inset 0 1px 0 0 var\(--border-control\), inset 0 -1px 0 0 var\(--border-control\);/, "left, top and bottom strokes, none on the right");
+    assert.doesNotMatch(rule[1], /width|height|padding|margin|border-right-width/, "no box moves: dg-86 and dg-92 compare the groups with zero tolerance");
+    // it comes after the selected-option rule of the dialog, so its box-shadow replaces that rule's all-sides stroke
+    assert.ok(surfaces.indexOf(rule[0]) > surfaces.indexOf(".desktop-dialog .segmented__option:has(input:checked) {"));
+  });
+
+  it("the 12 px of the check glyph is written once: the box and the reserve both read --glyph-check", async () => {
+    const controls = stripCss(await read("controls.css"));
+    assert.equal(controls.split("--glyph-check:").length - 1, 1, "one declaration");
+    assert.equal(controls.split("var(--glyph-check)").length - 1, 3, "width, height and the reserve");
+    assert.doesNotMatch(controls.slice(controls.indexOf(".segmented__label--check")), /12px/, "no second copy of the number after the declaration");
+  });
+});
+
+describe("run 58 task 4: the city label of the weather tiles (docs/tile-text-options.md decision 5, AS-TTO-12..14)", () => {
+  it("Edit weather (run 58, decision 5): the rows stand City, City label, Size; City label is a Shown/Hidden radiogroup preselected from showCity; Save compares the size and the label with the opening values; the payload carries only what changed (w and h when the size changed, showCity as a boolean when the label changed)", async () => {
+    const build = topLevelFunction(await source(), "buildDialogContent");
+    const edit = build.slice(build.indexOf('case "edit-weather"'), build.indexOf("default:", build.indexOf('case "edit-weather"')));
+    const order = ['createFormRow("City", cityField)', 'createFormRow("City label"', 'createFormRow("Size", createSizeControl(size))'].map((needle) => edit.indexOf(needle));
+    assert.ok(order.every((i) => i !== -1) && order[0] < order[1] && order[1] < order[2], `the order of the rows: ${order}`);
+    assert.match(edit, /createFormRow\("City label", createSegmentedControl\("cityLabel", \[\["shown", "Shown"\], \["hidden", "Hidden"\]\], initialLabel\)\)/);
+    assert.match(edit, /const initialLabel = item\.showCity === false \? "hidden" : "shown";/);
+    assert.match(edit, /save\.disabled = data\.get\("size"\) === initialSize && data\.get\("cityLabel"\) === initialLabel;/);
+    // a stale tab that changes one thing must not overwrite the other thing another tab wrote since the dialog opened: an absent key leaves the stored value alone
+    assert.match(edit, /const input = \{\};/);
+    assert.match(edit, /if \(data\.get\("size"\) !== initialSize\) \{ input\.w = picked\.w; input\.h = picked\.h; \}/);
+    assert.match(edit, /if \(data\.get\("cityLabel"\) !== initialLabel\) input\.showCity = data\.get\("cityLabel"\) !== "hidden";/);
+    assert.doesNotMatch(edit, /\.\.\.size, showCity|\{ \.\.\.size/, "the payload is never the whole form");
+    assert.match(edit, /if \(!picked \|\| save\.disabled\) return;/, "the double Save and the unchanged Save write nothing");
+  });
+});
+
+describe("run 58 task 5: the custom icon hint and the plain image (docs/tile-text-options.md decision 6, AS-TTO-15, 16, 22)", () => {
+  it("the Custom icon placeholder is https://example.com/icon and no format is named anywhere in the field's text", async () => {
+    const form = stripComments(topLevelFunction(await source(), "createFavoriteForm"));
+    assert.match(form, /customIconUrl\.placeholder = "https:\/\/example\.com\/icon";/);
+    assert.doesNotMatch(form, /icon\.(png|svg|jpe?g|gif|webp|ico)/i, "the old hint said icon.png, which reads as PNG only");
+    assert.match(form, /url\.placeholder = "https:\/\/example\.com";/, "the Link field keeps its own hint, the model of the icon one");
+  });
+
+  it("a custom icon is a plain <img> of the typed link: the letter on error, no canvas or network read of the image, and the globe check only for a favicon", async () => {
+    const node = stripComments(topLevelFunction(await source(), "createFavoriteIconNode"));
+    assert.match(node, /image\.addEventListener\("error", \(\) => \{\s*image\.replaceWith\(createFavoriteLetterNode\(item, "letter"\)\);/);
+    assert.match(node, /image\.dataset\.iconSource = item\.iconMode === "custom" \? "custom" : "favicon";/);
+    assert.match(node, /if \(item\.iconMode !== "custom"\) \{\s*const letter = attachDefaultFaviconCheck/);
+    assert.match(node, /image\.src = model\.src;/);
+    assert.doesNotMatch(node, /canvas|drawImage|getImageData|fetch\(|XMLHttpRequest|crossOrigin|createImageBitmap/, "the image is never read: no canvas, no request of our own, no CORS mode");
   });
 });

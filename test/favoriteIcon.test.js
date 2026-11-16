@@ -95,6 +95,39 @@ describe("getFavoriteIconModel", () => {
   });
 });
 
+describe("a custom icon link is used as typed, whatever its extension (docs/tile-text-options.md decision 6, AS-TTO-16 and 22, run 58)", () => {
+  // The format is the browser's business: the model never looks at the link's extension or the image's bytes, so SVG, PNG, JPEG, WebP, GIF, ICO and a link with no
+  // extension all give the same plain image of the typed link, which is never sampled (no canvas read, no CORS request): `sampleable: false`.
+  const LINKS = [
+    "https://cdn.example.com/icon.svg",
+    "https://cdn.example.com/icon.png",
+    "https://cdn.example.com/icon.jpg",
+    "https://cdn.example.com/icon.jpeg",
+    "https://cdn.example.com/icon.webp",
+    "https://cdn.example.com/icon.gif",
+    "https://cdn.example.com/favicon.ico",
+    "https://cdn.example.com/icon",
+    "https://cdn.example.com/icon.svg?v=2",
+    "http://localhost:8080/a%20b.png"
+  ];
+
+  it("gives a plain image of the typed link, never sampled, whatever the format", () => {
+    for (const customIconUrl of LINKS) {
+      const model = getFavoriteIconModel(favorite({ iconMode: "custom", customIconUrl }), { faviconBaseUrl: BASE });
+      assert.deepEqual([model.type, model.src, model.sampleable], ["image", customIconUrl, false], customIconUrl);
+    }
+  });
+
+  it("does not need the favicon service: a custom icon is an image with no faviconBaseUrl too", () => {
+    const model = getFavoriteIconModel(favorite({ iconMode: "custom", customIconUrl: LINKS[0] }), {});
+    assert.deepEqual([model.type, model.src, model.sampleable], ["image", LINKS[0], false]);
+  });
+
+  it("an empty custom icon link is the letter (nothing to draw)", () => {
+    assert.equal(getFavoriteIconModel(favorite({ iconMode: "custom", customIconUrl: "" }), { faviconBaseUrl: BASE }).type, "letter");
+  });
+});
+
 describe("getFavoriteLetter", () => {
   it("uppercases the first character of the label", () => {
     assert.equal(getFavoriteLetter(favorite({ label: "notion" })), "N");

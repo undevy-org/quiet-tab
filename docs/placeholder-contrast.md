@@ -47,6 +47,8 @@ Applied as defaults so the pipeline does not wait.
 6. **Theme coverage:** both themes in the same change, by the token's own light/dark values; the rule has no `@media (prefers-color-scheme)` branch.
 7. **Placeholder text is not changed** ("https://example.com", "Optional", domain, "https://example.com/icon.png", "Search for a city").
 
+   > Superseded in part (run 58): the Custom icon placeholder is now `https://example.com/icon`, with no format named (`docs/tile-text-options.md` decision 6, Ruling 6). The other texts stay as listed.
+
 ## Scope
 
 - `src/controls.css`: add the single `.favorite-input::placeholder` rule; `src/surfaces.css`: delete `.city-modal .favorite-input::placeholder`.

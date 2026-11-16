@@ -6,6 +6,7 @@ import {
   WIDGETS_META_KEY,
   createWidgetsStore,
   createInitialWidgetsState,
+  ensureWidgetsLayout,
   inspectWidgetsMeta,
   isWidgetItem,
   isWidgetsState,
@@ -591,5 +592,108 @@ describe("resetUnreadableWidgets (run 51, AS-UGR-19)", () => {
     const { area, inner } = spied({ ...invalidSeed(), quietTabWidgets: "no colon", "quietTabWidget:": "empty id", "quietTabWidget:weather:uv": { id: "weather:uv" } });
     assert.equal((await resetUnreadableWidgets(area)).reset, true);
     assert.deepEqual(await keysOf(inner), [...Object.keys(unrelated), "quietTabWidgets"].sort(), "the unrelated keys, quietTabWidgetX and quietTabWidgets stay; the meta and every quietTabWidget: key are gone");
+  });
+});
+
+// docs/tile-text-options.md decision 1 and AS-TTO-21: three optional booleans on link and weather-metric items.
+describe("tile text fields: showName, showLink, showCity (run 58)", () => {
+  const SHOW_FIELDS = ["showName", "showLink"];
+
+  it("a link without the fields, with true and with false is a valid item and a valid state", () => {
+    assert.equal(isWidgetItem(favorite()), true);
+    for (const field of SHOW_FIELDS) {
+      for (const value of [true, false]) {
+        assert.equal(isWidgetItem(favorite({ [field]: value })), true, `${field} ${value}`);
+        assert.equal(isWidgetsState(currentState([placed({ [field]: value })])), true, `${field} ${value} in a state`);
+      }
+    }
+    assert.equal(isWidgetsState(currentState([placed({ showName: false, showLink: false })])), true);
+  });
+
+  it("a metric without showCity, with true and with false is valid", () => {
+    assert.equal(isWidgetItem(metric()), true);
+    assert.equal(isWidgetItem(metric("weather:uv", { showCity: true })), true);
+    assert.equal(isWidgetItem(metric("weather:uv", { showCity: false })), true);
+    assert.equal(isWidgetsState(currentState([metric("weather:uv", { showCity: false, grid: cell(1, 0, 1, 2) })])), true);
+  });
+
+  it("a value that is not a boolean makes the item invalid (a link: showName/showLink; a metric: showCity)", () => {
+    for (const field of SHOW_FIELDS) {
+      for (const value of ["no", 0, 1, null, undefined, "false", {}, []]) {
+        assert.equal(isWidgetItem(favorite({ [field]: value })), false, `${field} ${JSON.stringify(value)}`);
+        assert.equal(isWidgetsState(currentState([placed({ [field]: value })])), false, `${field} ${JSON.stringify(value)} in a state`);
+      }
+    }
+    for (const value of ["no", 0, 1, null, undefined, "false"]) {
+      assert.equal(isWidgetItem(metric("weather:uv", { showCity: value })), false, `showCity ${JSON.stringify(value)}`);
+    }
+  });
+
+  it("the fields are not required: removing the key from an item that has it keeps the item valid", () => {
+    const { showName, ...without } = favorite({ showName: false });
+    assert.equal(showName, false);
+    assert.equal(isWidgetItem(without), true);
+  });
+
+  it("a write with a non-boolean value is refused with the grid message and writes nothing", async () => {
+    const area = createMemoryStorageArea();
+    const store = createWidgetsStore(area, { now: () => NOW });
+    const before = await area.get(null);
+    await assert.rejects(store.setState(currentState([placed({ showName: "no" })])), { message: "Invalid grid state" });
+    await assert.rejects(store.setState(currentState([metric("weather:uv", { showCity: 0, grid: cell(0, 0) })])), { message: "Invalid grid state" });
+    assert.deepEqual(await area.get(null), before);
+  });
+
+  it("a read drops an item whose field is not a boolean, like any malformed item, and keeps the others", async () => {
+    const area = createMemoryStorageArea();
+    const store = createWidgetsStore(area, { now: () => NOW });
+    const good = placed({ id: "good", showLink: false });
+    const bad = placed({ id: "bad", showName: "no" }, 1);
+    const badMetric = metric("weather:uv", { showCity: "no", grid: cell(2, 0) });
+    await area.set({
+      [WIDGETS_META_KEY]: metaOf(["good", "bad", "weather:uv"]),
+      [widgetItemStorageKey("good")]: good,
+      [widgetItemStorageKey("bad")]: bad,
+      [widgetItemStorageKey("weather:uv")]: badMetric
+    });
+    assert.deepEqual((await store.getState()).items, [good]);
+  });
+
+  it("setState and getState keep the fields unchanged", async () => {
+    const area = createMemoryStorageArea();
+    const store = createWidgetsStore(area, { now: () => NOW });
+    const items = [
+      placed({ id: "a", showName: false }),
+      placed({ id: "b", showLink: false }, 1),
+      placed({ id: "c", showName: false, showLink: false }, 2),
+      placed({ id: "d" }, 3),
+      metric("weather:uv", { showCity: false, grid: cell(5, 0, 1, 2) })
+    ];
+    await store.setState({ ...createInitialWidgetsState(NOW), items });
+    const read = (await store.getState()).items;
+    assert.deepEqual(read, items);
+    assert.equal(Object.hasOwn(read[3], "showName"), false, "an item that shows everything keeps no key");
+    assert.equal((await area.get(widgetItemStorageKey("a")))[widgetItemStorageKey("a")].showName, false, "stored as given");
+  });
+
+  it("ensureWidgetsLayout creates the missing tiles without the fields", async () => {
+    const area = createMemoryStorageArea();
+    await ensureWidgetsLayout(area);
+    const stored = await area.get(null);
+    const tiles = Object.entries(stored).filter(([key]) => key.startsWith("quietTabWidget:"));
+    assert.equal(tiles.length, 6);
+    for (const [key, item] of tiles) {
+      for (const field of ["showName", "showLink", "showCity"]) {
+        assert.equal(Object.hasOwn(item, field), false, `${key} has no ${field}`);
+      }
+    }
+  });
+
+  it("ensureWidgetsLayout leaves a stored showCity: false as it is when it appends a missing tile", async () => {
+    const area = createMemoryStorageArea();
+    const kept = metric("weather:uv", { showCity: false, grid: cell(1, 0) });
+    await area.set({ [WIDGETS_META_KEY]: metaOf(["weather:uv"]), [widgetItemStorageKey("weather:uv")]: kept });
+    await ensureWidgetsLayout(area);
+    assert.equal((await area.get(widgetItemStorageKey("weather:uv")))[widgetItemStorageKey("weather:uv")].showCity, false);
   });
 });

@@ -223,7 +223,7 @@ All heights are **border-box** (`box-sizing: border-box` globally).
 
 ### `.segmented` / `.segmented__option`
 
-- Radiogroup pattern (Icon, Color, Size) — not a toggle switch
+- Radiogroup pattern (Icon, Color, Size, and the `City label` row of Edit weather): not a toggle switch. The one on/off control is the toggle group `.segmented--toggle` below
 - In forced colors the selected dialog segment is drawn with `forced-color-adjust: none`, `Highlight` and `HighlightText` (the soft fill and the inset ring do not survive; without the opt-out Chromium paints a Canvas backplate under the label). The Size segments carry a footprint shape glyph in `currentColor` (unit 5 px, unit 4 px up to 451 px windows).
 - Container: 1px `var(--color-border-control)` border (dividers between options keep the decorative `--border`), radius **8px**; outer height **40px** minimum (`min-height`)
 - Option: `min-height: calc(var(--control-height) - 2 * var(--control-border-width))` → **38px** at the default font size; a label that wraps at a larger browser font makes all options of the group (and the group) taller, nothing is cut by the group's `overflow: hidden`
@@ -235,6 +235,16 @@ All heights are **border-box** (`box-sizing: border-box` globally).
   owner-approved mock); the weight and the ring are the cues, and under forced colors
   the font weight alone. The global primary rule stays as the base for segmented
   groups outside dialogs.
+
+### `.segmented--toggle` (the `On tile` row)
+
+`div.segmented.segmented--toggle[role=group]` of two independent checkboxes (`Name`, `Link`; accessible names `Name on tile` and `Link on tile`, which start with the visible text), built by `createToggleGroup` from the same `createSegmentedOption` as the radio groups (`docs/tile-text-options.md` decision 4, Ruling 7). A checkbox variant of `.segmented`, not a switch: same geometry (40px outer, 1px `--border-control` edge, 8px radius, the options share the width apart from the 1px divider), same label text and the same bold-face reserve.
+
+- Glyph: `.segmented__glyph--check`, a box of `--glyph-check` (12px) with a 3px radius and a `currentColor` border, always drawn so the option keeps its width in both states; the check mark is its `::after` (an L of two 1.5px `currentColor` borders, rotated 45 degrees), drawn only while the option is checked. `--glyph-room` of the label adds the glyph and `--control-gap-icon`.
+- State is cued three ways, never by colour alone: the check mark, weight 600, and the dialog's selected fill with the inset 1px ring (direction B above). Two checked neighbours share one seam of 2px in one colour (`--border-control`), the thickness of the seam between a checked and an unchecked option: one line, not wider than 2px, with no lighter pixel between two lines (the first of two checked options draws no stroke on its right, and its divider takes `--border-control`).
+- Focus: the ring of the whole group stays, and the focused option also draws its own ring (2px solid `--focus-ring`, `outline-offset: -4px`, inside the option because the group clips), since two independent checkboxes cannot say by the group ring which of them holds the focus. Each checkbox is a Tab stop; Space toggles it; arrow keys do nothing.
+- Forced colors: a checked option takes `Highlight` and `HighlightText` like a selected segment; the mark follows `currentColor`, and the own ring of a checked focused option is `HighlightText` (an unchecked one gets `ButtonText` from the system).
+- No transition or animation, so reduced motion changes nothing. No new colour, radius or token.
 
 ### `.favorite-color-input`
 
@@ -304,12 +314,12 @@ Modal titles: `--font-size-title`, `margin: 0 0 var(--title-margin-bottom)` (**1
 
 | Screen | Controls (all **40px** outer, **8px** radius unless noted) |
 |--------|--------------------------------------------------------------|
-| Add link | Link, Name inputs; Icon / Color / Size segmented (1×1, 1×2, 2×1, 2×2, each with a footprint shape glyph and an accessible name that starts with the visible text); Cancel, Add |
-| Edit link | Above (Size: 1×1, 1×2, 2×1, 2×2); Cancel, Save; color swatch **40px** tall |
+| Add link | Link, Name inputs; Icon / Color / Size segmented (1×1, 1×2, 2×1, 2×2, each with a footprint shape glyph and an accessible name that starts with the visible text); `On tile` toggle group (Name, Link; checked by default); Cancel, Add |
+| Edit link | Above (Size: 1×1, 1×2, 2×1, 2×2; `On tile` preselected from the tile); Cancel, Save; color swatch **40px** tall |
 | Delete link? | Cancel, Delete |
 | Hide <metric>? | Cancel, Hide (primary, `eyeOff`) |
 | Reset grid? | Cancel, Reset grid (danger, `refresh`) |
-| Edit weather | City-field **40px**; Size segmented (1×1, 1×2, 2×1, 2×2); Cancel, Save |
+| Edit weather | City-field **40px**; `City label` segmented (Shown, Hidden); Size segmented (1×1, 1×2, 2×1, 2×2); Cancel, Save (enabled when the size or the city label changed) |
 | Change city / Set a city | Search input **40px**; clear **36px** inset **2px**; suggestion rows **40px**; Cancel or Not now, Save |
 | Add menu | Each menu item **40px** |
 

@@ -10,6 +10,7 @@ import {
   createDefaultFaviconChecker
 } from "./defaultFavicon.js";
 import { FAVICON_SIZE, getFaviconUrl, getFavoriteIconModel, getFavoriteLetter } from "./favoriteIcon.js";
+import { favoriteTileName, favoriteTileText } from "./favoritesShared.js";
 import { createIconNode } from "./icons.js";
 import {
   canPlace, cellFromPoint, clampDropCell, displayLayout, effectiveColumns, gridMetrics, maxDropRow, viewportRows
@@ -470,8 +471,7 @@ function createFavoriteIconNode(model, item) {
   return createFavoriteLetterNode(item, "letter");
 }
 
-// Spec § Tile content by size: 1-wide shows the icon only (the label is the accessible name), 2×1 adds a one-line
-// label, 2×2 a 40 px icon, a two-line label and the host name. Text only via text nodes.
+// Spec § Tile content by size: the lines come from favoriteTileText (docs/tile-text-options.md decision 2); text only via text nodes.
 function createFavoriteTile(item, cell) {
   const button = createNode("button", "favorite-tile");
   const iconModel = getFavoriteIconModel(item, { faviconBaseUrl });
@@ -482,18 +482,23 @@ function createFavoriteTile(item, cell) {
   button.dataset.favoriteId = item.id;
   button.dataset.widgetId = item.id;
   button.title = item.label;
-  button.setAttribute("aria-label", editing ? `Edit ${item.label}` : `Open ${item.label}`);
+  button.setAttribute("aria-label", favoriteTileName(item, cell, editing)); // docs/tile-text-options.md decision 3: the host joins the name when it is the only text
   button.style.setProperty(
     "--favorite-accent-rgb",
     hexToRgbChannels(normalizeAccentLightness(item.backgroundColor))
   );
   button.appendChild(createFavoriteIconNode(iconModel, item));
-  // 2-wide tiles and 1×2 tiles show the label; 2-high tiles (2×2, 1×2) also show the host (docs/tile-size-1x2.md decision 3).
-  if (cell.w === 2 || cell.h === 2) {
+  // Which lines the tile draws is decided by favoriteTileText (docs/tile-text-options.md decision 2): a 1×1 tile none, a 2×1 tile one line
+  // (the name, or the host in its place), a 1×2 and a 2×2 tile the name and the host as the switches allow. A size that has a text box
+  // and draws no line is marked, so its icon is centered (decision 3).
+  const lines = favoriteTileText(item, cell);
+  if (lines.name || lines.host) {
     const text = createNode("span", "favorite-tile__text");
-    text.appendChild(createNode("span", "favorite-tile__label", item.label));
-    if (cell.h === 2) text.appendChild(createNode("span", "favorite-tile__host", item.domain));
+    if (lines.name) text.appendChild(createNode("span", "favorite-tile__label", item.label));
+    if (lines.host) text.appendChild(createNode("span", "favorite-tile__host", item.domain));
     button.appendChild(text);
+  } else if (cell.w === 2 || cell.h === 2) {
+    button.dataset.tileText = "none";
   }
 
   button.disabled = favoritesBusy;
@@ -501,34 +506,58 @@ function createFavoriteTile(item, cell) {
   return button;
 }
 
+// One option of a segmented control or a toggle group: label.segmented__option > input + b.segmented__label[data-text] > i.segmented__content (glyph + the one text span).
+// The glyph and the text are one unit (content), centred in a label that is as wide as the bold face needs: data-text feeds the bold-face reserve
+// (controls.css .segmented__label::after); the visible text stays one textContent node (docs/layers-weather-polish.md decision 12). The label and the
+// unit are <b> and <i> (styled back to normal in controls.css), not <span>, so that the text span stays the option's first span and its only one.
+function createSegmentedOption(input, text, glyph) {
+  const option = createNode("label", "segmented__option");
+  option.appendChild(input);
+  const content = createNode("i", "segmented__content");
+  if (glyph) {
+    const mark = createNode("i", `segmented__glyph segmented__glyph--${glyph}`);
+    mark.setAttribute("aria-hidden", "true");
+    content.appendChild(mark);
+  }
+  content.appendChild(createNode("span", null, text));
+  const label = createNode("b", glyph ? `segmented__label segmented__label--${glyph}` : "segmented__label");
+  label.dataset.text = text;
+  label.appendChild(content);
+  option.appendChild(label);
+  return option;
+}
+
 function createSegmentedControl(name, options, selectedValue) {
   const group = createNode("div", "segmented");
   group.setAttribute("role", "radiogroup");
 
   for (const [value, text, glyph, accessibleName] of options) {
-    const option = createNode("label", "segmented__option");
     const input = document.createElement("input");
     input.type = "radio";
     input.name = name;
     input.value = value;
     input.checked = value === selectedValue;
     if (accessibleName) input.setAttribute("aria-label", accessibleName); // starts with the visible text (WCAG 2.5.3)
-    option.appendChild(input);
-    // The glyph and the text are one unit (content), centred in a label that is as wide as the bold face needs: data-text feeds the bold-face reserve
-    // (controls.css .segmented__label::after); the visible text stays one textContent node (docs/layers-weather-polish.md decision 12). The label and the
-    // unit are <b> and <i> (styled back to normal in controls.css), not <span>, so that the text span stays the option's first span and its only one.
-    const content = createNode("i", "segmented__content");
-    if (glyph) {
-      const mark = createNode("i", `segmented__glyph segmented__glyph--${glyph}`);
-      mark.setAttribute("aria-hidden", "true");
-      content.appendChild(mark);
-    }
-    content.appendChild(createNode("span", null, text));
-    const label = createNode("b", glyph ? `segmented__label segmented__label--${glyph}` : "segmented__label");
-    label.dataset.text = text;
-    label.appendChild(content);
-    option.appendChild(label);
-    group.appendChild(option);
+    group.appendChild(createSegmentedOption(input, text, glyph));
+  }
+
+  return group;
+}
+
+// A group of independent on/off options (docs/tile-text-options.md decision 4): the look of a segmented control with a checkbox in each option. Two checkboxes
+// are a role=group, not a radiogroup, so it is its own function; the option itself comes from createSegmentedOption. Items: [name, visible text,
+// accessible name (starts with the visible text, WCAG 2.5.3), checked]. The glyph box is always there (the width does not change with the state); its mark is CSS.
+function createToggleGroup(items) {
+  const group = createNode("div", "segmented segmented--toggle");
+  group.setAttribute("role", "group");
+
+  for (const [name, text, accessibleName, checked] of items) {
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.name = name;
+    input.checked = checked;
+    input.setAttribute("aria-label", accessibleName);
+    group.appendChild(createSegmentedOption(input, text, "check"));
   }
 
   return group;
@@ -550,8 +579,9 @@ function createFormRow(labelText, control) {
     return row;
   }
 
+  // A control that is itself a labelled container (an input, a radiogroup, a role=group of checkboxes) takes the row label as its own name.
   const labelTarget =
-    control.tagName === "INPUT" || control.getAttribute("role") === "radiogroup"
+    control.tagName === "INPUT" || control.getAttribute("role") === "radiogroup" || control.getAttribute("role") === "group"
       ? control
       : control.querySelector('input, [role="radiogroup"]');
   labelTarget?.setAttribute("aria-labelledby", labelSpan.id);
@@ -604,7 +634,7 @@ function createFavoriteForm(item) {
   customIconUrl.type = "text";
   customIconUrl.inputMode = "url";
   customIconUrl.value = isEdit ? item.customIconUrl ?? "" : "";
-  customIconUrl.placeholder = "https://example.com/icon.png";
+  customIconUrl.placeholder = "https://example.com/icon"; // no format named (docs/tile-text-options.md decision 6); the Link field's hint is the model
   const customIconRow = createFormRow("Custom icon", customIconUrl);
   customIconRow.classList.add("favorite-form__row--custom-icon");
 
@@ -632,6 +662,11 @@ function createFavoriteForm(item) {
   rows.push(
     createFormRow("Size", createSizeControl(isEdit ? displayedSize(item) : { w: 1, h: 1 }))
   );
+  // What the tile shows (docs/tile-text-options.md decisions 2 and 4); the row stays at 1×1, where it changes nothing and is remembered for a later size.
+  rows.push(createFormRow("On tile", createToggleGroup([
+    ["showName", "Name", "Name on tile", isEdit ? item.showName !== false : true],
+    ["showLink", "Link", "Link on tile", isEdit ? item.showLink !== false : true]
+  ])));
 
   const cancel = createIconButton("button", "Cancel", "x");
   cancel.type = "button";
@@ -697,7 +732,10 @@ function readFavoriteFormPayload(data) {
     label: data.get("label"),
     iconMode: data.get("iconMode"),
     customIconUrl: data.get("customIconUrl"),
-    backgroundColorSource
+    backgroundColorSource,
+    // A checkbox is in the form data only while it is checked: always a boolean, never undefined (the service stores false and drops true).
+    showName: data.has("showName"),
+    showLink: data.has("showLink")
   };
 
   if (backgroundColorSource === "manual") {
@@ -2123,7 +2161,7 @@ function showOnboardingWizard() {
 }
 
 // R6: a 2-wide tile uses the `wide` model, a 1×2 tile the `tall` model (docs/tile-size-1x2.md decision 6); a 2-high
-// tile gets the city name. Type sizes come from CSS keyed on data-w/data-h.
+// tile gets the city name unless its showCity is false (decision 5 of docs/tile-text-options.md). Type sizes come from CSS keyed on data-w/data-h.
 function createWeatherMetricTile(item, cell, view) {
   const size = cell.w === 2 ? "wide" : cell.h === 2 ? "tall" : "square";
   const editing = desktopUi.editMode;
@@ -2167,7 +2205,8 @@ function createWeatherMetricTile(item, cell, view) {
   if (model.secondary) values.appendChild(createNode("span", "weather-tile__secondary", model.secondary));
   tile.appendChild(values);
   const cityName = view?.location?.name;
-  if (cell.h === 2 && cityName) tile.appendChild(createNode("span", "weather-tile__city", cityName));
+  // The city line stands on a tall tile only while the tile's city label is not Hidden (docs/tile-text-options.md decision 5): a missing showCity means shown.
+  if (item.showCity !== false && cell.h === 2 && cityName) tile.appendChild(createNode("span", "weather-tile__city", cityName));
   const description = createNode("span", "sr-only", model.description);
   description.id = `weather-desc-${weatherMetricKey(item.id)}`;
   description.dataset.tooltipText = "";
@@ -2429,25 +2468,40 @@ function buildDialogContent(root, dialog) {
       form.noValidate = true;
       // A lenient read may have dropped a malformed grid: the size shown is the displayed cell's (spec § Reading grid).
       const size = displayedSize(item);
-      const initial = `${size.w}x${size.h}`;
+      const initialSize = `${size.w}x${size.h}`;
+      // The city label of the tile (docs/tile-text-options.md decision 5): Shown unless the item has showCity false.
+      const initialLabel = item.showCity === false ? "hidden" : "shown";
       const save = createIconButton("button button--primary", "Save", "check");
       save.type = "submit";
-      save.disabled = true; // enabled only when the size changed
+      save.disabled = true; // enabled only when the size or the city label differs from what the dialog opened with
       form.addEventListener("change", () => {
-        save.disabled = new FormData(form).get("size") === initial;
+        const data = new FormData(form);
+        save.disabled = data.get("size") === initialSize && data.get("cityLabel") === initialLabel;
       });
       form.addEventListener("submit", (event) => {
         event.preventDefault();
-        const size = readSize(new FormData(form).get("size"));
-        if (!size || save.disabled) return;
+        const data = new FormData(form);
+        const picked = readSize(data.get("size"));
+        if (!picked || save.disabled) return;
+        // Only what the dialog changed is sent (docs/tile-text-options.md decision 5): an absent key leaves the stored value alone, so a tab that opened the dialog before another
+        // tab wrote the city label does not put the old label back when it changes only the size (and the other way round).
+        const input = {};
+        if (data.get("size") !== initialSize) { input.w = picked.w; input.h = picked.h; }
+        if (data.get("cityLabel") !== initialLabel) input.showCity = data.get("cityLabel") !== "hidden";
         void runDesktopMutation(
-          (columns) => widgetsService.updateWeatherMetric(item.id, size, { columns }),
+          (columns) => widgetsService.updateWeatherMetric(item.id, input, { columns }),
           { dialogRoot: root }
         ).then((ok) => {
           if (ok) closeDesktopDialog({ reveal: true });
         });
       });
-      form.append(createFormRow("City", cityField), createFormRow("Size", createSizeControl(size)), createDialogErrorSlot(), createDialogFooter(createDialogCancel(), save));
+      form.append(
+        createFormRow("City", cityField),
+        createFormRow("City label", createSegmentedControl("cityLabel", [["shown", "Shown"], ["hidden", "Hidden"]], initialLabel)),
+        createFormRow("Size", createSizeControl(size)),
+        createDialogErrorSlot(),
+        createDialogFooter(createDialogCancel(), save)
+      );
       root.append(title, form);
       syncWeatherDialogCity(root);
       break;

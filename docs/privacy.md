@@ -47,6 +47,7 @@ The extension stores the following in `chrome.storage.sync`:
 - domains;
 - icon mode and optional custom image URLs;
 - tile background colors and tile size;
+- whether a link tile shows its name or its link, and whether a weather tile shows the city name (each is saved only when you turn it off);
 - each tile's position and size on the grid, and whether a weather tile is shown or hidden;
 - creation and update timestamps.
 

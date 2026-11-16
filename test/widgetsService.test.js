@@ -998,8 +998,12 @@ describe("widgetsService link dialog validation (run 43)", async () => {
       assert.throws(() => normalizeNullableImageUrl("http://"), failsWith("Enter a valid image URL", "customIconUrl"));
     });
 
-    it("an icon link is not checked for spaces or junk (only its length)", () => {
-      assert.equal(normalizeNullableImageUrl("example.com/a b.png"), "https://example.com/a%20b.png");
+    // Superseded by docs/tile-text-options.md decision 7 (Ruling 3, run 58): the icon link refuses whitespace like the main link;
+    // the old pin (a raw space was encoded by the parser) said the opposite. Only the space rule is stricter, junk hosts still pass.
+    it("an icon link with a space inside is refused (a typed %20 is saved); a junk host is still not checked", () => {
+      assert.throws(() => normalizeNullableImageUrl("example.com/a b.png"), failsWith("Enter a valid image URL", "customIconUrl"));
+      assert.equal(normalizeNullableImageUrl("example.com/a%20b.png"), "https://example.com/a%20b.png");
+      assert.equal(normalizeNullableImageUrl("https://bad_host-.example.com/a.png"), "https://bad_host-.example.com/a.png");
     });
   });
 
@@ -1358,5 +1362,338 @@ describe("widgetsService junk hosts (run 49, AS-TYP-07)", () => {
       assert.equal(ids.length, 1);
       assert.deepEqual((await store.getState()).items.map((item) => item.url).sort(), ["http://a..b/", "https://github.com/"]);
     });
+  });
+});
+
+// docs/tile-text-options.md (run 58): the three optional booleans, the name limit by code points, the icon link whitespace rule.
+describe("widgetsService tile text options (run 58)", () => {
+  const URL_MAX = 2000;
+  const failsWith = (message, field) => (error) => {
+    assert.equal(error.message, message);
+    assert.equal(error.field, field, `error.field for "${message}"`);
+    return true;
+  };
+  const itemOf = (state, id) => state.items.find((item) => item.id === id);
+  const keysOf = (item) => Object.keys(item).sort();
+  const hostOfLength = (len) => {
+    const host = ("a".repeat(49) + ".").repeat(Math.ceil(len / 50) + 1).slice(0, len);
+    return host.endsWith(".") ? `${host.slice(0, -1)}a` : host;
+  };
+  const link = (overrides = {}) => favorite({ id: "f0", url: "https://f0.example.com/", domain: "f0.example.com", grid: g(0, 0), ...overrides });
+
+  describe("decision 1: the fields are written only when false", () => {
+    it("addFavorite with showName false writes that key only; true writes no key; no key writes no key", async () => {
+      const { service } = await createHarness();
+      const off = itemOf(await service.addFavorite({ url: "https://a.example.com", showName: false }, COLS), "fav-1");
+      assert.equal(off.showName, false);
+      assert.equal(Object.hasOwn(off, "showLink"), false);
+      const on = itemOf(await service.addFavorite({ url: "https://b.example.com", showName: true, showLink: true }, COLS), "fav-2");
+      assert.equal(Object.hasOwn(on, "showName"), false);
+      assert.equal(Object.hasOwn(on, "showLink"), false);
+      const bare = itemOf(await service.addFavorite({ url: "https://c.example.com" }, COLS), "fav-3");
+      assert.deepEqual(keysOf(bare), keysOf(on), "an item that shows everything has the shape it has today");
+    });
+
+    it("addFavorite with both false writes both keys", async () => {
+      const { service } = await createHarness();
+      const item = itemOf(await service.addFavorite({ url: "https://a.example.com", showName: false, showLink: false }, COLS), "fav-1");
+      assert.deepEqual([item.showName, item.showLink], [false, false]);
+    });
+
+    it("updateFavorite with showName true on an item that has false REMOVES the key: the item equals one that never had it", async () => {
+      const { service, store } = await createHarness();
+      await seed(store, [link({ showName: false }), link({ id: "f1", url: "https://f1.example.com/", domain: "f1.example.com", grid: g(1, 0) })]);
+      const state = await service.updateFavorite("f0", { showName: true }, COLS);
+      const item = itemOf(state, "f0");
+      assert.equal(Object.hasOwn(item, "showName"), false);
+      assert.deepEqual(keysOf(item), keysOf(itemOf(state, "f1")));
+    });
+
+    it("updateFavorite with false sets the key; the other key stays as it was", async () => {
+      const { service, store } = await createHarness();
+      await seed(store, [link({ showLink: false })]);
+      const item = itemOf(await service.updateFavorite("f0", { showName: false }, COLS), "f0");
+      assert.deepEqual([item.showName, item.showLink], [false, false]);
+    });
+
+    it("updateFavorite whose payload has no such key leaves the stored false as it is (a size change, a label change)", async () => {
+      const { service, store } = await createHarness();
+      await seed(store, [link({ showName: false, showLink: false })]);
+      let state = await service.updateFavorite("f0", { w: 2 }, COLS);
+      assert.deepEqual([itemOf(state, "f0").showName, itemOf(state, "f0").showLink], [false, false]);
+      state = await service.updateFavorite("f0", { label: "Renamed", w: 2, h: 2 }, COLS);
+      assert.deepEqual([itemOf(state, "f0").showName, itemOf(state, "f0").showLink], [false, false]);
+      assert.deepEqual(itemOf(state, "f0").grid.w, 2);
+    });
+
+    it("updateWeatherMetric: showCity false writes the key, true removes it, a payload without the key leaves it", async () => {
+      const { service } = await serviceWithMetrics();
+      let state = await service.updateWeatherMetric("weather:temperature", { showCity: false }, COLS);
+      assert.equal(itemOf(state, "weather:temperature").showCity, false);
+      state = await service.updateWeatherMetric("weather:temperature", { w: 2, h: 2 }, COLS);
+      assert.equal(itemOf(state, "weather:temperature").showCity, false, "a size change keeps it");
+      state = await service.updateWeatherMetric("weather:temperature", { showCity: true }, COLS);
+      assert.equal(Object.hasOwn(itemOf(state, "weather:temperature"), "showCity"), false);
+      assert.deepEqual(keysOf(itemOf(state, "weather:temperature")), keysOf(itemOf(state, "weather:uv")));
+    });
+
+    it("updateWeatherMetric with showCity true on a metric that never had it writes no key", async () => {
+      const { service } = await serviceWithMetrics();
+      const state = await service.updateWeatherMetric("weather:uv", { showCity: true }, COLS);
+      assert.equal(Object.hasOwn(itemOf(state, "weather:uv"), "showCity"), false);
+    });
+
+    it("addFavorites takes the fields too; the wizard's starter links (no keys in the input) get none", async () => {
+      const { service } = await createHarness();
+      const ids = await service.addFavorites([{ url: "https://a.example.com", showName: false }, { url: "https://b.example.com" }], COLS);
+      const state = await service.getState();
+      assert.equal(itemOf(state, ids[0]).showName, false);
+      assert.equal(Object.hasOwn(itemOf(state, ids[0]), "showLink"), false);
+      for (const key of ["showName", "showLink"]) assert.equal(Object.hasOwn(itemOf(state, ids[1]), key), false, key);
+    });
+  });
+
+  describe("a value that is not a boolean is refused (the internal messages of AS-TTO-20), nothing is written", () => {
+    const BAD = ["no", 0, 1, null, undefined, "false", {}];
+
+    it("addFavorite, per field", async () => {
+      for (const [key, message] of [["showName", "Choose whether the tile shows its name"], ["showLink", "Choose whether the tile shows its link"]]) {
+        for (const value of BAD) {
+          const { service, store } = await createHarness();
+          await assert.rejects(service.addFavorite({ url: "https://a.example.com", [key]: value }, COLS), failsWith(message, key), `${key} ${String(value)}`);
+          assert.deepEqual((await store.getState()).items, []);
+        }
+      }
+    });
+
+    it("addFavorites, per field", async () => {
+      const { service, store } = await createHarness();
+      await assert.rejects(service.addFavorites([{ url: "https://a.example.com", showName: "no" }], COLS), failsWith("Choose whether the tile shows its name", "showName"));
+      await assert.rejects(service.addFavorites([{ url: "https://a.example.com", showLink: 0 }], COLS), failsWith("Choose whether the tile shows its link", "showLink"));
+      assert.deepEqual((await store.getState()).items, []);
+    });
+
+    it("updateFavorite, per field, and the stored item stays", async () => {
+      const { service, store } = await createHarness();
+      await seed(store, [link({ showName: false })]);
+      const before = await store.getState();
+      for (const value of BAD) {
+        await assert.rejects(service.updateFavorite("f0", { showName: value }, COLS), failsWith("Choose whether the tile shows its name", "showName"), String(value));
+        await assert.rejects(service.updateFavorite("f0", { showLink: value }, COLS), failsWith("Choose whether the tile shows its link", "showLink"), String(value));
+      }
+      assert.deepEqual((await store.getState()).items, before.items);
+    });
+
+    it("updateWeatherMetric", async () => {
+      const { service, store } = await serviceWithMetrics();
+      const before = await store.getState();
+      for (const value of BAD) {
+        await assert.rejects(service.updateWeatherMetric("weather:temperature", { showCity: value }, COLS), { message: "Choose whether the weather tile shows the city" }, String(value));
+      }
+      assert.deepEqual((await store.getState()).items, before.items);
+    });
+  });
+
+  describe("the setting travels with the tile (AS-TTO-05, 21)", () => {
+    it("resize and moveWidget carry showName and showLink; they gain nothing else", async () => {
+      const { service, store } = await createHarness();
+      await seed(store, [link({ showName: false })]);
+      let state = await service.updateFavorite("f0", { w: 2 }, COLS);
+      state = await service.updateFavorite("f0", { w: 2, h: 2 }, COLS);
+      let item = itemOf(state, "f0");
+      assert.equal(item.showName, false);
+      assert.equal(Object.hasOwn(item, "showLink"), false);
+      state = await service.moveWidget("f0", { x: 5, y: 2 }, { ...COLS, viewportRows: 4 });
+      item = itemOf(state, "f0");
+      assert.equal(item.showName, false);
+      assert.equal(Object.hasOwn(item, "showLink"), false);
+      assert.deepEqual(shown(item.grid), g(5, 2, 2, 2));
+    });
+
+    it("hiding, restoring, resizing and moving a metric keep showCity", async () => {
+      const { service } = await serviceWithMetrics();
+      await service.updateWeatherMetric("weather:temperature", { showCity: false }, COLS);
+      await service.updateWeatherMetric("weather:temperature", { enabled: false }, COLS);
+      let state = await service.updateWeatherMetric("weather:temperature", { enabled: true }, COLS);
+      assert.equal(itemOf(state, "weather:temperature").showCity, false);
+      state = await service.updateWeatherMetric("weather:temperature", { h: 2 }, COLS);
+      assert.equal(itemOf(state, "weather:temperature").showCity, false);
+      state = await service.moveWidget("weather:temperature", { x: 0, y: 2 }, { ...COLS, viewportRows: 4 });
+      assert.equal(itemOf(state, "weather:temperature").showCity, false);
+    });
+
+    it("a size and a flag in one call: the flags and the grid are both right", async () => {
+      const { service, store } = await createHarness();
+      await seed(store, [link({ showName: false })]);
+      let state = await service.updateFavorite("f0", { w: 2, h: 2, showName: true, showLink: false }, COLS);
+      let item = itemOf(state, "f0");
+      assert.equal(Object.hasOwn(item, "showName"), false, "true removes the key");
+      assert.equal(item.showLink, false);
+      assert.deepEqual(shown(item.grid), g(0, 0, 2, 2));
+      const metrics = await serviceWithMetrics();
+      state = await metrics.service.updateWeatherMetric("weather:temperature", { h: 2, enabled: true, showCity: false }, COLS);
+      item = itemOf(state, "weather:temperature");
+      assert.equal(item.showCity, false);
+      assert.equal(item.enabled, true);
+      assert.equal(shown(item.grid).h, 2);
+    });
+
+    it("another link's change and a re-base to another column count keep the fields of every item", async () => {
+      const { service, store } = await createHarness();
+      await seed(store, [link({ showName: false }), link({ id: "f1", url: "https://f1.example.com/", domain: "f1.example.com", grid: g(1, 0), showLink: false })]);
+      const state = await service.addFavorite({ url: "https://new.example.com" }, { columns: 6 });
+      assert.equal(itemOf(state, "f0").showName, false);
+      assert.equal(itemOf(state, "f1").showLink, false);
+      assert.equal(Object.hasOwn(itemOf(state, "fav-1"), "showName"), false);
+    });
+  });
+
+  describe("the 8 KB budget of the worst item (AS-TTO-11)", () => {
+    const iconOfLength = (total) => "https://example.com/i" + "b".repeat(total - "https://example.com/i".length);
+    // What chrome.storage.sync counts for one key: the key plus the JSON of the value, in bytes.
+    const storedBytes = (item) => new TextEncoder().encode(`quietTabWidget:${item.id}` + JSON.stringify(item)).length;
+
+    // The service's own ids (`fav-<ms>-<rand>`, about 29 characters), not the harness's `fav-1`: the id is in the key and in the item.
+    const realIdService = () => createWidgetsService({ store: createWidgetsStore(createMemoryStorageArea(), { now: () => NOW }), now: () => NOW });
+    const onlyItem = (state) => {
+      assert.equal(state.items.length, 1);
+      return state.items[0];
+    };
+
+    async function worst(extra = {}) {
+      const service = realIdService();
+      const host = hostOfLength(1984);
+      const state = await service.addFavorite({
+        url: `https://${host}/`,
+        label: "\u0001".repeat(100),
+        iconMode: "custom",
+        customIconUrl: iconOfLength(URL_MAX),
+        showName: false,
+        showLink: false,
+        ...extra
+      }, COLS);
+      return onlyItem(state);
+    }
+
+    it("a 1993-character link on a 1984-character host, a 2000-character icon link, a name of 100 control characters and both switches off stay 1000 bytes under 8192", async () => {
+      const item = await worst();
+      assert.equal(item.url.length, 1993);
+      assert.equal(item.domain.length, 1984);
+      assert.equal(item.customIconUrl.length, URL_MAX);
+      assert.equal(item.label.length, 100);
+      assert.deepEqual([item.showName, item.showLink], [false, false], "the keys are in the measured item");
+      const bytes = storedBytes(item);
+      assert.equal(bytes <= 8192 - 1000, true, `${bytes} bytes`);
+    });
+
+    it("the http:// variant with a 2000-character href stays under the same bound", async () => {
+      const service = realIdService();
+      const url = "http://example.com/" + "a".repeat(URL_MAX - "http://example.com/".length);
+      const state = await service.addFavorite({ url, label: "\u0001".repeat(100), iconMode: "custom", customIconUrl: iconOfLength(URL_MAX), showName: false, showLink: false }, COLS);
+      const item = onlyItem(state);
+      assert.equal(item.url.length, URL_MAX);
+      const bytes = storedBytes(item);
+      assert.equal(bytes <= 8192 - 1000, true, `${bytes} bytes`);
+    });
+
+    it("the fields add little: both false cost about 34 bytes", async () => {
+      const withKeys = storedBytes(await worst());
+      const without = storedBytes(await worst({ showName: true, showLink: true }));
+      assert.equal(withKeys - without > 0 && withKeys - without <= 40, true, `${withKeys - without} bytes`);
+    });
+  });
+
+  describe("decision 8: the name limit counts code points (AS-TTO-19)", () => {
+    const nameOk = async (label) => {
+      const { service } = await createHarness();
+      const state = await service.addFavorite({ url: "https://a.example.com", label }, COLS);
+      assert.equal(itemOf(state, "fav-1").label, label);
+    };
+    const nameRefused = async (label) => {
+      const { service, store } = await createHarness();
+      await assert.rejects(service.addFavorite({ url: "https://a.example.com", label }, COLS), failsWith("That name is too long (up to 100 characters)", "label"));
+      assert.deepEqual((await store.getState()).items, []);
+    };
+
+    it("100 emoji and 51 emoji are accepted (an emoji is two UTF-16 units, so 51 is already 102 units)", async () => {
+      await nameOk("😀".repeat(100));
+      await nameOk("😀".repeat(51));
+    });
+
+    it("101 emoji and 101 letters are refused with the name message for the label field", async () => {
+      await nameRefused("😀".repeat(101));
+      await nameRefused("n".repeat(101));
+    });
+
+    it("100 letters and 50 pairs of a letter and a combining accent (100 code points) are accepted", async () => {
+      await nameOk("n".repeat(100));
+      await nameOk("e\u0301".repeat(50));
+      await nameRefused("e\u0301".repeat(51));
+    });
+
+    it("updateFavorite counts the same way (an Edit Save of a 100-emoji name succeeds, 101 is refused)", async () => {
+      const { service, store } = await createHarness();
+      await seed(store, [link({ label: "😀".repeat(100) })]);
+      assert.equal(itemOf(await service.updateFavorite("f0", { label: "😀".repeat(100) }, COLS), "f0").label, "😀".repeat(100));
+      await assert.rejects(service.updateFavorite("f0", { label: "😀".repeat(101) }, COLS), failsWith("That name is too long (up to 100 characters)", "label"));
+    });
+
+    it("an empty name stores the host cut to 100 characters", async () => {
+      const host = hostOfLength(300);
+      const { service } = await createHarness();
+      const state = await service.addFavorite({ url: `https://${host}/` }, COLS);
+      assert.equal(itemOf(state, "fav-1").label, host.slice(0, 100));
+    });
+  });
+
+  describe("decision 7: the icon link refuses whitespace (AS-TTO-18)", () => {
+    const BAD = "Enter a valid image URL";
+
+    it("a space inside and a tab inside show Enter a valid image URL for the customIconUrl field", () => {
+      assert.throws(() => normalizeNullableImageUrl("https://cdn.example.com/my icon.svg"), failsWith(BAD, "customIconUrl"));
+      assert.throws(() => normalizeNullableImageUrl("https://cdn.example.com/a\ticon.png"), failsWith(BAD, "customIconUrl"));
+      assert.throws(() => normalizeNullableImageUrl("https://cdn.example.com/a\nicon.png"), failsWith(BAD, "customIconUrl"));
+    });
+
+    it("outer spaces are trimmed and the link is saved", () => {
+      assert.equal(normalizeNullableImageUrl("  https://cdn.example.com/icon.svg  "), "https://cdn.example.com/icon.svg");
+    });
+
+    it("a link without a scheme gets https, a typed %20 is saved, 2000 characters are saved", () => {
+      assert.equal(normalizeNullableImageUrl("cdn.example.com/icon.png"), "https://cdn.example.com/icon.png");
+      assert.equal(normalizeNullableImageUrl("https://cdn.example.com/my%20icon.svg"), "https://cdn.example.com/my%20icon.svg");
+      assert.equal(normalizeNullableImageUrl(iconLink(URL_MAX)).length, URL_MAX);
+    });
+
+    it("2001 characters with a space inside say too long: the typed-length check is before the whitespace check", () => {
+      const spaced = iconLink(URL_MAX + 1 - 2) + " b";
+      assert.equal(spaced.length, URL_MAX + 1);
+      assert.throws(() => normalizeNullableImageUrl(spaced), failsWith("That icon link is too long (up to 2000 characters)", "customIconUrl"));
+    });
+
+    it("the whitespace check is before parsing and before the protocol check; the other texts stay", () => {
+      assert.throws(() => normalizeNullableImageUrl("ftp://x/a b.png"), failsWith(BAD, "customIconUrl"));
+      assert.throws(() => normalizeNullableImageUrl("ftp://x/i.png"), failsWith("Only http and https image URLs are supported", "customIconUrl"));
+      assert.throws(() => normalizeNullableImageUrl("http://"), failsWith(BAD, "customIconUrl"));
+      assert.equal(normalizeNullableImageUrl(""), null);
+      assert.equal(normalizeNullableImageUrl("   "), null);
+    });
+
+    it("addFavorite and updateFavorite refuse a spaced icon link and write nothing", async () => {
+      const { service, store } = await createHarness();
+      await assert.rejects(service.addFavorite({ url: "https://a.example.com", iconMode: "custom", customIconUrl: "https://cdn.example.com/my icon.svg" }, COLS), failsWith(BAD, "customIconUrl"));
+      assert.deepEqual((await store.getState()).items, []);
+      await seed(store, [link()]);
+      await assert.rejects(service.updateFavorite("f0", { iconMode: "custom", customIconUrl: "https://cdn.example.com/a\ticon.png" }, COLS), failsWith(BAD, "customIconUrl"));
+      assert.equal(itemOf(await store.getState(), "f0").customIconUrl, null);
+    });
+
+    it("the main link rule is unchanged: a space in the link still says Enter a valid URL for the url field", () => {
+      assert.throws(() => normalizeFavoriteUrl("example.com/a b"), failsWith("Enter a valid URL", "url"));
+    });
+
+    function iconLink(total) {
+      return "https://cdn.example.com/i" + "b".repeat(total - "https://cdn.example.com/i".length);
+    }
   });
 });
