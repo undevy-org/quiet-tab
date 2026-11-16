@@ -42,6 +42,8 @@ Terms: **footprint** = stored `grid.w` × `grid.h` (each 1 or 2). **1×2** = `w:
 
 3. **Favorite DOM rule.** `createFavoriteTile` appends `.favorite-tile__text` when **`cell.w === 2` OR `cell.h === 2`**, with host line when **`cell.h === 2`** (covers 2×2 and 1×2, not 2×1).
 
+   > Superseded in part (run 58): the text box and its lines are no longer a function of the size only. `favoriteTileText(item, { w, h })` in `src/favoritesShared.js` says which lines a link tile draws from its size and from the optional `showName` and `showLink` of the item (1×1 none; 2×1 the name, or the host in its place when the name is off; 1×2 and 2×2 the name and the host as the switches allow); with both lines on the tile is as described here. A tile with no line carries `data-tile-text="none"` and centers its icon. See `docs/tile-text-options.md` decisions 2 and 3.
+
 4. **City hint at 1×2.** When `cell.w === 1 && cell.h === 2`: column layout — map-pin **18px**, then visible text **`Set a city`** (same copy as 2-wide), **11px** semibold, centered, one line at the **72px** cell, **2** lines at the **64px** and **56px** cells (measured), dashed border unchanged. **1×1** pin-only and **2×1** text-only behaviours unchanged.
 
 5. **Chrome (Settings, Add) — 1×1 only (owner OQ-1).** No change: store validator keeps **`w === 1 && h === 1`** only; placement/self-heal unchanged; **no** 1×2 layout CSS and **no** chrome work in this run. The brainstorming mockup showed chrome 1×2 for completeness; it is **not** implemented here.

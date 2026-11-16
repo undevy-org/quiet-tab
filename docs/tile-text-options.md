@@ -2,7 +2,7 @@
 
 ## Status
 
-`draft`
+`implemented`
 
 Revision 3 (2026-11-15, stage 2 second round of run 58, after the stage 3 re-review and the spec gate round 2: N1 = L0-10, N2, N3; the list of changes by finding id is the last section). Revision 2 was stage 2 after the stage 1 review and the spec gate round 1. Revision 1 was stage 0. Run №58 (`tile-text-options`), row R58 of the roadmap. Kier's three requests (2026-11-15, below) plus three backlog lines that touch the same code: 102 (the custom icon link is not checked for spaces and junk), 107 (the name limit counts UTF-16 units) and 146 (10) (a dead `.toLowerCase()` in `typedHost`). Lines 102 and 107 are closed by this spec; the rewrite of both is in decisions 7 and 8, and the dead call is in decision 9.
 
