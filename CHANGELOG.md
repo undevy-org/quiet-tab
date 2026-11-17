@@ -144,6 +144,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A render during a drag (a weather answer, a retry, a tab-return re-read) no longer shifts the page by a row under the held pointer (the pressed tile has the
+  focus and its re-focus clamped the page): the new grid keeps the drag grid's height, the outline stays on the cell under the pointer, and the drop lands on it
+  (`docs/backlog-closeout.md` decision 1). E2E: `dg-95-backlog-closeout.mjs` group g1.
+- The jiggle of edit mode keeps its phase when a render replaces the tiles (a weather answer, Add link): no jump of up to 1.2 degrees, and a tile
+  created by the render joins the same phase (decision 5). E2E: `dg-95` group g2.
+- The tooltip of a keyboard-focused tile comes back after a render (a retry, a weather answer, a tab-return re-read) instead of staying closed
+  (decision 6; a tooltip open for the pointer, one closed by a window resize and one for a tile that another tab carried wholly out of the window are not restored), and any scroll of the document (arrow keys, Page Down, the
+  scrollbar) hides the tooltip instead of leaving it where the tile was; the scroll a focus itself causes does not hide it (decision 7). E2E:
+  `dg-95` group g3.
+- An `online` event that arrives while the weather is loading (the load when the tab opens, or any retry) is no longer lost: it is remembered once and, if
+  that load or retry then fails, one more attempt starts at once (the 3 s pause is ignored); nothing starts after a success, after a city change, or while
+  the tab is hidden (`docs/backlog-closeout.md` decision 2). E2E: `dg-95` group g4, AS-BC-06.
+- Retrying a layout that failed to save at load no longer says `Your layout was reset in another tab.` (nothing was reset elsewhere): the heal that
+  completes the six system tiles is silent and also takes down the `Couldn't add the weather and settings tiles` chip and a stale `Reload` chip, with the
+  focus that was on `Reload` going to the Settings tile; a healthy return that already finds the six tiles written takes down the chip too; a storage that
+  another tab really cleared shows the message as before (decision 3). E2E: `dg-95` g4, AS-BC-07 and AS-BC-08.
+- The city row of an open Edit weather dialog follows an automatic or manual weather attempt that changes the city (or finds it removed); a row whose text
+  did not change is not touched (decision 4). E2E: `dg-95` g4, AS-BC-09.
+- A double click on `Add link` of the Add menu leaves the focus on the `Link` field of the new dialog (it fell to the page): the press that comes in the first
+  300 ms after a dialog opens and lands on its backdrop or on a part of it that is not a control no longer moves the focus; the same holds for the other
+  dialogs that a double click on their opener opens (`edit-link`, the delete confirm) (`docs/backlog-closeout.md` decision 11). E2E: `dg-95` g6, AS-BC-11.
+- A double click on `Add weather tile…` no longer restores a metric without a choice, closes the menu or opens the Edit link dialog of the tile under the
+  pointer: the second press (within 300 ms and 4 px of the click that opened the second level) does nothing, the second level stays open. A deliberate
+  quick pick of an item within 4 px of that click is lost with it (`docs/backlog-closeout.md` decision 12, Accepted exceptions 1 and 14). E2E: `dg-95` g6, AS-BC-12.
+- The city field of the city modal and of the first-run wizard names its error: while a message shows the field is described by it (`aria-describedby`), and
+  it is `aria-invalid` for an empty submit and a city that was not found, not for a network or location failure (`docs/backlog-closeout.md` decision 13).
+  E2E: `dg-95` g7, AS-BC-13.
+- The message of the unreadable-grid screen is spoken once: it stops being an alert when the Reset grid dialog first opens, so closing the dialog no longer
+  announces it again (`docs/backlog-closeout.md` decision 10). E2E: `dg-95` g5, AS-BC-10.
+- At a 24 px browser font in a 320 px window the two 50/50 footer buttons of the dialogs, the city modal and the first-run wizard are equal halves of the card
+  and stay inside it (the delete confirm and wizard step 1 stuck out by 2.7 and 3.4 px: `min-width: 0` on the buttons), and the last label of the Icon group
+  of Add link and Edit link is no longer touched by the group's border with a classic scrollbar (`padding` 4 px instead of 5 px on the dialog segments when the
+  window is at most 14 rem, 336 px at 24 px; nothing changes at 16 px, and at 20 px only the first-run wizard's step 1 in a window of 340 px or
+  less, whose two buttons were uneven, gets equal halves). A two-line `Reset grid` label keeps its 1 px of line box under the border
+  (`docs/backlog-closeout.md` decisions 8 and 9, Accepted exception 16). E2E: `dg-95` g8, AS-BC-14 and AS-BC-15.
 - Drag and scrolling (`docs/drag-scroll-target.md`): the drop outline now follows every scroll of the page during a drag (wheel,
   keys, scrollbar), not only the pointer, and a release writes to the cell under the pointer.
 - A tile dropped on a page scrolled to its bottom lands on its outline: the page keeps the height its scroll position needs until you scroll

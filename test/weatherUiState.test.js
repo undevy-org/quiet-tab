@@ -18,7 +18,10 @@ import {
   weatherRetryOutcome,
   weatherRefreshDue,
   hasShownWeatherTile,
-  weatherAppearanceDecision
+  weatherAppearanceDecision,
+  rememberOnline,
+  onlineReplayDecision,
+  cityFieldErrorAttributes
 } from "../src/weatherUiState.js";
 import { WEATHER_CACHE_TTL_MS } from "../src/weatherShared.js";
 
@@ -325,5 +328,74 @@ describe("city modal state", () => {
       assert.deepEqual(weatherAppearanceDecision({ ...base, openLoadStarted: true, online: false }), { action: "none", openLoadStarted: true });
       assert.deepEqual(weatherAppearanceDecision({ ...base, openLoadStarted: true, loadInFlight: true }), { action: "none", openLoadStarted: true });
     });
+  });
+});
+
+// ---- an `online` that arrives while a load or an attempt runs (docs/backlog-closeout.md decision 2, Ruling 13) --------------------------
+describe("rememberOnline and onlineReplayDecision (run 59, AS-BC-06)", () => {
+  it("remembers the current generation while a load or an attempt is in flight", () => {
+    assert.equal(rememberOnline(null, { loadInFlight: true, generation: 3 }), 3);
+  });
+
+  it("0, the generation of the load at open, is a valid memory: it is never confused with no memory", () => {
+    const memory = rememberOnline(null, { loadInFlight: true, generation: 0 });
+    assert.equal(memory, 0);
+    assert.notEqual(memory, null);
+    assert.equal(onlineReplayDecision(memory, 0).replay, true, "a truthiness test would lose it");
+  });
+
+  it("nothing is in flight: nothing is remembered (the memory stays what it was)", () => {
+    assert.equal(rememberOnline(null, { loadInFlight: false, generation: 3 }), null);
+    assert.equal(rememberOnline(5, { loadInFlight: false, generation: 6 }), 5);
+  });
+
+  it("a second online during the same attempt overwrites with the same value: still one memory", () => {
+    const first = rememberOnline(null, { loadInFlight: true, generation: 4 });
+    assert.equal(rememberOnline(first, { loadInFlight: true, generation: 4 }), 4);
+  });
+
+  it("a load or attempt that ends as the remembered generation replays once, and the memory is cleared", () => {
+    assert.deepEqual(onlineReplayDecision(4, 4), { replay: true, memory: null });
+  });
+
+  it("a memory of another generation is dropped without a replay (a newer attempt, a city change or a heal raised the generation)", () => {
+    assert.deepEqual(onlineReplayDecision(4, 5), { replay: false, memory: null });
+    assert.deepEqual(onlineReplayDecision(5, 4), { replay: false, memory: null });
+  });
+
+  it("no memory never replays, whatever the generation (0 included)", () => {
+    for (const generation of [0, 1, 7]) assert.deepEqual(onlineReplayDecision(null, generation), { replay: false, memory: null });
+    assert.deepEqual(onlineReplayDecision(undefined, 0), { replay: false, memory: null });
+  });
+
+  it("the memory is consumed on use: deciding again with the returned memory never replays a second time", () => {
+    const first = onlineReplayDecision(2, 2);
+    assert.equal(first.replay, true);
+    assert.equal(onlineReplayDecision(first.memory, 2).replay, false);
+  });
+});
+
+describe("cityFieldErrorAttributes (run 59, AS-BC-13, decision 13, Ruling 12)", () => {
+  it("an empty message (a hidden slot) means neither attribute, whatever the invalid value says", () => {
+    assert.deepEqual(cityFieldErrorAttributes("", false), { describedBy: false, invalid: false });
+    assert.deepEqual(cityFieldErrorAttributes("", true), { describedBy: false, invalid: false });
+    assert.deepEqual(cityFieldErrorAttributes(undefined, true), { describedBy: false, invalid: false });
+    assert.deepEqual(cityFieldErrorAttributes(null, true), { describedBy: false, invalid: false });
+  });
+
+  it("a message about the typed value (the empty submit, a city that was not found) describes the field and makes it invalid", () => {
+    assert.deepEqual(cityFieldErrorAttributes("Enter a city name", true), { describedBy: true, invalid: true });
+    assert.deepEqual(cityFieldErrorAttributes('City "Nowhere" was not found', true), { describedBy: true, invalid: true });
+  });
+
+  it("any other message (a network failure, a location lookup failure) only describes the field", () => {
+    assert.deepEqual(cityFieldErrorAttributes("Can't reach the weather service. Check your connection and try again.", false), { describedBy: true, invalid: false });
+    assert.deepEqual(cityFieldErrorAttributes("Couldn't get your location. Search for a city instead.", false), { describedBy: true, invalid: false });
+  });
+
+  it("only the value true makes the field invalid (a truthy non-boolean does not)", () => {
+    assert.equal(cityFieldErrorAttributes("x", "yes").invalid, false);
+    assert.equal(cityFieldErrorAttributes("x", 1).invalid, false);
+    assert.equal(cityFieldErrorAttributes("x", undefined).invalid, false);
   });
 });

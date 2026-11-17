@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
-  DIALOG_KINDS, closeDialog, closeMenu, createDesktopUiState, deskRefreshBlocker, deskRefreshDecision, endDrag, enterEditMode, escapeLayer, exitEditMode,
-  openDialog, openMenu, startDrag, toggleEditMode, updateDrag
+  ADD_MENU_DOUBLE_PRESS_MS, ADD_MENU_DOUBLE_PRESS_SLOP_PX, DIALOG_KINDS, closeDialog, closeMenu, createDesktopUiState, deskRefreshBlocker, deskRefreshDecision, endDrag, enterEditMode, escapeLayer, exitEditMode,
+  healNotice, isSwapSecondPress, openDialog, openMenu, startDrag, toggleEditMode, updateDrag
 } from "../src/desktopUiState.js";
 
 const edit = () => enterEditMode(createDesktopUiState());
@@ -239,5 +239,86 @@ describe("deskRefreshDecision", () => {
         }
       }
     }
+  });
+});
+
+// ---- which message a heal of a cleared storage shows (docs/backlog-closeout.md decision 3, Ruling 3; AS-BC-07) --------------------------
+describe("healNotice", () => {
+  const settings = { id: "chrome:settings" };
+  const add = { id: "chrome:add" };
+  const link = { id: "fav-1" };
+
+  it("the ensure failed and the tab never showed Settings: the heal is the tab's own retry, silent", () => {
+    assert.equal(healNotice({ ensureFailed: true, shownItems: [] }), "silent");
+    assert.equal(healNotice({ ensureFailed: true, shownItems: [link] }), "silent");
+  });
+
+  it("a partial desk that shows Add but no Settings heals silently too (Accepted exception 10)", () => {
+    assert.equal(healNotice({ ensureFailed: true, shownItems: [add, link] }), "silent");
+  });
+
+  it("the ensure failed but the tab showed Settings: the storage was really cleared elsewhere, the message is true", () => {
+    assert.equal(healNotice({ ensureFailed: true, shownItems: [settings, add] }), "reset");
+    assert.equal(healNotice({ ensureFailed: true, shownItems: [link, settings] }), "reset");
+  });
+
+  it("no failed ensure: the message, with or without Settings in the shown state", () => {
+    assert.equal(healNotice({ ensureFailed: false, shownItems: [settings] }), "reset");
+    assert.equal(healNotice({ ensureFailed: false, shownItems: [] }), "reset");
+  });
+
+  it("no shown state at all (null) counts as a state without Settings", () => {
+    assert.equal(healNotice({ ensureFailed: true, shownItems: null }), "silent");
+    assert.equal(healNotice({ ensureFailed: false, shownItems: null }), "reset");
+  });
+
+  it("only a true flag counts (a missing flag is not a failed ensure)", () => {
+    assert.equal(healNotice({ ensureFailed: undefined, shownItems: [] }), "reset");
+  });
+});
+
+describe("isSwapSecondPress (run 59, AS-BC-12, decision 12, 183 variant A)", () => {
+  const record = { x: 100, y: 200, t: 1000 };
+  const press = (dt, dx = 0, dy = 0) => ({ x: 100 + dx, y: 200 + dy, t: 1000 + dt });
+
+  it("the constants are the length of the project's other guards and a hand's tremor", () => {
+    assert.equal(ADD_MENU_DOUBLE_PRESS_MS, 300);
+    assert.equal(ADD_MENU_DOUBLE_PRESS_SLOP_PX, 4);
+  });
+
+  it("a press at the same point within 300 ms is the second press of the swap; at 299 and at 300 ms yes, at 301 ms no", () => {
+    assert.equal(isSwapSecondPress(record, press(0)), true);
+    assert.equal(isSwapSecondPress(record, press(120)), true);
+    assert.equal(isSwapSecondPress(record, press(299)), true);
+    assert.equal(isSwapSecondPress(record, press(300)), true, "at most 300 ms");
+    assert.equal(isSwapSecondPress(record, press(301)), false);
+    assert.equal(isSwapSecondPress(record, press(459.9)), false, "the recipe of dg-93 (459.9 ms) is outside");
+  });
+
+  it("a press within 4 px is the second press; at 4 px yes, at 5 px no (a straight line, not a box)", () => {
+    assert.equal(isSwapSecondPress(record, press(100, 4, 0)), true);
+    assert.equal(isSwapSecondPress(record, press(100, 0, -4)), true);
+    assert.equal(isSwapSecondPress(record, press(100, 5, 0)), false);
+    assert.equal(isSwapSecondPress(record, press(100, 0, 5)), false);
+    assert.equal(isSwapSecondPress(record, press(100, 3, 3)), false, "4.24 px along the diagonal");
+    assert.equal(isSwapSecondPress(record, press(100, 2, 2)), true);
+    assert.equal(isSwapSecondPress(record, press(100, 40, 0)), false, "the first item of the second level, 40 px from the click");
+  });
+
+  it("a press 30 px aside or both too late and too far is not the second press", () => {
+    assert.equal(isSwapSecondPress(record, press(120, 30, 0)), false);
+    assert.equal(isSwapSecondPress(record, press(600, 30, 0)), false);
+  });
+
+  it("no record (no swap yet, or a keyboard activation, which records nothing) is never a second press", () => {
+    assert.equal(isSwapSecondPress(null, press(10)), false);
+    assert.equal(isSwapSecondPress(undefined, press(10)), false);
+  });
+
+  it("a press before the record (a clock that does not add up) and a malformed record or press are never a second press", () => {
+    assert.equal(isSwapSecondPress(record, press(-1)), false);
+    assert.equal(isSwapSecondPress({ x: NaN, y: 200, t: 1000 }, press(10)), false);
+    assert.equal(isSwapSecondPress(record, { x: 100, y: 200, t: undefined }), false);
+    assert.equal(isSwapSecondPress(record, null), false);
   });
 });

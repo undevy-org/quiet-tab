@@ -322,7 +322,7 @@ describe("newtab weather source", () => {
 
     assert.doesNotMatch(code, /formHost/);
     // run 48: startWeather also records the known city between the result and the render
-    assert.match(code, /weatherResult = result;\s*if \(result\.location\) \{\s*weatherLocation = result\.location;\s*weatherLocationError = "";\s*\}\s*renderFavorites\(\);/);
+    assert.match(code, /weatherResult = result;\s*if \(result\.location\) \{\s*weatherLocation = result\.location;\s*weatherLocationError = "";\s*syncWeatherDialogCity\(\);[^\n]*\n\s*\}\s*renderFavorites\(\);/);
     assert.match(code, /if \(generation !== weatherGeneration\) \{\s*return;\s*\}/);
     assert.match(code, /const result = await withTimeout\(run\(isStale\)\);[\s\S]*?weatherGeneration \+= 1;\s*weatherResult = result;/);
     assert.doesNotMatch(code, /function changeCity\(run\) \{\s*weatherGeneration \+= 1;/);
@@ -468,7 +468,7 @@ describe("newtab weather on return (run 50, docs/tab-return-refresh.md, AS-TRR-0
     const code = await source();
     assert.match(code, /async function retryWeather\(\{ automatic = false, ignorePause = false \} = \{\}\) \{/);
     assert.match(code, /action === "retry-weather"\) \{\s*void retryWeather\(\);/);
-    assert.equal(code.match(/\bvoid retryWeather\(/g).length, 4, "the click branch, the two automatic calls and the tile-appears hook start an attempt, nothing else does");
+    assert.equal(code.match(/\bvoid retryWeather\(/g).length, 5, "the click branch, the two automatic calls, the tile-appears hook and the replay of a remembered online (run 59, replayRememberedOnline) start an attempt, nothing else does");
   });
 
   it("the gate of an automatic attempt is weatherRefreshDue on the shown result, the manual one stays error or stale", async () => {

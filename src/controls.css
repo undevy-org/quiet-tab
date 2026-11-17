@@ -97,6 +97,7 @@
 
 .favorite-form__footer .button {
   flex: 1;
+  min-width: 0; /* equal halves at every font size: a label wider than its half wraps inside the button instead of pushing it out of the card (docs/backlog-closeout.md decision 8) */
   min-height: var(--control-height);
   justify-content: center;
   gap: var(--form-footer-gap);

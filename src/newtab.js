@@ -26,6 +26,8 @@ import {
   closeMenu,
   deskRefreshBlocker,
   deskRefreshDecision,
+  healNotice,
+  isSwapSecondPress,
   openDialog,
   openMenu,
   startDrag,
@@ -37,6 +39,7 @@ import {
   WIDGETS_META_KEY,
   createWidgetsStore,
   ensureWidgetsLayout,
+  hasEverySystemTile,
   inspectWidgetsMeta,
   resetUnreadableWidgets
 } from "./widgetsStore.js";
@@ -60,6 +63,7 @@ import { createOnboardingStore, readOnboardingLocalFlags } from "./onboardingSto
 import { createWeatherCacheStore, createWeatherLocationStore, createWeatherPromptStore } from "./weatherStore.js";
 import { describeWeatherMetric } from "./weatherTiles.js";
 import {
+  cityFieldErrorAttributes,
   cityModalMode,
   citySuggestions,
   closeCityModal as closeCityModalState,
@@ -69,7 +73,9 @@ import {
   hideSuggestions,
   isCityModalOpen,
   isSuggestionsOpen,
+  onlineReplayDecision,
   openCityModal as openCityModalState,
+  rememberOnline,
   resetWeatherRetry,
   showSuggestions,
   startWeatherRetry,
@@ -175,7 +181,24 @@ document.body.appendChild(tooltipLayer);
 
 let tooltipTrigger = null;
 let suppressTooltipOnFocus = false;
+// The scroll that a tooltip's own focus (or the render that brought it back) causes must not hide it (docs/backlog-closeout.md decision 7).
+// The window is the clock (250 ms) or a flag held until the next frame, whichever still covers the event: the scroll event of a scroll caused by a
+// focus comes in the next frame's scroll steps, before that frame's animation-frame callbacks, so the flag (cleared by such a callback, it covers
+// every scroll event up to then, not one event) covers a frame that a busy thread delayed past the 250 ms. A hidden tab runs no callbacks: the flag then stays until its first frame (accepted, exception 12).
+const TOOLTIP_FOCUS_SCROLL_MS = 250;
 let ignoreScrollUntil = 0;
+let ignoreNextScroll = false;
+let scrollWindowToken = 0;
+
+function openTooltipScrollWindow() {
+  ignoreScrollUntil = performance.now() + TOOLTIP_FOCUS_SCROLL_MS; // the browser may scroll the tile into view
+  ignoreNextScroll = true;
+  const token = (scrollWindowToken += 1);
+  requestAnimationFrame(() => {
+    if (token === scrollWindowToken) ignoreNextScroll = false;
+  });
+}
+const tooltipScrollWindowOpen = () => ignoreNextScroll || performance.now() < ignoreScrollUntil;
 
 function hideTooltip() {
   tooltipLayer.hidden = true;
@@ -224,7 +247,7 @@ favoritesRoot?.addEventListener("focusin", (event) => {
   if (suppressTooltipOnFocus) return;
   const trigger = tooltipTriggerOf(event);
   if (!trigger || !trigger.matches(":focus-visible")) return;
-  ignoreScrollUntil = performance.now() + 250; // the browser may scroll the tile into view
+  openTooltipScrollWindow();
   requestAnimationFrame(() => {
     if (document.activeElement === trigger) showTooltipFor(trigger);
   });
@@ -235,7 +258,7 @@ favoritesRoot?.addEventListener("focusout", (event) => {
 favoritesRoot?.addEventListener(
   "scroll",
   () => {
-    if (performance.now() >= ignoreScrollUntil) hideTooltip();
+    if (!tooltipScrollWindowOpen()) hideTooltip();
   },
   true
 );
@@ -326,6 +349,10 @@ let weatherRetryTimer = 0; // the end of the cooldown (updates the existing retr
 let weatherTileShown = false;
 let weatherOpenLoadStarted = false;
 let weatherLoadInFlight = false;
+// An `online` that arrived while the load at open or an attempt was in flight (docs/backlog-closeout.md decision 2): the weather generation that was
+// current then, or null for no memory (0, the generation of the load at open, is a valid value). Taken in onBrowserOnline, consumed once by the end of
+// that load or attempt (replayRememberedOnline).
+let weatherOnlineMemory = null;
 let weatherAppearanceQueued = false;
 let widgetsEnsureFailed = false;
 let widgetsNewer = false;
@@ -340,6 +367,7 @@ let cityModalOpener = null; // selector of the control that opened it, looked up
 let cityModalHintMetricId = null; // data-metric-id of the hint tile that opened it (the hint is gone once the first city is set)
 let cityAttempt = null; // { stale } of the newest changeCity attempt
 let cityModalError = "";
+let cityModalErrorInvalid = false; // the message is about the typed value (the empty submit, a city that was not found): aria-invalid; docs/backlog-closeout.md decision 13
 let locationStatusNode = null;
 let locating = false;
 let locationAbortController = null;
@@ -874,6 +902,17 @@ function createCityLocationDescription(variant) {
   return paragraph;
 }
 
+// The city field and its error slot (docs/backlog-closeout.md decision 13): while the slot shows a message the field is described by it, and invalid when the
+// message is about the typed value. One function writes both attributes; the form build, syncCityModal and clearCityError call it.
+const CITY_ERROR_ID = "weather-city-error"; // one city form exists at a time
+function applyCityFieldError(input, errorNode) {
+  const { describedBy, invalid } = cityFieldErrorAttributes(cityModalError, cityModalErrorInvalid);
+  if (describedBy) input.setAttribute("aria-describedby", errorNode.id);
+  else input.removeAttribute("aria-describedby");
+  if (invalid) input.setAttribute("aria-invalid", "true");
+  else input.removeAttribute("aria-invalid");
+}
+
 function createCityForm(mode, location) {
   weatherFormGeneration += 1;
   const formGeneration = weatherFormGeneration;
@@ -918,8 +957,10 @@ function createCityForm(mode, location) {
 
   const errorNode = createNode("p", "status status--error status--full", cityModalError);
   errorNode.dataset.cityModalError = "";
+  errorNode.id = CITY_ERROR_ID;
   errorNode.setAttribute("role", "alert");
   errorNode.hidden = cityModalError === "";
+  applyCityFieldError(input, errorNode);
 
   const actions = createNode("div", "city-modal__actions");
   let submitButton = null;
@@ -1126,8 +1167,10 @@ function createCityForm(mode, location) {
   // the same node keeps role="alert", so the next failure is a fresh empty -> text change.
   function clearCityError() {
     cityModalError = "";
+    cityModalErrorInvalid = false;
     errorNode.textContent = "";
     errorNode.hidden = true;
+    applyCityFieldError(input, errorNode);
     placePopover();
   }
 
@@ -1141,6 +1184,7 @@ function createCityForm(mode, location) {
     if (event.key === "Enter" && !event.isComposing && !weatherBusy && input.value.trim() === "") {
       event.preventDefault(); // a disabled Save blocks the implicit submit, so the field reports the empty case itself
       cityModalError = "Enter a city name";
+      cityModalErrorInvalid = true;
       syncCityModal();
       return;
     }
@@ -1332,6 +1376,7 @@ async function useMyLocation(variant) {
       if (!stillValid()) return;
       const code = error instanceof BrowserLocationError ? error.code : "unavailable";
       cityModalError = locationErrorMessage(variant, { source: "position", code });
+      cityModalErrorInvalid = false;
       finishAttempt();
       focusLocationLink();
       return;
@@ -1354,6 +1399,7 @@ async function useMyLocation(variant) {
       if (!stillValid()) return;
       const kind = error instanceof WeatherApiError ? error.details?.kind : "unknown";
       cityModalError = locationErrorMessage(variant, { source: "reverse", kind });
+      cityModalErrorInvalid = false;
       finishAttempt();
       focusLocationLink();
       return;
@@ -1377,6 +1423,7 @@ async function useMyLocation(variant) {
     } catch {
       if (attemptGeneration !== weatherFormGeneration) return;
       cityModalError = locationErrorMessage(variant, { source: "position", code: "unavailable" });
+      cityModalErrorInvalid = false;
       syncCityModalUi();
       focusLocationLink();
     }
@@ -1429,6 +1476,8 @@ function syncCityModal() {
   if (errorNode) {
     errorNode.textContent = cityModalError;
     errorNode.hidden = cityModalError === "";
+    const cityInput = host.querySelector(CITY_INPUT_SELECTOR);
+    if (cityInput) applyCityFieldError(cityInput, errorNode);
   }
   activeCityForm?.place();
 }
@@ -1503,6 +1552,7 @@ function attachCityModalListeners(root) {
     const cityName = String(new FormData(form).get("city") ?? "").trim();
     if (!cityName) {
       cityModalError = "Enter a city name";
+      cityModalErrorInvalid = true;
       syncCityModal();
       form.querySelector(CITY_INPUT_SELECTOR)?.focus();
       return;
@@ -1951,6 +2001,7 @@ function attachOnboardingWizardListeners(root) {
     const cityName = String(new FormData(form).get("city") ?? "").trim();
     if (!cityName) {
       cityModalError = "Enter a city name";
+      cityModalErrorInvalid = true;
       syncCityModal();
       form.querySelector(CITY_INPUT_SELECTOR)?.focus();
       return;
@@ -2519,11 +2570,16 @@ function syncWeatherDialogCity(root = desktopDialogRoot) {
   const label = location ? cityDisplayLabel(location) : "";
   const value = root.querySelector("[data-weather-dialog-city]");
   const hint = field.querySelector(".city-field__hint");
-  value.textContent = label || "Set a city"; // no city: one muted line, no separate hint
+  const text = label || "Set a city"; // no city: one muted line, no separate hint
+  // The name is the row label plus the visible parts (single spaces, no commas); a hidden hint is left out.
+  const labelledby = [field.dataset.rowLabelId, value.id, label ? hint.id : null].filter(Boolean).join(" ");
+  // An attempt calls this whether or not the city changed (decision 4): a row that already says it is not written, so nothing is mutated and a screen
+  // reader is not told the row again.
+  if (value.textContent === text && hint.hidden === !label && value.hasAttribute("data-empty") === !label && field.getAttribute("aria-labelledby") === labelledby && (field.getAttribute("title") ?? "") === label && field.disabled === !weatherService) return;
+  value.textContent = text;
   value.toggleAttribute("data-empty", !label);
   hint.hidden = !label;
-  // The name is the row label plus the visible parts (single spaces, no commas); a hidden hint is left out.
-  field.setAttribute("aria-labelledby", [field.dataset.rowLabelId, value.id, label ? hint.id : null].filter(Boolean).join(" "));
+  field.setAttribute("aria-labelledby", labelledby);
   if (label) field.title = label; // the full label whenever a city is stored; the accessible name comes from aria-labelledby
   else field.removeAttribute("title");
   field.disabled = !weatherService;
@@ -2567,12 +2623,25 @@ function openDesktopDialog(dialog, { opener = focusedWidgetId() } = {}) {
     desktopDialogOpener = null;
     throw error;
   }
-  if (dialog.kind === "confirm-reset-grid") guardResetDialogPresses(root);
+  if (dialog.kind === "confirm-reset-grid") {
+    guardResetDialogPresses(root);
+    quietUnreadableAlert();
+  }
   const backdrop = createNode("div", "desktop-backdrop");
   backdrop.addEventListener("click", () => {
     if (Date.now() - desktopDialogOpenedAt < DIALOG_BACKDROP_GUARD_MS || favoritesBusy) return;
     closeDesktopDialog();
   });
+  // The second press of a double click on whatever opened the dialog lands on the backdrop the first click has just put over the page (or on a part of the
+  // dialog that is not a control) and would move the focus to body: in the first 300 ms its default is cancelled, so the focus stays where this function put it
+  // (docs/backlog-closeout.md decision 11). Clicks and presses on controls are not touched.
+  const keepFocusAtOpen = (event) => {
+    if (Date.now() - desktopDialogOpenedAt >= DIALOG_BACKDROP_GUARD_MS) return;
+    const target = event.target instanceof Element ? event.target : null;
+    if (target && !target.closest("input, button, label, select, textarea, a")) event.preventDefault();
+  };
+  backdrop.addEventListener("mousedown", keepFocusAtOpen);
+  root.addEventListener("mousedown", keepFocusAtOpen);
   root.querySelector('[data-favorite-action="cancel"]')?.addEventListener("click", () => {
     if (!favoritesBusy) closeDesktopDialog();
   });
@@ -2609,6 +2678,15 @@ function closeDesktopDialog({ restoreFocusTo = desktopDialogOpener, reveal = fal
   }
   if (restoreFocusTo) focusWidgetTarget([restoreFocusTo, fallback].flat(), { preventScroll: true, reveal });
   scheduleDeferredDeskRefresh();
+}
+
+// The unreadable-grid screen's message was spoken once, at load (role=alert). When the Reset grid dialog first opens it stops being a live region (the text
+// stays): every close of the dialog lifts `inert` off #favorites, which would announce an alert again. Nothing rebuilds the screen after load, so no flag is
+// kept (docs/backlog-closeout.md decision 10, Ruling 9).
+function quietUnreadableAlert() {
+  const message = favoritesRoot?.querySelector(":scope > .grid-unreadable > p");
+  message?.removeAttribute("role");
+  message?.removeAttribute("aria-live");
 }
 
 // A double click on the screen's Reset grid button must neither confirm nor flip the dialog (docs/unreadable-grid-reset.md decision 5): the dialog is
@@ -2735,6 +2813,7 @@ function handleEditModeClick(target) {
 // ---- Add tile and Add menu (spec § Add menu (edit mode), AS-30) ----
 let addMenuRoot = null;
 let addMenuDismissPress = null; // the pointerdown that closed the menu: it never also exits edit mode
+let addMenuSwap = null; // { x, y, t } of the pointer click that moved the menu to its second level (docs/backlog-closeout.md decision 12); null for a keyboard activation
 
 const hiddenMetrics = () => (widgetsState?.items ?? []).filter((item) => item.type === "weather-metric" && item.enabled !== true);
 
@@ -2824,6 +2903,7 @@ function closeAddMenu({ focusAdd = false } = {}) {
   if (!addMenuRoot) return;
   addMenuRoot.remove();
   addMenuRoot = null;
+  addMenuSwap = null;
   desktopUi = closeMenu(desktopUi);
   syncAddTileExpanded();
   if (focusAdd) focusWidgetTarget("chrome:add");
@@ -2845,6 +2925,7 @@ function onAddMenuClick(event) {
   if (!(entry instanceof HTMLElement) || favoritesBusy) return;
   const action = entry.dataset.menuAction;
   if (action === "add-weather") {
+    addMenuSwap = event.detail > 0 ? { x: event.clientX, y: event.clientY, t: event.timeStamp } : null; // a pointer click only: the second press of a double click does nothing
     fillAddMenu("restore-weather");
     return;
   }
@@ -2862,7 +2943,14 @@ function onAddMenuClick(event) {
 document.addEventListener(
   "pointerdown",
   (event) => {
-    if (!addMenuRoot || !(event.target instanceof Element)) return;
+    if (!addMenuRoot) return;
+    // The second press of a double click on `Add weather tile…` (within 300 ms and 4 px of the click that opened the second level, on the menu or outside it) does
+    // nothing: the post-close guard swallows its click, cancels its mousedown and keeps the background press from leaving edit mode (docs/backlog-closeout.md decision 12).
+    if (isSwapSecondPress(addMenuSwap, { x: event.clientX, y: event.clientY, t: event.timeStamp })) {
+      armPostCloseClickGuard();
+      return;
+    }
+    if (!(event.target instanceof Element)) return;
     if (addMenuRoot.contains(event.target) || event.target.closest(ADD_TILE_SELECTOR)) return;
     addMenuDismissPress = event;
     closeAddMenu();
@@ -2971,6 +3059,8 @@ async function healClearedDesk(state) {
     // keep what we have: the grid stays as it is until a reload
   }
   const healed = result.items.some((item) => item.id === SETTINGS_TILE_ID);
+  // a heal that succeeded spends the failed-ensure flag whatever it says: the notice was read before it (`healNoticeFor`), and a flag left true would turn the next heal's honest reset message silent
+  if (healed) widgetsEnsureFailed = false;
   if (healed) await dropCityClearedElsewhere();
   return { state: result, healed, failed: !healed };
 }
@@ -2995,6 +3085,33 @@ async function dropCityClearedElsewhere() {
   weatherResult = { status: "no-location", location: null, data: null, error: null };
   weatherLocation = null;
   weatherLocationError = "";
+}
+
+// Which message a successful heal shows (docs/backlog-closeout.md decision 3, 154 (2)): the pure rule `healNotice` from the failed-ensure flag and the
+// state this tab showed BEFORE the heal (each site reads it at its start, before the heal's result replaces `widgetsState`). "silent" is this tab's own
+// retry of an ensure that failed at load; "reset" is a storage that another tab really cleared.
+function healNoticeFor(shownState) {
+  return healNotice({ ensureFailed: widgetsEnsureFailed, shownItems: shownState?.items ?? null });
+}
+
+// The silent branch of a successful heal, the same at the three heal sites: the flag is spent, any persistent chip is hidden (the ensure chip, or the
+// `Reload` chip of an earlier failed heal) and a focus that was inside the chip (on `Reload`) goes to the Settings tile of the healed grid without
+// scrolling. The focus is read BEFORE the chip is hidden: hiding a focused element drops the focus to `body`.
+function applySilentHeal() {
+  const focusWasInStatus = Boolean(desktopStatus?.contains(document.activeElement));
+  widgetsEnsureFailed = false;
+  if (desktopStatusPersistent) showDesktopStatus("");
+  if (focusWasInStatus) focusWidgetTarget([SETTINGS_TILE_ID], { preventScroll: true });
+}
+
+// A healthy re-read that has all six system tiles (docs/backlog-closeout.md decision 3, 154 (4)): the ensure that failed at load has been completed
+// elsewhere, so the flag is spent and the ensure chip (the persistent status with that text) is hidden. Called BEFORE applyReadDesk, which returns on
+// an equal state: an equal grid is not touched, the chip still goes. A state that has Settings but lacks another system tile leaves both: the claim
+// "couldn't add the tiles" is still true.
+function clearEnsureChipOnHealthyRead(fresh) {
+  if (!hasEverySystemTile(fresh.items)) return;
+  widgetsEnsureFailed = false;
+  if (desktopStatusPersistent && desktopStatus?.textContent === ENSURE_FAILED_MESSAGE) showDesktopStatus("");
 }
 
 // A failed heal leaves no Settings to leave edit mode with and nothing to act on: drop edit mode and every transient layer (not
@@ -3042,6 +3159,7 @@ function dismissLayoutFailureChip() {
 // first); a failed heal ends in `showLayoutRestoreFailure`.
 async function recoverFromGoneLink(generation, error) {
   pendingDrop = null;
+  const notice = healNoticeFor(widgetsState);
   let neighbours = error.id ? neighborTargets(error.id) : [SETTINGS_TILE_ID];
   let fresh = null;
   try {
@@ -3061,8 +3179,11 @@ async function recoverFromGoneLink(generation, error) {
     return;
   }
   // The chip first (docs/layers-weather-polish.md decision 2): its reserve is current when the reveal below reads it, so the neighbour ends above the chip.
-  if (outcome.healed) showDesktopStatus(LAYOUT_RESET_MESSAGE, { tone: "info" });
-  else showDesktopStatus(error.message);
+  if (outcome.healed && notice === "reset") showDesktopStatus(LAYOUT_RESET_MESSAGE, { tone: "info" });
+  else {
+    if (outcome.healed) applySilentHeal(); // an ensure retry of this tab: the reset notice would be untrue, the message about the gone link still is
+    showDesktopStatus(error.message);
+  }
   if (desktopDialogRoot) closeDesktopDialog({ restoreFocusTo: neighbours, reveal: true });
   else focusWidgetTarget(neighbours, { preventScroll: true, reveal: true });
 }
@@ -3083,6 +3204,7 @@ async function runDesktopMutation(action, { dialogRoot = null, renderPending = t
     }
   }
   const generation = startFavoritesAction({ render: renderPending });
+  const notice = healNoticeFor(widgetsState);
   try {
     const next = await action(currentColumns());
     // a state without Settings means the write landed in a storage another tab had cleared (an Add link): heal it, the new link stays
@@ -3092,7 +3214,10 @@ async function runDesktopMutation(action, { dialogRoot = null, renderPending = t
       widgetsState = outcome.state;
     });
     if (outcome.failed) showLayoutRestoreFailure();
-    else if (outcome.healed) showDesktopStatus(LAYOUT_RESET_MESSAGE, { tone: "info" });
+    else if (outcome.healed) {
+      if (notice === "silent") applySilentHeal();
+      else showDesktopStatus(LAYOUT_RESET_MESSAGE, { tone: "info" });
+    }
     return true;
   } catch (error) {
     if (error?.code === "link-gone") {
@@ -3173,8 +3298,10 @@ async function refreshDeskOnReturn() {
       return;
     }
     if (next !== "apply") return;
-    if (fresh.items.some((item) => item.id === SETTINGS_TILE_ID)) applyReadDesk(fresh);
-    else await healReadDesk(fresh);
+    if (fresh.items.some((item) => item.id === SETTINGS_TILE_ID)) {
+      clearEnsureChipOnHealthyRead(fresh);
+      applyReadDesk(fresh);
+    } else await healReadDesk(fresh);
   } finally {
     deskRefreshRunning = false;
     const queued = deskRefreshQueued;
@@ -3200,6 +3327,7 @@ function applyReadDesk(fresh) {
 // goes to Settings, forced (a neighbour list read from the old DOM would find a just-created tile first).
 async function healReadDesk(state) {
   const focused = focusedWidgetId();
+  const notice = healNoticeFor(widgetsState);
   const generation = startFavoritesAction({ render: false });
   let outcome;
   try {
@@ -3216,7 +3344,10 @@ async function healReadDesk(state) {
     return;
   }
   if (focused) focusWidgetTarget([SETTINGS_TILE_ID], { preventScroll: true });
-  if (outcome.healed) showDesktopStatus(LAYOUT_RESET_MESSAGE, { tone: "info" });
+  if (outcome.healed) {
+    if (notice === "silent") applySilentHeal();
+    else showDesktopStatus(LAYOUT_RESET_MESSAGE, { tone: "info" });
+  }
 }
 
 // A return that came while a layer was up is kept; the end of the last layer (a render, or a close that renders nothing) calls this, and one
@@ -3293,6 +3424,7 @@ let renderedCell = 0;
 // the current column count; never written by a render), in (y, x) DOM order.
 function renderDesktop() {
   if (!favoritesRoot) return;
+  const keyboardTooltipId = keyboardTooltipTileId(); // before the hide: the tooltip of a keyboard-focused tile comes back at the end (decision 6)
   hideTooltip();
   if (widgetsNewer) {
     favoritesRoot.replaceChildren(createStatus(NEWER_WIDGETS_MESSAGE, { error: true, live: "assertive", full: true }));
@@ -3355,9 +3487,16 @@ function renderDesktop() {
   entries.sort((a, b) => a.cell.y - b.cell.y || a.cell.x - b.cell.x);
 
   const grid = createNode("div", "desktop-grid");
+  const ownRows = Math.max(1, ...entries.map(({ cell }) => cell.y + cell.h));
   grid.style.setProperty("--grid-columns", String(columns));
-  grid.style.setProperty("--rows", String(Math.max(1, ...entries.map(({ cell }) => cell.y + cell.h))));
+  grid.style.setProperty("--rows", String(ownRows));
   grid.append(...entries.flatMap(({ nodes }) => nodes));
+  // A render while a drag goes on keeps the drag grid's height (docs/backlog-closeout.md decision 1): the new grid is as high as the
+  // allowed drop area BEFORE it replaces the old one, so the layout that restoreFocus forces has nothing to clamp scrollY to.
+  if (dragSession?.started && draggedTileIn(grid)) {
+    grid.dataset.dragging = "true";
+    grid.style.setProperty("--rows", String(Math.max(ownRows, dragSession.rows)));
+  }
   favoritesRoot.dataset.edit = String(desktopUi.editMode);
   favoritesRoot.replaceChildren(grid);
   // The page keeps the height its scroll position needs after a drag ended (the grid shrank): a bottom-padding term on .desktop,
@@ -3378,7 +3517,47 @@ function renderDesktop() {
     if (tile) settleTileAt(tile, pendingDrop.id, pendingDrop.cell);
   }
   if (dragSession) reattachDrag();
-  if (holding && window.scrollY !== scrollY) window.scrollTo(0, scrollY); // the measurement clamped: put the page back, same task
+  if (holding && window.scrollY !== scrollY) {
+    window.scrollTo(0, scrollY); // the measurement clamped: put the page back, same task
+    // a started drag judged its target (reattachDrag) while the page was clamped, and putting the page back in the same task sends no scroll event
+    // for onWindowScroll to judge it again: judge it here, so the outline is on the cell under the pointer (docs/backlog-closeout.md AS-BC-01 (ii))
+    if (dragSession?.started) updateDragTarget(dragSession);
+  }
+  alignJiggle(grid);
+  restoreKeyboardTooltip(keyboardTooltipId); // last: the tile's rectangle is read after the page is put back
+}
+
+// The jiggle keeps its phase across renders (docs/backlog-closeout.md decision 5): the new nodes' animations start on the document timeline's
+// origin, so each tile's phase is a function of the clock (its own animation-delay stays what CSS gave it) and not of the moment of the render.
+function alignJiggle(grid) {
+  if (!desktopUi.editMode || prefersReducedMotion()) return;
+  for (const animation of grid.getAnimations({ subtree: true })) {
+    if (animation.animationName === "tile-jiggle") animation.startTime = 0;
+  }
+}
+
+// The widget id of the tile whose tooltip is shown for KEYBOARD focus (the tile is the focused element and matches :focus-visible), else null.
+// A tooltip that is open for the pointer is not remembered: the pointer opens it again on the next move (docs/backlog-closeout.md decision 6).
+function keyboardTooltipTileId() {
+  const trigger = tooltipTrigger;
+  if (!trigger || tooltipLayer.hidden || document.activeElement !== trigger || !trigger.matches(":focus-visible")) return null;
+  return trigger.dataset.widgetId ?? null;
+}
+
+// After the render: when the focused element is that tile's new node (same data-widget-id, still keyboard-focused) show its tooltip again
+// (normal mode, no drag: showTooltipFor returns in the others), and open the scroll window, because the render may have scrolled.
+function restoreKeyboardTooltip(id) {
+  if (!id) return;
+  const tile = document.activeElement;
+  if (!(tile instanceof HTMLElement) || tile.dataset.widgetId !== id || !tile.matches("[data-tooltip-trigger]") || !tile.matches(":focus-visible")) return;
+  if (desktopUi.editMode || dragSession) return;
+  // A tile that another tab carried wholly out of the window (the focus does not scroll to it: restoreFocus uses preventScroll) gets no tooltip: it would
+  // stand against the window edge with no tile beside it (docs/backlog-closeout.md decision 6, checkpoint L1-01).
+  const box = tile.getBoundingClientRect();
+  const root = document.documentElement;
+  if (box.bottom <= 0 || box.top >= root.clientHeight || box.right <= 0 || box.left >= root.clientWidth) return;
+  openTooltipScrollWindow();
+  showTooltipFor(tile);
 }
 
 // A resize only re-renders (when the column count or the cell size changed); it never writes.
@@ -3486,6 +3665,7 @@ function onDragPointerMove(event) {
 // Every scroll of the page (wheel, keys, scrollbar, autoscroll): the grid moved under a still pointer, so the target is judged
 // again; with no drag it only releases the page-height hold, and only where nothing can clamp (docs/drag-scroll-target.md 1, 2b).
 function onWindowScroll() {
+  if (!tooltipScrollWindowOpen()) hideTooltip(); // a scroll of the document (keys, scrollbar, script) hides the tooltip; the one a focus causes does not
   if (dragSession?.started) {
     updateDragTarget(dragSession);
     return;
@@ -3566,11 +3746,19 @@ function stopDragFrame(s) {
   if (s) s.frame = 0;
 }
 
+// The dragged tile's node in `grid` while a drag goes on across a render: edit mode on and the tile present in the new layout. The ONE condition
+// of both reattachDrag (picks the drag up again, else cancels it) and the render's drag-height rule (docs/backlog-closeout.md decision 1).
+function draggedTileIn(grid) {
+  if (!dragSession || !desktopUi.editMode) return null;
+  return grid.querySelector(`:scope > [data-widget-id="${CSS.escape(dragSession.domId)}"]`);
+}
+
 // A re-render while dragging (e.g. weather data arrived) replaced the tiles: pick up the new node and redraw.
 function reattachDrag() {
   const s = dragSession;
-  const tile = favoritesRoot?.querySelector(`.desktop-grid > [data-widget-id="${CSS.escape(s.domId)}"]`);
-  if (!tile || !desktopUi.editMode) {
+  const grid = dragGridOf();
+  const tile = grid ? draggedTileIn(grid) : null;
+  if (!tile) {
     stopDragFrame(s);
     dragSession = null;
     desktopUi = endDrag(desktopUi);
@@ -4151,8 +4339,22 @@ async function startWeather() {
   if (result.location) {
     weatherLocation = result.location;
     weatherLocationError = "";
+    syncWeatherDialogCity(); // an open Edit weather dialog follows the city this load applied (decision 4)
   }
   renderFavorites();
+  replayRememberedOnline(generation);
+}
+
+// The end of a load or an attempt that is still the current one asks the pure rule about the remembered `online` (decision 2): it replays once
+// when the memory is this generation, and the memory is cleared whatever the rule says. The replay checks what its two callers check (a visible tab,
+// the browser not offline) and then goes through the ordinary automatic attempt, whose own guards decide the rest (a shown tile, `weatherRefreshDue`,
+// no attempt already in flight); `ignorePause` as for `online`. A failing replay never starts another: only a new `online` can.
+function replayRememberedOnline(generation) {
+  const decision = onlineReplayDecision(weatherOnlineMemory, generation);
+  weatherOnlineMemory = decision.memory;
+  if (!decision.replay) return;
+  if (document.visibilityState !== "visible" || navigator.onLine === false) return;
+  void retryWeather({ automatic: true, ignorePause: true });
 }
 
 // One attempt for every tile, through the unchanged service (`initialize()` re-reads the city, serves a cache another tab refreshed,
@@ -4205,6 +4407,8 @@ async function retryWeather({ automatic = false, ignorePause = false } = {}) {
     weatherLocationError = "";
     clearTimeout(weatherRetryTimer);
     if (!automatic && !desktopStatusPersistent) showDesktopStatus(""); // a failure text of an earlier attempt would now contradict the hint tile
+    syncWeatherDialogCity(); // an open Edit weather dialog follows the city that is gone (decision 4)
+    weatherOnlineMemory = null; // the memory is cleared in every outcome that is still current; after this one nothing is due
     renderFavorites();
     const active = document.activeElement;
     if ((!automatic || focusWasOnWeatherTile) && (!active || active === document.body)) favoritesRoot?.querySelector(HINT_TILE_SELECTOR)?.focus();
@@ -4225,6 +4429,7 @@ async function retryWeather({ automatic = false, ignorePause = false } = {}) {
     }
   }
   if (!failed) weatherLocationError = "";
+  if (replaced) syncWeatherDialogCity(); // an open Edit weather dialog follows the city this attempt applied (decision 4)
   if (!silentStart || replaced) renderFavorites(); // a ready tile that an attempt did not change is not redrawn
 
   if (failed) {
@@ -4242,6 +4447,7 @@ async function retryWeather({ automatic = false, ignorePause = false } = {}) {
     if (!desktopStatusPersistent) showDesktopStatus(""); // an earlier failure text would now contradict the tiles
     announce("Weather updated");
   }
+  replayRememberedOnline(generation);
 }
 
 // The two triggers of an automatic attempt (docs/tab-return-refresh.md decisions 1 and 4). Both return at once unless the tab is visible:
@@ -4254,8 +4460,12 @@ function onTabVisibilityChange() {
   void refreshDeskOnReturn();
 }
 
+// An `online` that arrives while the load at open or an attempt is in flight is remembered (one value, the current generation) BEFORE retryWeather is
+// asked, because retryWeather leaves at two different lines for the two (the load at open at `!due`, an attempt at the in-flight line): one place covers
+// both. The end of that load or attempt replays it once (replayRememberedOnline). An `online` with nothing in flight starts the attempt as before.
 function onBrowserOnline() {
   if (document.visibilityState !== "visible") return;
+  if (weatherTileShownNow()) weatherOnlineMemory = rememberOnline(weatherOnlineMemory, { loadInFlight: weatherLoadInFlight, generation: weatherGeneration });
   void retryWeather({ automatic: true, ignorePause: true });
 }
 
@@ -4321,6 +4531,7 @@ function changeCity(run, { onSuccess = null } = {}) {
     } catch (error) {
       attempt.stale = true; // a timeout: a result that arrives later is dropped by the service
       cityModalError = weatherErrorMessage(error);
+      cityModalErrorInvalid = error?.details?.kind === "notFound"; // a WeatherApiError keeps its kind in details; only an error about the typed city is invalid
     } finally {
       // Only the newest attempt owns the busy state and the UI. An attempt that was superseded or whose modal was torn
       // down (hideCityModal marks it stale and clears the busy state itself) leaves silently.

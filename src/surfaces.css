@@ -71,6 +71,7 @@
 
 .city-modal__actions .button {
   flex: 1;
+  min-width: 0; /* the wizard's footers are this selector too (docs/backlog-closeout.md decision 8) */
   min-height: var(--control-height);
   justify-content: center;
   gap: var(--form-footer-gap);
@@ -606,6 +607,17 @@ img.onboarding-wizard__starter-icon[data-icon-check="pending"] {
   .segmented__glyph--size-1x2 { width: 4px; height: 9px; }
   .segmented__glyph--size-2x1 { width: 9px; height: 4px; }
   .segmented__glyph--size-2x2 { width: 9px; height: 9px; }
+}
+
+/* An enlarged browser font in a narrow window (docs/backlog-closeout.md decision 9): the Icon group of Add link and Edit link is wider than the dialog's room (options of
+   233 px against 227 to 229 px at 24 px in a 320 px window with a classic scrollbar), so its last label touched the border. 1 px less padding on each side of an option leaves
+   the last label 3.6 px inside the border. `rem` in a media query is the browser's default font size, as at the row stacking above: 224 px at 16 px (never matches), 336 px at 24 px (the bound
+   is included). After the 451 px block, same specificity, so it wins. Every segmented group of the dialogs takes it, the toggles too. `padding-inline` and not the shorthand: at a font of
+   33 px and more 14rem is 462 px or wider and a window of 452 px to 14rem is in the wide block too (`padding: 4px 8px`), whose vertical 4 px must stay; in the narrow window the vertical padding is 0 anyway. */
+@media (max-width: 14rem) {
+  .desktop-dialog .segmented__option {
+    padding-inline: 4px;
+  }
 }
 
 .desktop-dialog__error {

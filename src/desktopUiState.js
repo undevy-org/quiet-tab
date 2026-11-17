@@ -94,3 +94,31 @@ export function deskRefreshDecision({ hasState, locked, drawn, blocker, startedF
   if (current !== startedFrom) return "again";
   return "apply";
 }
+
+// ---- which message a heal of a cleared storage shows (docs/backlog-closeout.md decision 3, Ruling 3, 154 (2)) -------------------------------
+// "silent": the heal is this tab's own retry of an ensure that failed at load, and the state the tab showed before it had no Settings tile (a
+// tab that never showed Settings never had a layout that something could have reset). Otherwise "reset": the storage was really cleared in another
+// tab and the message `Your layout was reset in another tab.` is true. `ensureFailed` is the tab's `widgetsEnsureFailed`; `shownItems` the items of
+// the state the tab showed BEFORE the heal's result replaced it (null when it showed none: that counts as no Settings). The same rule at the three
+// heal sites of newtab.js (the return re-read, runDesktopMutation, recoverFromGoneLink).
+export function healNotice({ ensureFailed, shownItems }) {
+  const shownSettings = Array.isArray(shownItems) && shownItems.some((item) => item?.id === "chrome:settings");
+  return ensureFailed === true && !shownSettings ? "silent" : "reset";
+}
+
+// ---- the second press of a swap in the Add menu (docs/backlog-closeout.md decision 12, Ruling 11 and 13, 183 variant A) --------------------------------
+// The click that moves the Add menu to its second level (`Add weather tile…`) records its point and time; a pointer press that comes at most
+// ADD_MENU_DOUBLE_PRESS_MS later and at most ADD_MENU_DOUBLE_PRESS_SLOP_PX away (straight line) is the second press of a double click and does nothing. 300 ms is the
+// length of the project's other guards (a human double click is mostly under it; the 450 ms recipe of dg-93 stays outside), 4 px is a hand's tremor.
+// `record` is { x, y, t } of the opening click (null when there is none: no swap yet, or a keyboard activation, which records nothing); `press` is { x, y, t }
+// of the pointerdown, both `t` from `event.timeStamp`. A press that is earlier than the record (a clock that does not add up) is never a second press.
+export const ADD_MENU_DOUBLE_PRESS_MS = 300;
+export const ADD_MENU_DOUBLE_PRESS_SLOP_PX = 4;
+export function isSwapSecondPress(record, press) {
+  if (!record || !press) return false;
+  const values = [record.x, record.y, record.t, press.x, press.y, press.t];
+  if (!values.every(Number.isFinite)) return false;
+  const elapsed = press.t - record.t;
+  if (elapsed < 0 || elapsed > ADD_MENU_DOUBLE_PRESS_MS) return false;
+  return Math.hypot(press.x - record.x, press.y - record.y) <= ADD_MENU_DOUBLE_PRESS_SLOP_PX;
+}
