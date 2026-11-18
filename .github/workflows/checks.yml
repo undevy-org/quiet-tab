@@ -1,0 +1,33 @@
+# Cheap checks on every push and pull request: the unit tests and a syntax check of every source file.
+# Plain Node, no install step: the project has no dependencies.
+
+name: checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Syntax check of src
+        run: npm run check
